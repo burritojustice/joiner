@@ -1,8 +1,13 @@
 {
-  "_doc": "Boundary layers Joiner can join to. scripts/get_layers.mjs downloads each from DataSF and writes data/boundaries/<id>.geojson plus data/boundaries/index.json. key = feature property rows are joined on; name = label shown in the side panel; keep = properties kept (all others dropped).",
+  "_doc": "Boundary layers Joiner can join to. scripts/get_layers.mjs downloads each from DataSF and writes data/boundaries/<id>.geojson plus data/boundaries/index.json. key = feature property rows are joined on; name = label shown in the side panel; keep = properties kept (all others dropped). Neighborhood sets appear in the Neighborhood tab in the order listed here; \"default\": true marks the one it opens with.",
   "portal": "https://data.sf.gov",
   "precision": 6,
-  "mainlandBbox": [-122.53, 37.70, -122.34, 37.84],
+  "mainlandBbox": [
+    -122.53,
+    37.7,
+    -122.34,
+    37.84
+  ],
   "layers": [
     {
       "id": "supervisor_districts",
@@ -12,7 +17,12 @@
       "page": "https://data.sf.gov/-/Map-of-Current-Supervisor-Districts/tadv-nifg",
       "key": "sup_dist",
       "name": "sup_dist_name",
-      "keep": ["sup_dist", "sup_dist_abbrev", "sup_dist_name", "sup_name"],
+      "keep": [
+        "sup_dist",
+        "sup_dist_abbrev",
+        "sup_dist_name",
+        "sup_name"
+      ],
       "expectCount": 11
     },
     {
@@ -23,30 +33,38 @@
       "page": "https://data.sf.gov/-/San-Francisco-ZIP-Codes/srq6-hmpi",
       "key": "zip_code",
       "name": "zip_code",
-      "keep": ["zip_code", "po_name"],
+      "keep": [
+        "zip_code",
+        "po_name"
+      ],
       "mergeByKey": true
-    },
-    {
-      "id": "analysis_neighborhoods",
-      "label": "Analysis Neighborhoods (41)",
-      "tab": "Neighborhood",
-      "default": true,
-      "dataset": "p5b7-5n3h",
-      "page": "https://data.sf.gov/-/Analysis-Neighborhoods/p5b7-5n3h",
-      "key": "nhood",
-      "name": "nhood",
-      "keep": ["nhood"],
-      "expectCount": 41
     },
     {
       "id": "sf_find_neighborhoods",
       "label": "SF Find Neighborhoods (117)",
       "tab": "Neighborhood",
+      "default": true,
       "dataset": "pty2-tcw4",
       "page": "https://data.sf.gov/-/SF-Find-Neighborhoods/pty2-tcw4",
       "key": "name",
       "name": "name",
-      "keep": ["name", "link"]
+      "keep": [
+        "name",
+        "link"
+      ]
+    },
+    {
+      "id": "analysis_neighborhoods",
+      "label": "Analysis Neighborhoods (41)",
+      "tab": "Neighborhood",
+      "dataset": "p5b7-5n3h",
+      "page": "https://data.sf.gov/-/Analysis-Neighborhoods/p5b7-5n3h",
+      "key": "nhood",
+      "name": "nhood",
+      "keep": [
+        "nhood"
+      ],
+      "expectCount": 41
     },
     {
       "id": "planning_neighborhoods",
@@ -56,7 +74,9 @@
       "page": "https://data.sf.gov/-/Planning-Neighborhood-Groups-Map/iacs-ws63",
       "key": "neighborho",
       "name": "neighborho",
-      "keep": ["neighborho"]
+      "keep": [
+        "neighborho"
+      ]
     },
     {
       "id": "realtor_neighborhoods",
@@ -66,7 +86,11 @@
       "page": "https://data.sf.gov/-/Realtor-Neighborhoods/5gzd-g9ns",
       "key": "nbrhood",
       "name": "nbrhood",
-      "keep": ["nbrhood", "nid", "sfar_distr"]
+      "keep": [
+        "nbrhood",
+        "nid",
+        "sfar_distr"
+      ]
     },
     {
       "id": "census_tracts",
@@ -76,7 +100,13 @@
       "page": "https://data.sf.gov/Geographic-Locations-and-Boundaries/Analysis-Neighborhoods-2020-census-tracts-assigned/sevw-6tgi",
       "key": "geoid",
       "name": "name",
-      "keep": ["geoid", "tractce", "name", "neighborhoods_analysis_boundaries", "sup_dist_2022"],
+      "keep": [
+        "geoid",
+        "tractce",
+        "name",
+        "neighborhoods_analysis_boundaries",
+        "sup_dist_2022"
+      ],
       "expectCount": 242
     }
   ]

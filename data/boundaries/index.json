@@ -55,36 +55,10 @@
       "retrieved": "2026-10-14"
     },
     {
-      "id": "analysis_neighborhoods",
-      "label": "Analysis Neighborhoods (41)",
-      "tab": "Neighborhood",
-      "default": true,
-      "file": "analysis_neighborhoods.geojson",
-      "key": "nhood",
-      "name": "nhood",
-      "count": 41,
-      "bbox": [
-        -122.51495,
-        37.70813,
-        -122.35697,
-        37.8333
-      ],
-      "extent": [
-        -122.51495,
-        37.70813,
-        -122.35697,
-        37.8333
-      ],
-      "bytes": 949628,
-      "dataset": "p5b7-5n3h",
-      "page": "https://data.sf.gov/-/Analysis-Neighborhoods/p5b7-5n3h",
-      "source": "file:3c6f9c74-SF_Analysis_Neighborhoods.geojson",
-      "retrieved": "2026-10-14"
-    },
-    {
       "id": "sf_find_neighborhoods",
       "label": "SF Find Neighborhoods (117)",
       "tab": "Neighborhood",
+      "default": true,
       "file": "sf_find_neighborhoods.geojson",
       "key": "name",
       "name": "name",
@@ -105,6 +79,32 @@
       "dataset": "pty2-tcw4",
       "page": "https://data.sf.gov/-/SF-Find-Neighborhoods/pty2-tcw4",
       "source": "file:b279b545-SF_Find_Neighborhoods.geojson",
+      "retrieved": "2026-10-14"
+    },
+    {
+      "id": "analysis_neighborhoods",
+      "label": "Analysis Neighborhoods (41)",
+      "tab": "Neighborhood",
+      "file": "analysis_neighborhoods.geojson",
+      "key": "nhood",
+      "name": "nhood",
+      "count": 41,
+      "bbox": [
+        -122.51495,
+        37.70813,
+        -122.35697,
+        37.8333
+      ],
+      "extent": [
+        -122.51495,
+        37.70813,
+        -122.35697,
+        37.8333
+      ],
+      "bytes": 949628,
+      "dataset": "p5b7-5n3h",
+      "page": "https://data.sf.gov/-/Analysis-Neighborhoods/p5b7-5n3h",
+      "source": "file:3c6f9c74-SF_Analysis_Neighborhoods.geojson",
       "retrieved": "2026-10-14"
     },
     {
