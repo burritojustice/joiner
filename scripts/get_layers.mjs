@@ -176,6 +176,8 @@ function manifestEntry(layer, fc, bytes, source) {
     return {
         id: layer.id, label: layer.label, tab: layer.tab, ...(layer.default ? { default: true } : {}),
         file: `${layer.id}.geojson`, key: layer.key, name: layer.name,
+        ...(layer.nameTemplate ? { nameTemplate: layer.nameTemplate } : {}),
+        ...(layer.match && Object.keys(layer.match).length ? { match: layer.match } : {}),
         count: fc.features.length, bbox: fc.bbox, extent: fc.extent, bytes,
         dataset: layer.dataset, page: layer.page, source, retrieved: new Date().toISOString().slice(0, 10),
     };

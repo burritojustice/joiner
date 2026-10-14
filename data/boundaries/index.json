@@ -9,6 +9,12 @@
       "file": "supervisor_districts.geojson",
       "key": "sup_dist",
       "name": "sup_dist_name",
+      "nameTemplate": "District {sup_dist}",
+      "match": {
+        "stripPrefix": "^(supervisorial district|supervisor district|district|d)\\s*",
+        "caseInsensitive": true,
+        "delimiter": ","
+      },
       "count": 11,
       "bbox": [
         -122.51495,
@@ -35,6 +41,9 @@
       "file": "zip_codes.geojson",
       "key": "zip_code",
       "name": "zip_code",
+      "match": {
+        "delimiter": ","
+      },
       "count": 27,
       "bbox": [
         -122.51777,
@@ -62,6 +71,10 @@
       "file": "sf_find_neighborhoods.geojson",
       "key": "name",
       "name": "name",
+      "match": {
+        "caseInsensitive": true,
+        "collapseSpace": true
+      },
       "count": 117,
       "bbox": [
         -122.5149,
@@ -88,6 +101,10 @@
       "file": "analysis_neighborhoods.geojson",
       "key": "nhood",
       "name": "nhood",
+      "match": {
+        "caseInsensitive": true,
+        "collapseSpace": true
+      },
       "count": 41,
       "bbox": [
         -122.51495,
@@ -114,6 +131,10 @@
       "file": "planning_neighborhoods.geojson",
       "key": "neighborho",
       "name": "neighborho",
+      "match": {
+        "caseInsensitive": true,
+        "collapseSpace": true
+      },
       "count": 37,
       "bbox": [
         -122.51495,
@@ -140,6 +161,10 @@
       "file": "realtor_neighborhoods.geojson",
       "key": "nbrhood",
       "name": "nbrhood",
+      "match": {
+        "caseInsensitive": true,
+        "collapseSpace": true
+      },
       "count": 92,
       "bbox": [
         -122.51495,
