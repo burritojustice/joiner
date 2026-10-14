@@ -1,0 +1,189 @@
+{
+  "_doc": "Written by scripts/get_layers.mjs — do not edit by hand.",
+  "portal": "https://data.sf.gov",
+  "layers": [
+    {
+      "id": "supervisor_districts",
+      "label": "Supervisor District",
+      "tab": "District",
+      "file": "supervisor_districts.geojson",
+      "key": "sup_dist",
+      "name": "sup_dist_name",
+      "count": 11,
+      "bbox": [
+        -122.51495,
+        37.70787,
+        -122.35697,
+        37.83243
+      ],
+      "extent": [
+        -123.17382,
+        37.63983,
+        -122.32792,
+        37.8632
+      ],
+      "bytes": 180654,
+      "dataset": "cqbw-m5m3",
+      "page": "https://data.sf.gov/-/Map-of-Current-Supervisor-Districts/tadv-nifg",
+      "source": "file:01648f5f-SF_Supervisor_District.geojson",
+      "retrieved": "2026-10-14"
+    },
+    {
+      "id": "zip_codes",
+      "label": "ZIP Code",
+      "tab": "ZIP",
+      "file": "zip_codes.geojson",
+      "key": "zip_code",
+      "name": "zip_code",
+      "count": 27,
+      "bbox": [
+        -122.51777,
+        37.70776,
+        -122.35703,
+        37.8333
+      ],
+      "extent": [
+        -122.51777,
+        37.70776,
+        -122.35703,
+        37.8333
+      ],
+      "bytes": 395086,
+      "dataset": "srq6-hmpi",
+      "page": "https://data.sf.gov/-/San-Francisco-ZIP-Codes/srq6-hmpi",
+      "source": "file:3f47af14-SF_ZIP_Codes.geojson",
+      "retrieved": "2026-10-14"
+    },
+    {
+      "id": "analysis_neighborhoods",
+      "label": "Analysis Neighborhoods (41)",
+      "tab": "Neighborhood",
+      "default": true,
+      "file": "analysis_neighborhoods.geojson",
+      "key": "nhood",
+      "name": "nhood",
+      "count": 41,
+      "bbox": [
+        -122.51495,
+        37.70813,
+        -122.35697,
+        37.8333
+      ],
+      "extent": [
+        -122.51495,
+        37.70813,
+        -122.35697,
+        37.8333
+      ],
+      "bytes": 949628,
+      "dataset": "p5b7-5n3h",
+      "page": "https://data.sf.gov/-/Analysis-Neighborhoods/p5b7-5n3h",
+      "source": "file:3c6f9c74-SF_Analysis_Neighborhoods.geojson",
+      "retrieved": "2026-10-14"
+    },
+    {
+      "id": "sf_find_neighborhoods",
+      "label": "SF Find Neighborhoods (117)",
+      "tab": "Neighborhood",
+      "file": "sf_find_neighborhoods.geojson",
+      "key": "name",
+      "name": "name",
+      "count": 117,
+      "bbox": [
+        -122.5149,
+        37.70809,
+        -122.35698,
+        37.8324
+      ],
+      "extent": [
+        -122.5149,
+        37.70809,
+        -122.35698,
+        37.8324
+      ],
+      "bytes": 185005,
+      "dataset": "pty2-tcw4",
+      "page": "https://data.sf.gov/-/SF-Find-Neighborhoods/pty2-tcw4",
+      "source": "file:b279b545-SF_Find_Neighborhoods.geojson",
+      "retrieved": "2026-10-14"
+    },
+    {
+      "id": "planning_neighborhoods",
+      "label": "Planning Neighborhood Groups (37)",
+      "tab": "Neighborhood",
+      "file": "planning_neighborhoods.geojson",
+      "key": "neighborho",
+      "name": "neighborho",
+      "count": 37,
+      "bbox": [
+        -122.51495,
+        37.70809,
+        -122.35697,
+        37.8333
+      ],
+      "extent": [
+        -122.51495,
+        37.70809,
+        -122.35697,
+        37.8333
+      ],
+      "bytes": 320795,
+      "dataset": "mw29-m2za",
+      "page": "https://data.sf.gov/-/Planning-Neighborhood-Groups-Map/iacs-ws63",
+      "source": "file:ab52aab3-Planning_Neighborhood_Groups_Map_20261014.geojson",
+      "retrieved": "2026-10-14"
+    },
+    {
+      "id": "realtor_neighborhoods",
+      "label": "Realtor Neighborhoods (92)",
+      "tab": "Neighborhood",
+      "file": "realtor_neighborhoods.geojson",
+      "key": "nbrhood",
+      "name": "nbrhood",
+      "count": 92,
+      "bbox": [
+        -122.51495,
+        37.70809,
+        -122.35697,
+        37.81157
+      ],
+      "extent": [
+        -122.51495,
+        37.70809,
+        -122.35697,
+        37.81157
+      ],
+      "bytes": 305468,
+      "dataset": "5gzd-g9ns",
+      "page": "https://data.sf.gov/-/Realtor-Neighborhoods/5gzd-g9ns",
+      "source": "file:3c5724f6-Realtor_Neighborhoods_20261014.geojson",
+      "retrieved": "2026-10-14"
+    },
+    {
+      "id": "census_tracts",
+      "label": "Census Tracts 2020",
+      "tab": "Tract",
+      "file": "census_tracts.geojson",
+      "key": "geoid",
+      "name": "name",
+      "count": 242,
+      "bbox": [
+        -122.51495,
+        37.70811,
+        -122.35697,
+        37.8333
+      ],
+      "extent": [
+        -123.10803,
+        37.69306,
+        -122.35697,
+        37.8333
+      ],
+      "bytes": 1112556,
+      "dataset": "sevw-6tgi",
+      "page": "https://data.sf.gov/Geographic-Locations-and-Boundaries/Analysis-Neighborhoods-2020-census-tracts-assigned/sevw-6tgi",
+      "source": "file:f61bb599-Analysis_Neighborhoods_-_2020_census_tracts_assigned_to_neighborhoods_20261014.geojson",
+      "retrieved": "2026-10-14"
+    }
+  ]
+}
