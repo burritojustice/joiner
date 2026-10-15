@@ -51,13 +51,13 @@ To add a layer, add an entry to `config/layers.json` with its DataSF dataset id 
 | File | What |
 | --- | --- |
 | `places.csv` | every record: id, name, placetype, status, macrohood, parent, geometry source, Spelunker and download URLs |
-| `macrohoods.geojson` | 4 live macrohoods: Downtown, Mission District, Richmond District, Sunset District |
-| `neighbourhoods.geojson` | 116 live neighbourhood polygons |
-| `microhoods.geojson` | 95 live microhood polygons |
+| `macrohoods.geojson` | 4 macrohoods: Downtown, Mission District, Richmond District, Sunset District |
+| `neighbourhoods.geojson` | 116 neighbourhood polygons: 84 with `mz:is_current` 1, 32 with -1 |
+| `microhoods.geojson` | 95 microhood polygons: 46 with `mz:is_current` 1, 49 with -1 |
 | `raw/` | the original WOF records, one file per id |
 | `ids.txt`, `missing.txt` | ids from the Spelunker; ids not found in `whosonfirst-data-admin-us` |
 
-"Live" means not deprecated, superseded or ceased. Many records never had `mz:is_current` set but are still in use (Excelsior, Inner Sunset, Bayview, Chinatown), so they count as live.
+**Current vs. unknown.** WOF marks 84 SF neighbourhoods current (`mz:is_current` 1). Another 32 have `mz:is_current` -1 — never reviewed, but not deprecated, superseded or ceased — and they include Excelsior, Inner and Outer Sunset, Inner and Outer Richmond, Chinatown, Bayview and Ingleside. The two sets don't overlap and together cover all of SF; the 84 alone cover 62% of its land. So the layers keep both, and every feature carries `mz_is_current`: filter on 1 for the strictly current set. Records with `mz:is_current` 0 (deprecated, superseded or ceased) are left out of the layers but listed in `places.csv`. None of these records set `mz:is_deprecated`; deprecation is in `edtf:deprecated` and `wof:superseded_by`.
 
 ```sh
 node scripts/get_wof.mjs              # walk the Spelunker, download new records, rebuild outputs

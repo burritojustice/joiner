@@ -15,11 +15,12 @@
 //      placetype is one we asked for and San Francisco is in its hierarchy.
 //   3. Outputs:
 //      data/wof/places.csv            every record: status, macrohood, parent, URLs
-//      data/wof/macrohoods.geojson      live macrohood polygons
-//      data/wof/neighbourhoods.geojson  live neighbourhood polygons
-//      data/wof/microhoods.geojson      live microhood polygons
-//      ("live" = not deprecated, superseded or ceased). Each feature carries its parent and,
-//      when the WOF hierarchy has one, its macrohood.
+//      data/wof/macrohoods.geojson      macrohood polygons
+//      data/wof/neighbourhoods.geojson  neighbourhood polygons
+//      data/wof/microhoods.geojson      microhood polygons
+//      Layers keep mz:is_current 1 (current) and -1 (unknown); deprecated, superseded and
+//      ceased records are left out. Each feature carries mz_is_current, its parent and, when
+//      the WOF hierarchy has one, its macrohood.
 //
 // Node 18+, no dependencies.
 
@@ -102,7 +103,7 @@ function status(p) {
     if (isSet(p['edtf:cessation'])) return 'ceased';
     if (p['mz:is_current'] === 1) return 'current';
     if (p['mz:is_current'] === 0) return 'not current';
-    return 'unknown';
+    return 'unknown';   // mz:is_current -1: never reviewed, not retired
 }
 
 const csvCell = v => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
@@ -124,12 +125,12 @@ function build(skipped) {
         || a.properties['wof:name'].localeCompare(b.properties['wof:name']));
 
     // places.csv
-    const cols = ['wof_id', 'name', 'placetype', 'status', 'macrohood_id', 'macrohood', 'parent_id', 'parent',
+    const cols = ['wof_id', 'name', 'placetype', 'status', 'mz_is_current', 'macrohood_id', 'macrohood', 'parent_id', 'parent',
         'geometry', 'src_geom', 'lastmodified', 'spelunker', 'geojson'];
     const lines = [cols.join(',')];
     for (const r of recs) {
         const p = r.properties, macro = macroOf(p);
-        lines.push([p['wof:id'], p['wof:name'], p['wof:placetype'], status(p), macro ?? '', macro ? nameOf(macro) : '',
+        lines.push([p['wof:id'], p['wof:name'], p['wof:placetype'], status(p), p['mz:is_current'] ?? '', macro ?? '', macro ? nameOf(macro) : '',
             p['wof:parent_id'] > 0 ? p['wof:parent_id'] : '', p['wof:parent_id'] > 0 ? nameOf(p['wof:parent_id']) : '',
             r.geometry?.type ?? '', p['src:geom'] ?? '',
             p['wof:lastmodified'] ? new Date(p['wof:lastmodified'] * 1000).toISOString().slice(0, 10) : '',
@@ -141,14 +142,16 @@ function build(skipped) {
     const feature = r => {
         const p = r.properties, macro = macroOf(p);
         return { type: 'Feature', id: String(p['wof:id']), properties: {
-            wof_id: p['wof:id'], name: p['wof:name'], placetype: p['wof:placetype'],
+            wof_id: p['wof:id'], name: p['wof:name'], placetype: p['wof:placetype'], mz_is_current: p['mz:is_current'] ?? null,
             ...(macro ? { macrohood_id: macro, macrohood: nameOf(macro) } : {}),
             ...(p['wof:parent_id'] > 0 ? { parent_id: p['wof:parent_id'], parent: nameOf(p['wof:parent_id']) } : {}),
             src_geom: p['src:geom'] ?? null,
         }, geometry: r.geometry };
     };
-    // "Live" = not deprecated, superseded or ceased. Many records never had mz:is_current set
-    // (status "unknown") but are still in use — Excelsior, Inner Sunset, Bayview, Chinatown.
+    // Layers hold mz:is_current 1 and -1. In SF the -1 neighbourhoods (Excelsior, Inner and Outer
+    // Sunset, Chinatown, Bayview…) were never reviewed rather than retired: they don't overlap the
+    // current ones and together the two sets tile the city. Filter on mz_is_current === 1 for the
+    // strictly current set (84 neighbourhoods).
     const live = recs.filter(r => ['current', 'unknown'].includes(status(r.properties)) && /Polygon/.test(r.geometry?.type || ''));
     const ofType = pt => live.filter(r => r.properties['wof:placetype'] === pt);
     const write = (file, feats) => {
@@ -161,9 +164,9 @@ function build(skipped) {
     const nMicro = write('microhoods.geojson', ofType('microhood'));
 
     const tally = {};
-    for (const r of recs) { const k = `${r.properties['wof:placetype']} ${status(r.properties)}`; tally[k] = (tally[k] || 0) + 1; }
+    for (const r of recs) { const k = `${r.properties['wof:placetype']} ${status(r.properties)} (mz:is_current ${r.properties['mz:is_current']})`; tally[k] = (tally[k] || 0) + 1; }
     console.log(`\n${recs.length} SF records:`, tally);
-    console.log(`wrote data/wof/places.csv and live polygons: macrohoods.geojson (${nMacro}), neighbourhoods.geojson (${nHood}), microhoods.geojson (${nMicro})`);
+    console.log(`wrote data/wof/places.csv and polygons (mz:is_current 1 and -1): macrohoods.geojson (${nMacro}), neighbourhoods.geojson (${nHood}), microhoods.geojson (${nMicro})`);
 }
 
 // ── main ────────────────────────────────────────────────────────────────────
