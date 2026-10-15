@@ -2,6 +2,17 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v8
+- **Streets above the areas from zoom 14**, named from zoom 15: copies of the basemap's street lines draw over the colored areas (below outlines, rows and labels), so blocks read when zoomed in. The **Roads** toggle covers them.
+- **Creek fix** from Block Party and Selecter: streams are hidden, and rivers and waterway labels named "Creek" or "Arroyo" are filtered out, since Protomaps/OSM tag many culverted Bay Area creeks as rivers.
+- **White glow** on area outlines and on lines drawn from the file.
+- **Format features** panel (when the file has geometry): show or hide the rows; **Color by** any column, using the area palette's opposite for numbers (yellow–red on Blues, blues on Yellow–red; natural breaks, 5 classes) or the categorical palette for text (most common values, the rest as Other; hues that would blend into the area palette are skipped); **Labels** from any columns, beside each row from zoom 13. Light colors get a dark ring and glow instead of white. The legend adds a **Rows** section.
+- **Label size** in the Map panel: Small (the size so far) · Medium · Large, for area and row labels.
+- **Clicking an area in the list expands it** to list its rows, each with its value for the statistic being mapped (sorted by it), instead of opening a popup. Click a row with a location to fly to it. Click the area again to collapse.
+- **Row popups show values first**, with the field name under each value; long names are cut short with the full name on hover. Up to 30 fields, scrolling.
+- The **Map** panel moved below the area list; panel cards remember whether they're open. The side panel scrolls when they're all open.
+- Format features and label size are saved in snapshots.
+
 ## v7
 - **Shorter tabs:** a tab with several boundary sets shows just the chosen set's name with a ▾ ("Analysis Neighborhoods ▾", "WOF Neighbourhoods ▾") and opens the menu when clicked. Opening the menu on another tab switches to it. Layers can set a `short` name for this.
 - **Colors** switch in the Map panel: **Blues** (as before) or **Yellow–red** (ColorBrewer YlOrRd, starting at light orange so the lightest class still stands apart from the gray used for 0). The choice is remembered in the browser and saved in snapshots.

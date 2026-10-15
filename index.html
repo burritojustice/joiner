@@ -59,28 +59,6 @@
       <p class="hint">Rows are matched to the boundaries chosen above by district, ZIP, neighborhood or census tract. Nothing leaves your browser.</p>
     </section>
 
-    <details class="card labels-card" id="labels-card" open>
-      <summary>Map</summary>
-      <div class="chips" id="label-chips" role="group" aria-label="Label lines"></div>
-      <p class="hint"><span id="label-hint"></span> <button class="linkish" id="label-auto" type="button" hidden>Reset</button></p>
-      <label class="check"><input type="checkbox" id="prefix-check"> Prefixes from zoom <b id="prefix-zoom-val"></b>
-        <input type="range" id="prefix-zoom" min="10" max="17" step="1" aria-label="Zoom for label prefixes"></label>
-      <p class="hint">Now at zoom <span id="zoom-now"></span></p>
-      <div class="basemap-opts">
-        <span>Basemap</span>
-        <label class="check"><input type="checkbox" id="roads-check"> Roads</label>
-        <label class="check"><input type="checkbox" id="hoods-check"> Neighborhood labels</label>
-      </div>
-      <div class="basemap-opts">
-        <span>Colors</span>
-        <div class="seg pal" id="palette-seg" role="group" aria-label="Area colors"></div>
-      </div>
-      <div class="basemap-opts" id="points-opt" hidden>
-        <span>Data</span>
-        <label class="check"><input type="checkbox" id="points-check"> Show the <b id="points-count"></b> rows with a location</label>
-        <span class="row-key"><i class="in"></i>placed <i class="out"></i>not placed</span>
-      </div>
-    </details>
 
     <section class="list-card">
       <div class="list-head">
@@ -92,6 +70,46 @@
       </div>
       <ol class="area-list" id="area-list"></ol>
     </section>
+
+    <details class="card fmt-card" id="fmt-card" open hidden>
+      <summary>Format features</summary>
+      <label class="check"><input type="checkbox" id="points-check"> Show the <b id="points-count"></b> rows with a location</label>
+      <div class="field">
+        <label for="row-color">Color by</label>
+        <select id="row-color"></select>
+        <p class="hint" id="row-color-hint"></p>
+        <span class="row-key"><i class="in"></i>placed <i class="out"></i>not placed</span>
+      </div>
+      <div class="field">
+        <label>Labels</label>
+        <div class="chips" id="row-label-chips" role="group" aria-label="Row labels"></div>
+        <p class="hint">Shown from zoom 13, next to each row.</p>
+      </div>
+    </details>
+
+    <details class="card labels-card" id="labels-card" open>
+      <summary>Map</summary>
+      <div class="chips" id="label-chips" role="group" aria-label="Label lines"></div>
+      <p class="hint"><span id="label-hint"></span> <button class="linkish" id="label-auto" type="button" hidden>Reset</button></p>
+      <label class="check"><input type="checkbox" id="prefix-check"> Prefixes from zoom <b id="prefix-zoom-val"></b>
+        <input type="range" id="prefix-zoom" min="10" max="17" step="1" aria-label="Zoom for label prefixes"></label>
+      <div class="basemap-opts tight">
+        <span>Size</span>
+        <div class="seg" id="size-seg" role="group" aria-label="Label size">
+          <button type="button" data-size="small">Small</button><button type="button" data-size="medium">Medium</button><button type="button" data-size="large">Large</button>
+        </div>
+      </div>
+      <p class="hint">Now at zoom <span id="zoom-now"></span></p>
+      <div class="basemap-opts">
+        <span>Basemap</span>
+        <label class="check"><input type="checkbox" id="roads-check"> Roads</label>
+        <label class="check"><input type="checkbox" id="hoods-check"> Neighborhood labels</label>
+      </div>
+      <div class="basemap-opts">
+        <span>Colors</span>
+        <div class="seg pal" id="palette-seg" role="group" aria-label="Area colors"></div>
+      </div>
+    </details>
   </aside>
 
   <main class="map-wrap">
