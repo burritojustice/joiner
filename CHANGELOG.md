@@ -2,6 +2,12 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v7
+- **Shorter tabs:** a tab with several boundary sets shows just the chosen set's name with a ▾ ("Analysis Neighborhoods ▾", "WOF Neighbourhoods ▾") and opens the menu when clicked. Opening the menu on another tab switches to it. Layers can set a `short` name for this.
+- **Colors** switch in the Map panel: **Blues** (as before) or **Yellow–red** (ColorBrewer YlOrRd, starting at light orange so the lightest class still stands apart from the gray used for 0). The choice is remembered in the browser and saved in snapshots.
+- **Row geometry stands out from the areas:** orange on Blues, blue on Yellow–red. Rows placed in an area are solid; rows not placed are hollow rings (points) or dashed (lines and polygons), so the difference doesn't depend on color. A key next to the Data toggle shows both.
+- The **Map labels** panel is now **Map**, since it also holds basemap, colors and data options.
+
 ## v6
 - **Rows with a location are drawn on the map** and can be placed by location. Joiner finds geometry in GeoJSON files, in CSV columns holding WKT (`POINT (-122.4 37.7)`, lines, polygons) or Socrata-style `(37.7, -122.4)` text, and in latitude/longitude column pairs. Points are dark when placed in an area and pink when not; polygons and lines from the file are outlined. Hover a point for its name and area; click for its fields. **Data → Show the N rows with a location** turns them off.
 - **Match rows by → Location (inside the area)** places each row in the area that contains it (a line's middle, or a point well inside a polygon). It's offered whenever the file has geometry and chosen when it places at least as many rows as any column. Rows outside every area, and rows with no location, are counted in the panel.
