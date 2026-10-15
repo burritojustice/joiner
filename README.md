@@ -2,7 +2,7 @@
 
 A map for Civic Joy Fund data. It joins rows from Airtable tables (and CSVs) to San Francisco boundaries — supervisor districts, ZIP codes, neighborhoods, census tracts — and to street segments by CNN. Polygons are colored by count, with sums and averages of numeric fields. The join logic is [JoinKit](https://github.com/burritojustice/maplibre/tree/main/joinkit), shared with Selecter.
 
-*Work in progress.*
+*Work in progress.* The version is shown in the top bar; see [CHANGELOG.md](CHANGELOG.md) for what changed in each.
 
 ## Using the map
 
@@ -38,7 +38,7 @@ The polygon sets live in `data/boundaries/`, one GeoJSON file per layer, plus `i
 | `analysis_neighborhoods` | Neighborhood | `nhood` | 41 | [p5b7-5n3h](https://data.sf.gov/-/Analysis-Neighborhoods/p5b7-5n3h) |
 | `planning_neighborhoods` | Neighborhood | `neighborho` | 37 | [mw29-m2za](https://data.sf.gov/-/Planning-Neighborhood-Groups-Map/iacs-ws63) |
 | `realtor_neighborhoods` | Neighborhood | `nbrhood` | 92 | [5gzd-g9ns](https://data.sf.gov/-/Realtor-Neighborhoods/5gzd-g9ns) |
-| `census_tracts` | Tract | `geoid` | 242 | [sevw-6tgi](https://data.sf.gov/Geographic-Locations-and-Boundaries/Analysis-Neighborhoods-2020-census-tracts-assigned/sevw-6tgi) |
+| `census_tracts` | Census Tract | `geoid` | 242 | [sevw-6tgi](https://data.sf.gov/Geographic-Locations-and-Boundaries/Analysis-Neighborhoods-2020-census-tracts-assigned/sevw-6tgi) |
 
 The Neighborhood tab offers the neighborhood sets in the order above — SF Find first and as the default, since its names match the most Airtable values, then Analysis, Planning and Realtor. The order in `config/layers.json` sets the order in the tab, and `"default": true` picks the one it opens with. Census tracts carry their analysis neighborhood and 2022 supervisor district, which is useful later for comparing how the sets overlap.
 
@@ -90,6 +90,14 @@ node scripts/get_wof.mjs --offline    # rebuild outputs from data/wof/raw only
 ```
 
 Records come from GitHub (`whosonfirst-data/whosonfirst-data-admin-us`); `places.csv` also lists each record's `data.whosonfirst.org` URL.
+
+## Releasing
+
+Each change that's merged is a new version:
+
+1. Bump `_BUILD_VERSION` at the top of `js/app.js` (`v5` → `v6`).
+2. Add a `## v6` section at the top of `CHANGELOG.md` saying what changed, in terms someone using the map would notice.
+3. Merge the PR. The **Tag version** action (`.github/workflows/tag-version.yml`) reads `_BUILD_VERSION` and tags the merge commit `v6`.
 
 ## License
 

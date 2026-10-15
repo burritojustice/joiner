@@ -1,0 +1,27 @@
+# Tags each release: when main changes, read _BUILD_VERSION from js/app.js and
+# create that tag (e.g. v5) on the new commit if it doesn't exist yet.
+name: Tag version
+on:
+  push:
+    branches: [main]
+    paths: [js/app.js]
+permissions:
+  contents: write
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create tag from _BUILD_VERSION
+        run: |
+          v=$(grep -oP "_BUILD_VERSION = '\K[^']+" js/app.js)
+          if [ -z "$v" ]; then echo "No _BUILD_VERSION found"; exit 1; fi
+          if git rev-parse -q --verify "refs/tags/$v" >/dev/null; then
+            echo "$v already tagged"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$v" -m "joiner $v" "$GITHUB_SHA"
+          git push origin "$v"

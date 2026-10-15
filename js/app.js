@@ -3,6 +3,9 @@
 (function () {
 'use strict';
 
+// Bump on every release and add a matching section to CHANGELOG.md.
+const _BUILD_VERSION = 'v5';
+
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
     boundaries: 'data/boundaries/',
@@ -59,6 +62,8 @@ let map, popup;
 // Boot
 // ═════════════════════════════════════════════════════════════════════════
 async function boot() {
+    console.log(`[joiner] ${_BUILD_VERSION}`);
+    $('version').textContent = _BUILD_VERSION;
     S.manifest = await (await fetch(CONFIG.manifest)).json();
     for (const l of S.manifest.layers) {
         S.layers.set(l.id, l);
@@ -736,6 +741,6 @@ function wireUI() {
     });
 }
 
-window.Joiner = { state: S, loadFile, ckmeans, get map() { return map; } };   // for debugging in the console
+window.Joiner = { version: _BUILD_VERSION, state: S, loadFile, ckmeans, get map() { return map; } };   // for debugging in the console
 boot().catch(e => { console.error(e); alert('Joiner failed to start: ' + e.message); });
 })();
