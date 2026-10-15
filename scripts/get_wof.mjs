@@ -17,9 +17,9 @@
 //      data/wof/places.csv            every record: status, macrohood, parent, URLs
 //      data/wof/macrohoods.geojson               current macrohood polygons (mz:is_current 1)
 //      data/wof/neighbourhoods.geojson           current neighbourhood polygons (mz:is_current 1)
-//      data/wof/neighbourhoods-unknown.geojson   neighbourhood polygons with mz:is_current -1
+//      data/wof/neighbourhoods-unverified.geojson   neighbourhood polygons with mz:is_current -1
 //      data/wof/microhoods.geojson               current microhood polygons
-//      data/wof/microhoods-unknown.geojson       microhood polygons with mz:is_current -1
+//      data/wof/microhoods-unverified.geojson       microhood polygons with mz:is_current -1
 //      Deprecated, superseded and ceased records (mz:is_current 0) are left out of the layers.
 //      Each feature carries mz_is_current, its parent and, when the WOF hierarchy has one,
 //      its macrohood.
@@ -105,7 +105,7 @@ function status(p) {
     if (isSet(p['edtf:cessation'])) return 'ceased';
     if (p['mz:is_current'] === 1) return 'current';
     if (p['mz:is_current'] === 0) return 'not current';
-    return 'unknown';   // mz:is_current -1: never reviewed, not retired
+    return 'unverified';   // mz:is_current -1: never reviewed, not retired
 }
 
 const csvCell = v => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
@@ -150,7 +150,7 @@ function build(skipped) {
             src_geom: p['src:geom'] ?? null,
         }, geometry: r.geometry };
     };
-    // Current (mz:is_current 1) and unknown (-1) go to separate files. In SF the -1 neighbourhoods
+    // Current (mz:is_current 1) and unverified (-1) go to separate files. In SF the -1 neighbourhoods
     // (Excelsior, Inner and Outer Sunset, Chinatown, Bayview…) were never reviewed rather than
     // retired: they don't overlap the current ones, and the two files together tile the city.
     const polys = recs.filter(r => /Polygon/.test(r.geometry?.type || ''));
@@ -164,9 +164,9 @@ function build(skipped) {
     for (const pt of ['macrohood', 'neighbourhood', 'microhood']) {
         const plural = pt + 's';
         n[plural] = write(`${plural}.geojson`, ofType(pt, 'current'));
-        const unknown = ofType(pt, 'unknown');
-        const uf = path.join(DIR, `${plural}-unknown.geojson`);
-        if (unknown.length) n[`${plural}-unknown`] = write(`${plural}-unknown.geojson`, unknown);
+        const unverified = ofType(pt, 'unverified');
+        const uf = path.join(DIR, `${plural}-unverified.geojson`);
+        if (unverified.length) n[`${plural}-unverified`] = write(`${plural}-unverified.geojson`, unverified);
         else if (fs.existsSync(uf)) fs.unlinkSync(uf);
     }
 
