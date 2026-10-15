@@ -1,5 +1,5 @@
 {
-  "_doc": "Written by scripts/get_layers.mjs — do not edit by hand.",
+  "_doc": "Written by scripts/get_layers.mjs \u2014 do not edit by hand.",
   "portal": "https://data.sf.gov",
   "layers": [
     {
@@ -204,7 +204,7 @@
     {
       "id": "census_tracts",
       "label": "Census Tracts 2020",
-      "tab": "Tract",
+      "tab": "Census Tract",
       "file": "census_tracts.geojson",
       "key": "geoid",
       "name": "name",
