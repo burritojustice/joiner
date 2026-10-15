@@ -60,6 +60,31 @@ The script cleans each layer the same way:
 
 To add a layer, add an entry to `config/layers.json` with its DataSF dataset id (the id of the dataset, not of a map view built on it), join `key`, display `name` and the properties to `keep`, then run the script for it.
 
+## Who's on First places
+
+`data/wof/` holds the San Francisco macrohoods, neighbourhoods and microhoods from [Who's on First](https://whosonfirst.org/), gathered from the Spelunker's [descendant list for San Francisco](https://spelunker.whosonfirst.org/id/85922583/descendants/). Unlike the DataSF sets, WOF records a hierarchy (a microhood inside a neighbourhood inside a macrohood), which is what we need for broad names like "Sunset" or "Richmond".
+
+| File | What |
+| --- | --- |
+| `places.csv` | every record: id, name, placetype, status, macrohood, parent, geometry source, Spelunker and download URLs |
+| `macrohoods.geojson` | 4 macrohoods: Downtown, Mission District, Richmond District, Sunset District |
+| `neighbourhoods.geojson` | 84 current neighbourhoods (`mz:is_current` 1) |
+| `neighbourhoods-unverified.geojson` | 32 neighbourhoods with `mz:is_current` -1 |
+| `microhoods.geojson` | 46 current microhoods |
+| `microhoods-unverified.geojson` | 49 microhoods with `mz:is_current` -1 |
+| `raw/` | the original WOF records, one file per id |
+| `ids.txt`, `missing.txt` | ids from the Spelunker; ids not found in `whosonfirst-data-admin-us` |
+
+**Current vs. unverified.** WOF marks 84 SF neighbourhoods current (`mz:is_current` 1). Another 32 have `mz:is_current` -1: never reviewed, but not deprecated, superseded or ceased. These files are named `-unverified` rather than "not current" because in WOF "not current" is `mz:is_current` 0, the retired records. They include Excelsior, Inner and Outer Sunset, Inner and Outer Richmond, Chinatown, Bayview and Ingleside. The two sets don't overlap, and together they cover all of SF; the 84 alone cover 62% of its land. So for a full neighbourhood map, load both files. Records with `mz:is_current` 0 (deprecated, superseded or ceased) aren't in any layer but are listed in `places.csv`. None of these records set `mz:is_deprecated`; deprecation is in `edtf:deprecated` and `wof:superseded_by`.
+
+```sh
+node scripts/get_wof.mjs              # walk the Spelunker, download new records, rebuild outputs
+node scripts/get_wof.mjs --from-ids   # skip the Spelunker; use data/wof/ids.txt
+node scripts/get_wof.mjs --offline    # rebuild outputs from data/wof/raw only
+```
+
+Records come from GitHub (`whosonfirst-data/whosonfirst-data-admin-us`); `places.csv` also lists each record's `data.whosonfirst.org` URL.
+
 ## License
 
 AGPL-3.0 — see [LICENSE](LICENSE).
