@@ -37,6 +37,7 @@
       <div class="field">
         <label for="metric-select">Color by</label>
         <select id="metric-select"></select>
+        <p class="hint" id="metric-hint"></p>
       </div>
       <div class="match" id="match-summary"></div>
       <details class="unmatched" id="unmatched" hidden>
@@ -55,6 +56,20 @@
       </ul>
       <p class="hint">Rows are matched to the boundaries chosen above by district, ZIP, neighborhood or tract. Nothing leaves your browser.</p>
     </section>
+
+    <details class="card labels-card" id="labels-card" open>
+      <summary>Map labels</summary>
+      <div class="chips" id="label-chips" role="group" aria-label="Label lines"></div>
+      <p class="hint"><span id="label-hint"></span> <button class="linkish" id="label-auto" type="button" hidden>Reset</button></p>
+      <label class="check"><input type="checkbox" id="prefix-check"> Prefixes from zoom <b id="prefix-zoom-val"></b>
+        <input type="range" id="prefix-zoom" min="10" max="17" step="1" aria-label="Zoom for label prefixes"></label>
+      <p class="hint">Now at zoom <span id="zoom-now"></span></p>
+      <div class="basemap-opts">
+        <span>Basemap</span>
+        <label class="check"><input type="checkbox" id="roads-check"> Roads</label>
+        <label class="check"><input type="checkbox" id="hoods-check"> Neighborhood labels</label>
+      </div>
+    </details>
 
     <section class="list-card">
       <div class="list-head">

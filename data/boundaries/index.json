@@ -10,6 +10,16 @@
       "key": "sup_dist",
       "name": "sup_dist_name",
       "nameTemplate": "District {sup_dist}",
+      "labelTemplate": "D{sup_dist}",
+      "labelExtras": [
+        {
+          "id": "supervisor",
+          "label": "Supervisor",
+          "prop": "sup_name",
+          "lastWord": true,
+          "default": true
+        }
+      ],
       "match": {
         "stripPrefix": "^(supervisorial district|supervisor district|district|d)\\s*",
         "caseInsensitive": true,
@@ -32,7 +42,7 @@
       "dataset": "cqbw-m5m3",
       "page": "https://data.sf.gov/-/Map-of-Current-Supervisor-Districts/tadv-nifg",
       "source": "file:01648f5f-SF_Supervisor_District.geojson",
-      "retrieved": "2026-10-14"
+      "retrieved": "2026-10-15"
     },
     {
       "id": "zip_codes",
@@ -61,7 +71,7 @@
       "dataset": "srq6-hmpi",
       "page": "https://data.sf.gov/-/San-Francisco-ZIP-Codes/srq6-hmpi",
       "source": "file:3f47af14-SF_ZIP_Codes.geojson",
-      "retrieved": "2026-10-14"
+      "retrieved": "2026-10-15"
     },
     {
       "id": "sf_find_neighborhoods",
@@ -92,7 +102,7 @@
       "dataset": "pty2-tcw4",
       "page": "https://data.sf.gov/-/SF-Find-Neighborhoods/pty2-tcw4",
       "source": "file:b279b545-SF_Find_Neighborhoods.geojson",
-      "retrieved": "2026-10-14"
+      "retrieved": "2026-10-15"
     },
     {
       "id": "analysis_neighborhoods",
@@ -122,7 +132,7 @@
       "dataset": "p5b7-5n3h",
       "page": "https://data.sf.gov/-/Analysis-Neighborhoods/p5b7-5n3h",
       "source": "file:3c6f9c74-SF_Analysis_Neighborhoods.geojson",
-      "retrieved": "2026-10-14"
+      "retrieved": "2026-10-15"
     },
     {
       "id": "planning_neighborhoods",
@@ -152,7 +162,7 @@
       "dataset": "mw29-m2za",
       "page": "https://data.sf.gov/-/Planning-Neighborhood-Groups-Map/iacs-ws63",
       "source": "file:ab52aab3-Planning_Neighborhood_Groups_Map_20261014.geojson",
-      "retrieved": "2026-10-14"
+      "retrieved": "2026-10-15"
     },
     {
       "id": "realtor_neighborhoods",
@@ -161,6 +171,13 @@
       "file": "realtor_neighborhoods.geojson",
       "key": "nbrhood",
       "name": "nbrhood",
+      "labelExtras": [
+        {
+          "id": "sfar_district",
+          "label": "Realtor district",
+          "prop": "sfar_distr"
+        }
+      ],
       "match": {
         "caseInsensitive": true,
         "collapseSpace": true
@@ -182,7 +199,7 @@
       "dataset": "5gzd-g9ns",
       "page": "https://data.sf.gov/-/Realtor-Neighborhoods/5gzd-g9ns",
       "source": "file:3c5724f6-Realtor_Neighborhoods_20261014.geojson",
-      "retrieved": "2026-10-14"
+      "retrieved": "2026-10-15"
     },
     {
       "id": "census_tracts",
@@ -191,6 +208,19 @@
       "file": "census_tracts.geojson",
       "key": "geoid",
       "name": "name",
+      "labelExtras": [
+        {
+          "id": "nhood",
+          "label": "Analysis neighborhood",
+          "prop": "neighborhoods_analysis_boundaries"
+        },
+        {
+          "id": "district",
+          "label": "District (2022)",
+          "prop": "sup_dist_2022",
+          "template": "D{}"
+        }
+      ],
       "count": 242,
       "bbox": [
         -122.51495,
@@ -208,7 +238,7 @@
       "dataset": "sevw-6tgi",
       "page": "https://data.sf.gov/Geographic-Locations-and-Boundaries/Analysis-Neighborhoods-2020-census-tracts-assigned/sevw-6tgi",
       "source": "file:f61bb599-Analysis_Neighborhoods_-_2020_census_tracts_assigned_to_neighborhoods_20261014.geojson",
-      "retrieved": "2026-10-14"
+      "retrieved": "2026-10-15"
     }
   ]
 }

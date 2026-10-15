@@ -110,6 +110,24 @@ button, input, select { font: inherit; color: inherit; }
 .area-list .sw i { display: block; height: 100%; border-radius: 2px; }
 .area-list li.zero .nm, .area-list li.zero .v { color: var(--ink-soft); font-weight: 500; }
 
+/* ── labels card ─────────────────────────────────────── */
+.labels-card { padding: 8px 14px 10px; }
+.labels-card summary { cursor: pointer; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }
+.labels-card[open] summary { margin-bottom: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px; border: 1.5px solid var(--line); background: var(--card);
+  border-radius: 999px; padding: 2px 10px; font-size: 13px; cursor: pointer; color: var(--ink-soft);
+}
+.chip[aria-pressed="true"] { border-color: var(--grape); background: var(--grape-wash); color: var(--ink); }
+.chip.more { border-style: dashed; color: var(--grape); font-weight: 600; }
+.chip b { display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; background: var(--grape); color: #fff; font-size: 11px; }
+.check { display: flex; align-items: center; gap: 6px; font-size: 13.5px; margin-top: 6px; flex-wrap: wrap; }
+.check input[type=range] { flex: 1; min-width: 90px; accent-color: var(--grape); }
+.basemap-opts { display: flex; align-items: center; gap: 4px 14px; flex-wrap: wrap; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); font-size: 13.5px; }
+.basemap-opts > span { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }
+.basemap-opts .check { margin-top: 0; }
+
 /* ── map ─────────────────────────────────────────────── */
 .map-wrap { grid-area: map; position: relative; min-height: 0; }
 #map { position: absolute; inset: 0; }
@@ -120,7 +138,9 @@ button, input, select { font: inherit; color: inherit; }
 }
 .legend h4 { margin: 0 0 4px; font-size: 12px; font-weight: 700; color: var(--ink-soft); }
 .legend .row { display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
-.legend .row i { width: 18px; height: 12px; border-radius: 3px; border: 1px solid rgba(30,35,64,.25); }
+.legend .row i { width: 18px; height: 12px; border-radius: 3px; border: 1px solid rgba(30,35,64,.25); flex: none; }
+.legend .row .n { margin-left: auto; padding-left: 10px; color: var(--ink-soft); }
+.legend .foot { margin-top: 4px; font-size: 11px; color: var(--ink-soft); }
 .tip {
   position: absolute; z-index: 3; pointer-events: none; transform: translate(12px, 12px);
   background: var(--ink); color: #fff; border-radius: 10px; padding: 6px 10px; font-size: 13px;
