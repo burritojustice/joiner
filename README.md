@@ -52,12 +52,14 @@ To add a layer, add an entry to `config/layers.json` with its DataSF dataset id 
 | --- | --- |
 | `places.csv` | every record: id, name, placetype, status, macrohood, parent, geometry source, Spelunker and download URLs |
 | `macrohoods.geojson` | 4 macrohoods: Downtown, Mission District, Richmond District, Sunset District |
-| `neighbourhoods.geojson` | 116 neighbourhood polygons: 84 with `mz:is_current` 1, 32 with -1 |
-| `microhoods.geojson` | 95 microhood polygons: 46 with `mz:is_current` 1, 49 with -1 |
+| `neighbourhoods.geojson` | 84 current neighbourhoods (`mz:is_current` 1) |
+| `neighbourhoods-unknown.geojson` | 32 neighbourhoods with `mz:is_current` -1 |
+| `microhoods.geojson` | 46 current microhoods |
+| `microhoods-unknown.geojson` | 49 microhoods with `mz:is_current` -1 |
 | `raw/` | the original WOF records, one file per id |
 | `ids.txt`, `missing.txt` | ids from the Spelunker; ids not found in `whosonfirst-data-admin-us` |
 
-**Current vs. unknown.** WOF marks 84 SF neighbourhoods current (`mz:is_current` 1). Another 32 have `mz:is_current` -1 — never reviewed, but not deprecated, superseded or ceased — and they include Excelsior, Inner and Outer Sunset, Inner and Outer Richmond, Chinatown, Bayview and Ingleside. The two sets don't overlap and together cover all of SF; the 84 alone cover 62% of its land. So the layers keep both, and every feature carries `mz_is_current`: filter on 1 for the strictly current set. Records with `mz:is_current` 0 (deprecated, superseded or ceased) are left out of the layers but listed in `places.csv`. None of these records set `mz:is_deprecated`; deprecation is in `edtf:deprecated` and `wof:superseded_by`.
+**Current vs. unknown.** WOF marks 84 SF neighbourhoods current (`mz:is_current` 1). Another 32 have `mz:is_current` -1: never reviewed, but not deprecated, superseded or ceased. They include Excelsior, Inner and Outer Sunset, Inner and Outer Richmond, Chinatown, Bayview and Ingleside. The two sets don't overlap, and together they cover all of SF; the 84 alone cover 62% of its land. So for a full neighbourhood map, load both files. Records with `mz:is_current` 0 (deprecated, superseded or ceased) aren't in any layer but are listed in `places.csv`. None of these records set `mz:is_deprecated`; deprecation is in `edtf:deprecated` and `wof:superseded_by`.
 
 ```sh
 node scripts/get_wof.mjs              # walk the Spelunker, download new records, rebuild outputs
