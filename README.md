@@ -18,6 +18,12 @@ Joiner guesses which column to match on for each tab by trying every column and 
 
 Nothing is uploaded: files are read in the browser. Join logic is [JoinKit](https://github.com/burritojustice/maplibre/tree/main/joinkit), loaded from jsDelivr pinned to a commit.
 
+**Map labels.** Each area is labelled with its ID (districts as `D9`) and the value being mapped. Pick other lines under **Map labels**: click a field to add it as the next line, click again to remove it. The first two lines always show; each further line appears one zoom level further in (the supervisor's last name on districts is the third line by default), and from the **Prefixes** zoom on, each value is labelled (`total Budget Requested: $79K`). **Basemap** switches roads and the basemap's neighborhood names on and off; highway shields and one-way arrows are always hidden, and only major streets are named.
+
+**Colors.** Areas are colored in up to five classes found by natural breaks (Ckmeans), which groups similar values and splits at the largest gaps, so a $104K area and a $40K area don't share a color the way rank-based quantiles can force. Areas with no rows count as 0 (shown in gray); an average of no rows is blank. **% of all rows** and **% of total …** divide by the whole file, including rows that matched no area.
+
+Every tab opens at the same view of the city, so switching boundary sets doesn't move the map.
+
 How each layer matches values is set by `match` in `config/layers.json`: districts accept `5`, `D5` or `District 5` and split multi-select cells like `1,3`; neighborhood names ignore case and extra spaces.
 
 ## Boundary layers
