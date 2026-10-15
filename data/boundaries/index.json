@@ -1,5 +1,5 @@
 {
-  "_doc": "Written by scripts/get_layers.mjs — do not edit by hand.",
+  "_doc": "Written by scripts/get_layers.mjs \u2014 do not edit by hand.",
   "portal": "https://data.sf.gov",
   "layers": [
     {
@@ -139,6 +139,7 @@
     {
       "id": "planning_neighborhoods",
       "label": "Planning Neighborhood Groups (37)",
+      "short": "Planning Neighborhoods",
       "tab": "Neighborhood",
       "file": "planning_neighborhoods.geojson",
       "key": "neighborho",
@@ -206,6 +207,7 @@
     {
       "id": "wof_neighbourhoods",
       "label": "Who's on First Neighbourhoods (116)",
+      "short": "WOF Neighbourhoods",
       "tab": "Neighborhood",
       "file": "wof_neighbourhoods.geojson",
       "key": "name",
@@ -253,6 +255,7 @@
     {
       "id": "wof_macrohoods",
       "label": "Who's on First Macrohoods (4)",
+      "short": "WOF Macrohoods",
       "tab": "Neighborhood",
       "file": "wof_macrohoods.geojson",
       "key": "name",

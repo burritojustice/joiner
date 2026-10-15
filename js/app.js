@@ -4,17 +4,20 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v6';
+const _BUILD_VERSION = 'v7';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
     boundaries: 'data/boundaries/',
     style: 'https://api.protomaps.com/styles/v5/white/en.json?key=ffc24a4325d458ce',
-    // Sequential ramp (one hue, light→dark), validated with the dataviz palette checker.
-    ramp: ['#86b6ef', '#5598e7', '#2a78d6', '#1c5cab', '#0d366b'],
+    // Area palettes, light→dark, each paired with a row color that stands out against it.
+    // Checked with the dataviz palette validator: lightness steps and the row/area pairing.
+    palettes: {
+        blues:  { label: 'Blues', ramp: ['#86b6ef', '#5598e7', '#2a78d6', '#1c5cab', '#0d366b'], rows: '#E8590C' },
+        ylorrd: { label: 'Yellow–red', ramp: ['#feb24c', '#fd8d3c', '#fc4e2a', '#e31a1c', '#800026'], rows: '#1c5cab' },
+    },
     nodata: '#F0EFEC',
     popupRows: 8,
-    pointColor: '#1E2340', pointOutside: '#FF3D7F',   // rows placed in an area / not placed
     fonts: { bold: ['Noto Sans Medium'], regular: ['Noto Sans Regular'] },
     // Label lines beyond the first two appear as you zoom in: the third one whole zoom
     // level in from the opening view, each further line one level after that. MapLibre
@@ -24,6 +27,8 @@ const CONFIG = {
 };
 
 const $ = id => document.getElementById(id);
+const pal = () => CONFIG.palettes[S.palette] || CONFIG.palettes.blues;
+const ramp = () => pal().ramp;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const store = {
     get(k, d) { try { const v = localStorage.getItem('joiner.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
@@ -53,6 +58,7 @@ const S = {
     prefixZoom: null,     // set from the home zoom at boot
     homeZoom: 12,
     basemap: { roads: true, hoodLabels: true, points: true },
+    palette: 'blues',
     rowArea: [],          // row index → area id it was placed in (null = not placed), active layer
     areaOf: new Map(),    // layer id → row index → area id containing the row's location
     hoverId: null,
@@ -79,6 +85,7 @@ async function boot() {
     const first = S.layers.has(fromHash) ? fromHash : (S.manifest.layers.find(l => l.default) || S.manifest.layers[0]).id;
     S.tabChoice[S.layers.get(first).tab] = first;
     S.basemap = { ...S.basemap, ...store.get('basemap', {}) };
+    S.palette = CONFIG.palettes[store.get('palette', 'blues')] ? store.get('palette', 'blues') : 'blues';
     const lab = store.get('labels', null);
     if (lab) { S.labels = lab.fields ?? null; S.prefix = lab.prefix ?? true; S.prefixZoom = lab.prefixZoom != null ? Math.round(lab.prefixZoom) : null; }
 
@@ -136,8 +143,7 @@ function addMapLayers() {
     map.addSource('bounds', { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, promoteId: '_jid' });
     map.addSource('labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     const before = firstSymbolLayer();
-    const colorExpr = ['match', ['coalesce', ['feature-state', 'c'], -1], ...CONFIG.ramp.flatMap((c, i) => [i, c]), CONFIG.nodata];
-    map.addLayer({ id: 'bounds-fill', type: 'fill', source: 'bounds', paint: { 'fill-color': colorExpr, 'fill-opacity': 0.85 } }, before);
+    map.addLayer({ id: 'bounds-fill', type: 'fill', source: 'bounds', paint: { 'fill-color': CONFIG.nodata, 'fill-opacity': 0.85 } }, before);
     map.addLayer({ id: 'bounds-line', type: 'line', source: 'bounds', paint: { 'line-color': '#1E2340', 'line-opacity': 0.45, 'line-width': 0.8 } }, before);
     map.addLayer({ id: 'bounds-hl', type: 'line', source: 'bounds', paint: {
         'line-color': ['case', ['boolean', ['feature-state', 'selected'], false], '#6D4AF5', '#1E2340'],
@@ -145,15 +151,18 @@ function addMapLayers() {
     } });
     // Rows from the loaded file that carry geometry: polygons, lines, points.
     map.addSource('rows', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    const placed = ['case', ['get', '_in'], CONFIG.pointColor, CONFIG.pointOutside];
-    map.addLayer({ id: 'rows-fill', type: 'fill', source: 'rows', filter: ['==', ['geometry-type'], 'Polygon'],
-        paint: { 'fill-color': placed, 'fill-opacity': 0.12 } });
-    map.addLayer({ id: 'rows-line', type: 'line', source: 'rows', filter: ['!=', ['geometry-type'], 'Point'],
-        paint: { 'line-color': placed, 'line-width': 1.5, 'line-opacity': 0.8 } });
-    map.addLayer({ id: 'rows-point', type: 'circle', source: 'rows', filter: ['==', ['geometry-type'], 'Point'], paint: {
-        'circle-color': placed, 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2.5, 13, 4, 16, 7],
-        'circle-stroke-color': '#fff', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 10, 0.6, 14, 1.2],
-        'circle-opacity': 0.9 } });
+    // Placed rows are solid; rows not placed in any area are hollow (white fill, colored ring)
+    // or dashed, so the difference doesn't rely on color alone.
+    const isPoly = ['==', ['geometry-type'], 'Polygon'], isPt = ['==', ['geometry-type'], 'Point'];
+    map.addLayer({ id: 'rows-fill', type: 'fill', source: 'rows', filter: ['all', isPoly, ['get', '_in']], paint: { 'fill-opacity': 0.18 } });
+    map.addLayer({ id: 'rows-line', type: 'line', source: 'rows', filter: ['all', ['!', isPt], ['get', '_in']], paint: { 'line-width': 2, 'line-opacity': 0.9 } });
+    map.addLayer({ id: 'rows-line-out', type: 'line', source: 'rows', filter: ['all', ['!', isPt], ['!', ['get', '_in']]],
+        paint: { 'line-width': 2, 'line-opacity': 0.9, 'line-dasharray': [2, 2] } });
+    map.addLayer({ id: 'rows-point', type: 'circle', source: 'rows', filter: isPt, paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 3, 13, 4.5, 16, 7.5],
+        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 10, ['case', ['get', '_in'], 0.8, 1.8], 14, ['case', ['get', '_in'], 1.4, 2.2]],
+        'circle-opacity': 1 } });
+    applyPalette();
     // Area labels sit above the basemap's own labels.
     map.addLayer({ id: 'area-labels', type: 'symbol', source: 'labels', layout: {
         'text-field': '', 'text-font': CONFIG.fonts.regular, 'text-size': 12, 'text-line-height': 1.15,
@@ -161,7 +170,7 @@ function addMapLayers() {
     }, paint: { 'text-color': '#1E2340', 'text-halo-color': 'rgba(255,255,255,0.92)', 'text-halo-width': 1.6 } });
 
     // One handler for areas and rows: a row under the cursor wins over the area beneath it.
-    const ROW_LAYERS = ['rows-point', 'rows-line', 'rows-fill'];
+    const ROW_LAYERS = ['rows-point', 'rows-line', 'rows-line-out', 'rows-fill'];
     const hit = e => {
         const near = [[e.point.x - 4, e.point.y - 4], [e.point.x + 4, e.point.y + 4]];
         const row = map.queryRenderedFeatures(near, { layers: ROW_LAYERS.filter(l => l !== 'rows-fill') })[0]
@@ -186,6 +195,18 @@ function addMapLayers() {
     });
 }
 
+function applyPalette() {
+    const p = pal();
+    map.setPaintProperty('bounds-fill', 'fill-color',
+        ['match', ['coalesce', ['feature-state', 'c'], -1], ...p.ramp.flatMap((c, i) => [i, c]), CONFIG.nodata]);
+    map.setPaintProperty('rows-fill', 'fill-color', p.rows);
+    map.setPaintProperty('rows-line', 'line-color', p.rows);
+    map.setPaintProperty('rows-line-out', 'line-color', p.rows);
+    map.setPaintProperty('rows-point', 'circle-color', ['case', ['get', '_in'], p.rows, '#ffffff']);
+    map.setPaintProperty('rows-point', 'circle-stroke-color', ['case', ['get', '_in'], '#ffffff', p.rows]);
+    document.documentElement.style.setProperty('--rows', p.rows);
+}
+
 // ═════════════════════════════════════════════════════════════════════════
 // Tabs and layers
 // ═════════════════════════════════════════════════════════════════════════
@@ -193,11 +214,13 @@ function renderTabs() {
     const active = S.layers.get(S.layerId)?.tab;
     $('tabs').innerHTML = S.tabs.map(t => {
         const sel = t.tab === active;
-        const inner = t.layers.length > 1
-            ? `${esc(t.tab)}: <select data-tab="${esc(t.tab)}" aria-label="${esc(t.tab)} set">${t.layers.map(l =>
-                `<option value="${l.id}"${l.id === S.tabChoice[t.tab] ? ' selected' : ''}>${esc(shortLabel(l))}</option>`).join('')}</select>`
-            : esc(t.tab);
-        return `<div class="tab" role="tab" tabindex="0" aria-selected="${sel}" data-tab="${esc(t.tab)}">${inner}</div>`;
+        if (t.layers.length < 2) return `<div class="tab" role="tab" tabindex="0" aria-selected="${sel}" data-tab="${esc(t.tab)}">${esc(t.tab)}</div>`;
+        // A tab with several sets shows the chosen set's name and a ▾; the native select sits over it.
+        const choice = S.layers.get(S.tabChoice[t.tab]);
+        return `<div class="tab menu" role="tab" aria-selected="${sel}" data-tab="${esc(t.tab)}" title="${esc(t.tab)}: choose a set">
+            <span>${esc(choice.short || shortLabel(choice))}</span><span class="tri" aria-hidden="true">▾</span>
+            <select data-tab="${esc(t.tab)}" aria-label="${esc(t.tab)} set">${t.layers.map(l =>
+                `<option value="${l.id}"${l.id === choice.id ? ' selected' : ''}>${esc(shortLabel(l))}</option>`).join('')}</select></div>`;
     }).join('');
 }
 const shortLabel = l => l.label.replace(/\s*\(\d+\)$/, '');
@@ -400,10 +423,10 @@ function ckmeans(sorted, k) {
 function classify(vals) {
     if (!vals.length) return null;
     const sorted = [...vals].sort((a, b) => a - b);
-    const k = Math.min(CONFIG.ramp.length, new Set(sorted).size);
+    const k = Math.min(ramp().length, new Set(sorted).size);
     const groups = ckmeans(sorted, k);
     const uppers = groups.map(g => g[g.length - 1]);
-    const offset = CONFIG.ramp.length - k;   // few classes → use the darker end of the ramp
+    const offset = ramp().length - k;   // few classes → use the darker end of the ramp
     const classOf = v => { if (v === null || !(v > 0)) return -1; const i = uppers.findIndex(u => v <= u); return (i < 0 ? k - 1 : i) + offset; };
     const ranges = groups.map((g, i) => ({ lo: g[0], hi: g[g.length - 1], n: g.length, c: i + offset }));
     return { classOf, ranges };
@@ -574,9 +597,14 @@ function renderLabelControls() {
     $('roads-check').checked = S.basemap.roads;
     $('hoods-check').checked = S.basemap.hoodLabels;
     $('points-check').checked = S.basemap.points;
+    renderPaletteSeg();
     $('points-opt').hidden = !S.src?.geoms;
     if (S.src?.geoms) $('points-count').textContent = S.src.geoms.filter(Boolean).length.toLocaleString();
     updateZoomReadout();
+}
+function renderPaletteSeg() {
+    $('palette-seg').innerHTML = Object.entries(CONFIG.palettes).map(([k, p]) =>
+        `<button type="button" data-palette="${k}" aria-pressed="${k === S.palette}" title="${esc(p.label)}"><i style="background:linear-gradient(90deg,${p.ramp.join(',')})"></i>${esc(p.label)}</button>`).join('');
 }
 function updateZoomReadout() { const el = $('zoom-now'); if (el && map) el.textContent = map.getZoom().toFixed(1); }
 
@@ -641,7 +669,7 @@ function renderList() {
         const w = max > 0 && r.v > 0 ? Math.max(2, r.v / max * 100) : 0;
         return `<li data-id="${esc(r.id)}" class="${r.v ? '' : 'zero'}${r.id === S.selectedId ? ' selected' : ''}">
             <span class="nm">${esc(r.name)}${r.sub ? ` <small>${esc(r.sub)}</small>` : ''}</span><span class="v">${showV ? fmt(r.v) : ''}</span>
-            ${showV ? `<span class="sw"><i style="width:${w}%;background:${c >= 0 ? CONFIG.ramp[c] : 'transparent'}"></i></span>` : ''}</li>`;
+            ${showV ? `<span class="sw"><i style="width:${w}%;background:${c >= 0 ? ramp()[c] : 'transparent'}"></i></span>` : ''}</li>`;
     }).join('');
 }
 
@@ -652,7 +680,7 @@ function renderLegend() {
     const zeroLabel = S.metric.startsWith('avg_') ? 'No rows' : fmt(0);
     const nZero = [...S.values.values()].filter(v => !(v > 0)).length;
     lg.innerHTML = `<h4>${esc(metricLabel())}</h4>` + [...(S.classes?.ranges || [])].reverse().map(r =>
-        `<div class="row"><i style="background:${CONFIG.ramp[r.c]}"></i><span>${r.lo === r.hi ? fmt(r.hi) : `${fmt(r.lo)} – ${fmt(r.hi)}`}</span><span class="n">${r.n}</span></div>`).join('')
+        `<div class="row"><i style="background:${ramp()[r.c]}"></i><span>${r.lo === r.hi ? fmt(r.hi) : `${fmt(r.lo)} – ${fmt(r.hi)}`}</span><span class="n">${r.n}</span></div>`).join('')
         + `<div class="row"><i style="background:${CONFIG.nodata}"></i><span>${zeroLabel}</span><span class="n">${nZero}</span></div>`
         + `<div class="foot">Natural breaks · areas per class</div>`;
 }
@@ -791,6 +819,7 @@ async function loadFile(file) {
         if (st) {
             Object.assign(S.keyCols, st.keyCols || {});
             if (st.metric) S.metric = st.metric;
+            if (st.palette && CONFIG.palettes[st.palette]) { S.palette = st.palette; applyPalette(); }
             if (st.labels) { S.labels = st.labels.fields ?? null; S.prefix = st.labels.prefix ?? S.prefix; S.prefixZoom = st.labels.prefixZoom ?? S.prefixZoom; }
             if (st.layerId && S.layers.has(st.layerId) && st.layerId !== S.layerId) { await setLayer(st.layerId); return; }
         }
@@ -802,7 +831,7 @@ async function loadFile(file) {
 }
 
 function saveSnapshot() {
-    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric,
+    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette,
         labels: { fields: S.labels, prefix: S.prefix, prefixZoom: S.prefixZoom } });
     const blob = new Blob([JSON.stringify(snap)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -825,6 +854,11 @@ function wireUI() {
         if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('tab')) { e.preventDefault(); e.target.click(); }
     });
     $('tabs').addEventListener('change', e => { if (e.target.matches('select')) setLayer(e.target.value); });
+    // Opening the menu on an inactive tab switches to that tab, even if the same set is picked again.
+    $('tabs').addEventListener('mousedown', e => {
+        const sel = e.target.closest('select');
+        if (sel && S.layers.get(S.layerId).tab !== sel.dataset.tab) setLayer(S.tabChoice[sel.dataset.tab]);
+    });
 
     $('load-btn').onclick = $('empty-load').onclick = () => $('file-input').click();
     $('file-input').onchange = e => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ''; };
@@ -854,6 +888,11 @@ function wireUI() {
     $('prefix-zoom').onchange = () => { saveLabelPrefs(); updateLabels(); };
     $('roads-check').onchange = e => { S.basemap.roads = e.target.checked; applyBasemapToggles(); };
     $('hoods-check').onchange = e => { S.basemap.hoodLabels = e.target.checked; applyBasemapToggles(); };
+    $('palette-seg').onclick = e => {
+        const b = e.target.closest('button'); if (!b) return;
+        S.palette = b.dataset.palette; store.set('palette', S.palette);
+        applyPalette(); paint(); renderList(); renderPaletteSeg();
+    };
     $('points-check').onchange = e => { S.basemap.points = e.target.checked; store.set('basemap', S.basemap); updateRowLayer(); };
 
     const list = $('area-list');

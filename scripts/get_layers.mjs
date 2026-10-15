@@ -182,7 +182,7 @@ async function processLayer(layer) {
 
 function manifestEntry(layer, fc, bytes, source) {
     return {
-        id: layer.id, label: layer.label, tab: layer.tab, ...(layer.default ? { default: true } : {}),
+        id: layer.id, label: layer.label, ...(layer.short ? { short: layer.short } : {}), tab: layer.tab, ...(layer.default ? { default: true } : {}),
         file: `${layer.id}.geojson`, key: layer.key, name: layer.name,
         ...(layer.nameTemplate ? { nameTemplate: layer.nameTemplate } : {}),
         ...(layer.labelTemplate ? { labelTemplate: layer.labelTemplate } : {}),

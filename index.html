@@ -60,7 +60,7 @@
     </section>
 
     <details class="card labels-card" id="labels-card" open>
-      <summary>Map labels</summary>
+      <summary>Map</summary>
       <div class="chips" id="label-chips" role="group" aria-label="Label lines"></div>
       <p class="hint"><span id="label-hint"></span> <button class="linkish" id="label-auto" type="button" hidden>Reset</button></p>
       <label class="check"><input type="checkbox" id="prefix-check"> Prefixes from zoom <b id="prefix-zoom-val"></b>
@@ -71,9 +71,14 @@
         <label class="check"><input type="checkbox" id="roads-check"> Roads</label>
         <label class="check"><input type="checkbox" id="hoods-check"> Neighborhood labels</label>
       </div>
+      <div class="basemap-opts">
+        <span>Colors</span>
+        <div class="seg pal" id="palette-seg" role="group" aria-label="Area colors"></div>
+      </div>
       <div class="basemap-opts" id="points-opt" hidden>
         <span>Data</span>
         <label class="check"><input type="checkbox" id="points-check"> Show the <b id="points-count"></b> rows with a location</label>
+        <span class="row-key"><i class="in"></i>placed <i class="out"></i>not placed</span>
       </div>
     </details>
 
