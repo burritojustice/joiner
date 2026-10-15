@@ -97,7 +97,7 @@ Each change that's merged is a new version:
 
 1. Bump `_BUILD_VERSION` at the top of `js/app.js` (`v5` → `v6`).
 2. Add a `## v6` section at the top of `CHANGELOG.md` saying what changed, in terms someone using the map would notice.
-3. After the PR is merged, tag the merge commit: `git tag v6 <merge-sha> && git push origin v6`.
+3. Merge the PR. The **Tag version** action (`.github/workflows/tag-version.yml`) reads `_BUILD_VERSION` and tags the merge commit `v6`.
 
 ## License
 

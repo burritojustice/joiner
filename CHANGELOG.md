@@ -1,10 +1,10 @@
 # Changelog
 
-Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …).
+Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
 ## v5
 - The census tract tab reads **Census Tract** instead of "Tract".
-- Versioning: `_BUILD_VERSION` in `js/app.js`, shown in the top bar (linking here) and logged to the console; this changelog; git tags for each version.
+- Versioning: `_BUILD_VERSION` in `js/app.js`, shown in the top bar (linking here) and logged to the console; this changelog; a **Tag version** GitHub Action that tags each new version on main.
 
 ## v4
 *PR #4 · 2026-10-14*
