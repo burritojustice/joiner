@@ -1,5 +1,5 @@
 {
-  "_doc": "Written by scripts/get_layers.mjs \u2014 do not edit by hand.",
+  "_doc": "Written by scripts/get_layers.mjs — do not edit by hand.",
   "portal": "https://data.sf.gov",
   "layers": [
     {
@@ -17,7 +17,9 @@
           "label": "Supervisor",
           "prop": "sup_name",
           "lastWord": true,
-          "default": true
+          "default": true,
+          "hover": true,
+          "list": true
         }
       ],
       "match": {
@@ -199,6 +201,82 @@
       "dataset": "5gzd-g9ns",
       "page": "https://data.sf.gov/-/Realtor-Neighborhoods/5gzd-g9ns",
       "source": "file:3c5724f6-Realtor_Neighborhoods_20261014.geojson",
+      "retrieved": "2026-10-15"
+    },
+    {
+      "id": "wof_neighbourhoods",
+      "label": "Who's on First Neighbourhoods (116)",
+      "tab": "Neighborhood",
+      "file": "wof_neighbourhoods.geojson",
+      "key": "name",
+      "name": "name",
+      "labelExtras": [
+        {
+          "id": "status",
+          "label": "WOF status",
+          "prop": "mz_is_current",
+          "values": {
+            "1": "current",
+            "-1": "unverified"
+          },
+          "hover": true
+        },
+        {
+          "id": "macrohood",
+          "label": "Macrohood",
+          "prop": "macrohood",
+          "hover": true
+        }
+      ],
+      "match": {
+        "caseInsensitive": true,
+        "collapseSpace": true
+      },
+      "count": 116,
+      "bbox": [
+        -122.5149,
+        37.70809,
+        -122.35698,
+        37.8324
+      ],
+      "extent": [
+        -122.5149,
+        37.70809,
+        -122.35698,
+        37.8324
+      ],
+      "bytes": 177703,
+      "page": "https://spelunker.whosonfirst.org/id/85922583/descendants/?placetype=neighbourhood",
+      "source": "data/wof/neighbourhoods.geojson + data/wof/neighbourhoods-unverified.geojson",
+      "retrieved": "2026-10-15"
+    },
+    {
+      "id": "wof_macrohoods",
+      "label": "Who's on First Macrohoods (4)",
+      "tab": "Neighborhood",
+      "file": "wof_macrohoods.geojson",
+      "key": "name",
+      "name": "name",
+      "match": {
+        "caseInsensitive": true,
+        "collapseSpace": true
+      },
+      "count": 4,
+      "bbox": [
+        -122.51436,
+        37.73377,
+        -122.38931,
+        37.79787
+      ],
+      "extent": [
+        -122.51436,
+        37.73377,
+        -122.38931,
+        37.79787
+      ],
+      "bytes": 8867,
+      "page": "https://spelunker.whosonfirst.org/id/85922583/descendants/?placetype=macrohood",
+      "source": "data/wof/macrohoods.geojson",
       "retrieved": "2026-10-15"
     },
     {

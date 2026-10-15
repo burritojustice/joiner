@@ -53,6 +53,7 @@
       <ul>
         <li><b>CSV</b> exported from Airtable or a spreadsheet</li>
         <li><b>Airtable JSON</b> — the <code>records</code> response from the API</li>
+        <li><b>GeoJSON</b>, or a CSV with WKT or latitude/longitude columns — rows are drawn on the map and can be placed by location</li>
         <li><b>Joiner snapshot</b> saved from this page</li>
       </ul>
       <p class="hint">Rows are matched to the boundaries chosen above by district, ZIP, neighborhood or census tract. Nothing leaves your browser.</p>
@@ -69,6 +70,10 @@
         <span>Basemap</span>
         <label class="check"><input type="checkbox" id="roads-check"> Roads</label>
         <label class="check"><input type="checkbox" id="hoods-check"> Neighborhood labels</label>
+      </div>
+      <div class="basemap-opts" id="points-opt" hidden>
+        <span>Data</span>
+        <label class="check"><input type="checkbox" id="points-check"> Show the <b id="points-count"></b> rows with a location</label>
       </div>
     </details>
 
