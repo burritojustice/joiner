@@ -209,3 +209,14 @@ button, input, select { font: inherit; color: inherit; }
   .bar-actions { margin-left: 0; }
   .panel { border-right: 0; border-top: 2px solid var(--line); }
 }
+
+/* v9 */
+.chip-x { border: 0; background: none; color: var(--ink-soft); font-size: 14px; line-height: 1; padding: 4px 6px; margin-left: -6px; border-radius: 999px; cursor: pointer; }
+.chip-x:hover { background: var(--paper); color: var(--ink); }
+.field .check.loc { margin: 2px 0 6px; font-weight: 600; text-transform: none; letter-spacing: 0; font-size: 13.5px; color: var(--ink); }
+.check.loc .n { font-weight: 400; color: var(--ink-soft); font-size: 12.5px; }
+#key-row.off select { opacity: .45; }
+#psize-seg button, #hex-seg button { padding: 3px 8px; }
+.hex-card .hint { margin-top: 6px; }
+.area-list li.note { font-size: 12.5px; color: var(--ink-soft); cursor: default; display: block; }
+.area-list li.note:hover { background: none; }
