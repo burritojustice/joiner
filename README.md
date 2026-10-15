@@ -23,6 +23,10 @@ Nothing is uploaded: files are read in the browser. Join logic is [JoinKit](http
 
 **Colors.** Pick **Blues** or **Yellow–red** under **Map → Colors**; rows drawn from the file switch to a contrasting color (orange on blues, blue on yellow–red), solid when placed in an area and hollow or dashed when not. Areas are colored in up to five classes found by natural breaks (Ckmeans), which groups similar values and splits at the largest gaps, so a $104K area and a $40K area don't share a color the way rank-based quantiles can force. Areas with no rows count as 0 (shown in gray); an average of no rows is blank. **% of all rows** and **% of total …** divide by the whole file, including rows that matched no area.
 
+**Format features.** When the file has geometry, the **Format features** panel colors the rows by any column (numbers on the palette opposite the areas', text by its most common values) and labels them with columns from zoom 13. Click an area in the list to see its rows and each one's value.
+
+**Basemap rules** (apply to every map): streets draw above the areas from zoom 14 and are named from zoom 15, highway shields and one-way arrows are hidden, and the creek fix from Block Party and Selecter hides streams and "Creek"/"Arroyo" waterways, which Protomaps tags as rivers even where they're culverted.
+
 Every tab opens at the same view of the city, so switching boundary sets doesn't move the map.
 
 How each layer matches values is set by `match` in `config/layers.json`: districts accept `5`, `D5` or `District 5` and split multi-select cells like `1,3`; neighborhood names ignore case and extra spaces.
