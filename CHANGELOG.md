@@ -2,6 +2,19 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v9
+- **Hexbins tab: H3 hexagons** as a boundary set, covering SF's land plus any cell a row falls in. **Auto** picks the resolution from the zoom (8 at the opening view, 10 from zoom 14), or pick one from 5 to 10. Rows are placed by location (or by a column of H3 cell ids); labels show only on hexagons with rows, and the list shows those hexagons.
+- **Match rows by → Location** is now its own checkbox, with how many rows fall inside an area, so it's available right away and the column menu stays set for when you turn it off.
+- **Hovering an area in the list highlights its rows on the map**; hovering a row in an expanded area highlights just that row. Hovering a row on the map rings it too.
+- **Size points by** any numeric column (circle area follows the value), with a **Log scale** option so small values stay visible. Bigger circles draw under smaller ones. The legend notes the range.
+- **Point size:** Tiny · Small (the size so far) · Medium · Big · Huge.
+- **Thicker lines** from the file, growing with zoom (2.5 px at 12 to 10 px at 18), with rounded ends. Area outlines also thicken from zoom 14, where streets draw over the areas.
+- **Lines show as a dot at their midpoint below zoom 12**, sized and colored like points; the lines draw from 12. A row's location for placing it in an area is now the midpoint along a line's length rather than its middle vertex.
+- **Show → Areas** turns the joining polygons and their labels off, to see just the rows. **✕** next to the file name removes the loaded file.
+- **District 4's label** sits in the Sunset again: area labels and popups now anchor in the largest part (by area, not bounding box) inside the layer's mainland bounds, so the Farallones' ocean outline no longer pulls them out to sea.
+- **Faster placement by location:** JoinKit 0.2.0 indexes polygon edges in latitude strips; placing a million points takes about a quarter of a second on any of the boundary sets (up to ~40× faster).
+- Point size, size by and hexagon resolution are saved in snapshots.
+
 ## v8
 - **Streets above the areas from zoom 14**, named from zoom 15: copies of the basemap's street lines draw over the colored areas (below outlines, rows and labels), so blocks read when zoomed in. The **Roads** toggle covers them.
 - **Creek fix** from Block Party and Selecter: streams are hidden, and rivers and waterway labels named "Creek" or "Arroyo" are filtered out, since Protomaps/OSM tag many culverted Bay Area creeks as rivers.

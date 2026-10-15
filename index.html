@@ -22,6 +22,7 @@
     <div class="bar-actions">
       <a class="version" id="version" href="https://github.com/civic-joy-fund/joiner/blob/main/CHANGELOG.md" target="_blank" rel="noopener" title="What changed"></a>
       <span class="source-chip" id="source-chip" hidden></span>
+      <button class="chip-x" id="clear-btn" type="button" hidden title="Remove the loaded file" aria-label="Remove the loaded file">✕</button>
       <button class="btn" id="load-btn" type="button">Load data</button>
       <button class="btn ghost" id="save-btn" type="button" disabled title="Save the loaded rows and settings to a file you can reopen later">Save snapshot</button>
       <input type="file" id="file-input" accept=".csv,.tsv,.txt,.json,.geojson" hidden>
@@ -30,9 +31,10 @@
 
   <aside class="panel" id="panel">
     <section class="card" id="join-card" hidden>
-      <div class="field">
+      <div class="field" id="key-row">
         <label for="key-select">Match rows by</label>
-        <select id="key-select"></select>
+        <label class="check loc" id="loc-row" hidden><input type="checkbox" id="loc-check"> Location (inside the area) <span class="n" id="loc-n"></span></label>
+        <select id="key-select" aria-label="Column to match"></select>
         <p class="hint" id="key-hint"></p>
       </div>
       <div class="field">
@@ -60,6 +62,14 @@
     </section>
 
 
+    <section class="card hex-card" id="hex-card" hidden>
+      <div class="basemap-opts tight">
+        <span>Resolution</span>
+        <div class="seg" id="hex-seg" role="group" aria-label="H3 resolution"></div>
+      </div>
+      <p class="hint" id="hex-hint"></p>
+    </section>
+
     <section class="list-card">
       <div class="list-head">
         <h3 id="list-title">Areas</h3>
@@ -81,9 +91,21 @@
         <span class="row-key"><i class="in"></i>placed <i class="out"></i>not placed</span>
       </div>
       <div class="field">
+        <label for="row-size">Size points by</label>
+        <select id="row-size"></select>
+        <label class="check"><input type="checkbox" id="size-log"> Log scale</label>
+        <p class="hint" id="row-size-hint"></p>
+      </div>
+      <div class="basemap-opts tight">
+        <span>Points</span>
+        <div class="seg" id="psize-seg" role="group" aria-label="Point size">
+          <button type="button" data-psize="tiny">Tiny</button><button type="button" data-psize="small">Small</button><button type="button" data-psize="medium">Medium</button><button type="button" data-psize="big">Big</button><button type="button" data-psize="huge">Huge</button>
+        </div>
+      </div>
+      <div class="field">
         <label>Labels</label>
         <div class="chips" id="row-label-chips" role="group" aria-label="Row labels"></div>
-        <p class="hint">Shown from zoom 13, next to each row.</p>
+        <p class="hint">Shown from zoom 13, next to each row. Lines show as a dot at their middle until zoom 12.</p>
       </div>
     </details>
 
@@ -100,6 +122,10 @@
         </div>
       </div>
       <p class="hint">Now at zoom <span id="zoom-now"></span></p>
+      <div class="basemap-opts">
+        <span>Show</span>
+        <label class="check"><input type="checkbox" id="areas-check"> Areas</label>
+      </div>
       <div class="basemap-opts">
         <span>Basemap</span>
         <label class="check"><input type="checkbox" id="roads-check"> Roads</label>
@@ -122,8 +148,9 @@
 
 <script src="https://unpkg.com/maplibre-gl@5.16.0/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-<!-- JoinKit: shared join logic, pinned to the commit that merged burritojustice/maplibre#13 -->
-<script src="https://cdn.jsdelivr.net/gh/burritojustice/maplibre@0824cce5433096c669d4a822dbc6773be0624daa/joinkit/joinkit.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/h3-js@4.4.0/dist/h3-js.umd.js"></script>
+<!-- JoinKit: shared join logic, pinned to a commit (0.2.0, indexed point-in-polygon: burritojustice/maplibre#15) -->
+<script src="https://cdn.jsdelivr.net/gh/burritojustice/maplibre@bf1962c2089e02d7d7164ad21808c311e5646171/joinkit/joinkit.js"></script>
 <script src="js/sources.js"></script>
 <script src="js/app.js"></script>
 </body>

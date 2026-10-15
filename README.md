@@ -10,7 +10,7 @@ Open `index.html` (on GitHub Pages, or any local web server — `python3 -m http
 
 - a **CSV** exported from Airtable or a spreadsheet;
 - **Airtable JSON** — the `records` response from the Airtable API (one page or an array of pages);
-- **GeoJSON**, or a CSV with WKT or latitude/longitude columns — each row is drawn on the map, and **Match rows by → Location** places rows in the area that contains them;
+- **GeoJSON**, or a CSV with WKT or latitude/longitude columns — each row is drawn on the map, and the **Location** checkbox under **Match rows by** places rows in the area that contains them;
 - a **Joiner snapshot** saved from this page.
 
 Joiner guesses which column to match on for each tab by trying every column and counting how many rows land on an area; the **Match rows by** menu shows the counts and lets you pick another. Each tab remembers its own choice. **Color by** switches between the number of rows and the total or average of any numeric column. The panel shows how many rows were placed and lists the values that matched no area, with how often each appears — those are what the crosswalk will fix.
@@ -24,6 +24,10 @@ Nothing is uploaded: files are read in the browser. Join logic is [JoinKit](http
 **Colors.** Pick **Blues** or **Yellow–red** under **Map → Colors**; rows drawn from the file switch to a contrasting color (orange on blues, blue on yellow–red), solid when placed in an area and hollow or dashed when not. Areas are colored in up to five classes found by natural breaks (Ckmeans), which groups similar values and splits at the largest gaps, so a $104K area and a $40K area don't share a color the way rank-based quantiles can force. Areas with no rows count as 0 (shown in gray); an average of no rows is blank. **% of all rows** and **% of total …** divide by the whole file, including rows that matched no area.
 
 **Format features.** When the file has geometry, the **Format features** panel colors the rows by any column (numbers on the palette opposite the areas', text by its most common values) and labels them with columns from zoom 13. Click an area in the list to see its rows and each one's value.
+
+**Hexbins.** The Hexbins tab maps rows into [H3](https://h3geo.org/) hexagons. **Auto** picks a finer grid as you zoom in; or fix a resolution from 5 (big) to 10 (about 76 m a side).
+
+**Rows and areas.** Hover an area in the list to highlight its rows on the map. **Size points by** a number (with a log option) and pick a point size from Tiny to Huge. Lines show as dots at their midpoints until zoom 12. **Show → Areas** hides the polygons to see just the rows; **✕** beside the file name removes the file. Placing rows by location uses JoinKit's indexed point-in-polygon, which handles a million points in about a quarter of a second.
 
 **Basemap rules** (apply to every map): streets draw above the areas from zoom 14 and are named from zoom 15, highway shields and one-way arrows are hidden, and the creek fix from Block Party and Selecter hides streams and "Creek"/"Arroyo" waterways, which Protomaps tags as rivers even where they're culverted.
 

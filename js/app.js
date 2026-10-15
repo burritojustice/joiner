@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v8';
+const _BUILD_VERSION = 'v9';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -20,6 +20,13 @@ const CONFIG = {
     popupRows: 8,
     fonts: { bold: ['Noto Sans Medium'], regular: ['Noto Sans Regular'] },
     labelSizes: { small: { areas: 12, rows: 11 }, medium: { areas: 14, rows: 12.5 }, large: { areas: 16, rows: 14 } },
+    // Point radius at zoom 10 / 13 / 16 for the "small" size; other sizes scale it.
+    pointRadius: [3, 4.5, 7.5],
+    pointSizes: { tiny: 0.6, small: 1, medium: 1.45, big: 2, huge: 2.8 },
+    linesFromZoom: 12,         // lines from the file draw from here in; zoomed out, a dot at each line's midpoint
+    highlight: '#6D4AF5',
+    hexAutoRes: z => Math.max(5, Math.min(10, Math.round(z * 0.75 - 0.5))),   // H3 resolution for a map zoom
+    hexRange: [5, 10],
     streetsOverZoom: 14,       // streets draw above the areas from here in
     streetNamesZoom: 15,       // and are named from here in
     // Categorical colors for rows, in the validated order (dataviz reference palette).
@@ -50,7 +57,8 @@ const S = {
     anchors: new Map(),   // layer id → Map(feature id → { anchor, fit, area })
     layerId: null,
     src: null,            // { name, kind, headers, rows, loadedAt }
-    keyCols: {},          // layer id → row column used as the join key (user choice)
+    keyCols: {},          // layer id → row column used as the join key (user choice), or LOCATION
+    colKeys: {},          // layer id → column shown in the Match rows by menu
     metric: 'count',
     sort: 'value',
     join: null,           // JoinKit.buildJoin result for the active layer
@@ -66,13 +74,16 @@ const S = {
     basemap: { roads: true, hoodLabels: true, points: true },
     palette: 'blues',
     labelSize: 'small',
-    rowStyle: { colorBy: '', labels: [] },   // Format features: color rows by a column, label them with columns
+    rowStyle: { colorBy: '', labels: [], sizeBy: '', sizeLog: false },   // Format features: color rows by a column, label them with columns
     rowClasses: null,     // { type: 'numeric'|'category', colors, ranges|cats, classOf(row) }
     expanded: null,       // area id expanded in the list
     rowArea: [],          // row index → area id it was placed in (null = not placed), active layer
     areaOf: new Map(),    // layer id → row index → area id containing the row's location
     hoverId: null,
     selectedId: null,
+    showAreas: true,      // draw the joining polygons (off = features only)
+    pointSize: 'small',
+    hex: { auto: true, res: 8 },   // H3 layer: resolution follows the zoom, or a fixed one
 };
 
 let map, popup;
@@ -90,6 +101,9 @@ async function boot() {
         if (!t) S.tabs.push(t = { tab: l.tab, layers: [] });
         t.layers.push(l);
     }
+    // H3 hexagons: a generated layer over SF's land, at a resolution that follows the zoom or a fixed one.
+    const hexMeta = { id: 'h3', tab: 'Hexbins', label: 'H3 hexagons', short: 'Hexbins', key: 'h3', name: 'h3', hex: true, match: {} };
+    if (window.h3) { S.layers.set('h3', hexMeta); S.tabs.push({ tab: hexMeta.tab, layers: [hexMeta] }); }
     for (const t of S.tabs) S.tabChoice[t.tab] = (t.layers.find(l => l.default) || t.layers[0]).id;
     const fromHash = new URLSearchParams(location.hash.slice(1)).get('layer');
     const first = S.layers.has(fromHash) ? fromHash : (S.manifest.layers.find(l => l.default) || S.manifest.layers[0]).id;
@@ -97,6 +111,9 @@ async function boot() {
     S.basemap = { ...S.basemap, ...store.get('basemap', {}) };
     S.palette = CONFIG.palettes[store.get('palette', 'blues')] ? store.get('palette', 'blues') : 'blues';
     S.labelSize = CONFIG.labelSizes[store.get('labelSize', 'small')] ? store.get('labelSize', 'small') : 'small';
+    S.showAreas = store.get('showAreas', true);
+    S.pointSize = CONFIG.pointSizes[store.get('pointSize', 'small')] ? store.get('pointSize', 'small') : 'small';
+    S.hex = { ...S.hex, ...store.get('hex', {}) };
     const lab = store.get('labels', null);
     if (lab) { S.labels = lab.fields ?? null; S.prefix = lab.prefix ?? true; S.prefixZoom = lab.prefixZoom != null ? Math.round(lab.prefixZoom) : null; }
 
@@ -113,8 +130,10 @@ async function boot() {
     tidyBasemap();
     addMapLayers();
     applyBasemapToggles();   // after addMapLayers, so the street copies follow the Roads toggle too
+    applyAreasVisible();
     wireUI();
     map.on('zoom', updateZoomReadout);
+    map.on('zoomend', () => { if (isHex(S.layerId) && S.hex.auto && hexResNow() !== S.hexRes) setLayer(S.layerId); });
     await setLayer(first);
 }
 
@@ -186,9 +205,10 @@ function addMapLayers() {
     map.addLayer({ id: 'bounds-fill', type: 'fill', source: 'bounds', paint: { 'fill-color': CONFIG.nodata, 'fill-opacity': 0.85 } }, before);
     // Area outlines with a soft white glow so edges read against any fill.
     map.addLayer({ id: 'bounds-glow', type: 'line', source: 'bounds', paint: { 'line-color': '#ffffff', 'line-width': 3.5, 'line-blur': 2, 'line-opacity': 0.85 } }, before);
-    map.addLayer({ id: 'bounds-line', type: 'line', source: 'bounds', paint: { 'line-color': '#1E2340', 'line-opacity': 0.5, 'line-width': 0.8 } }, before);
+    map.addLayer({ id: 'bounds-line', type: 'line', source: 'bounds', paint: { 'line-color': '#1E2340', 'line-opacity': 0.5,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 11, 0.8, 14, 1.4, 16, 2] } }, before);
     map.addLayer({ id: 'bounds-hl', type: 'line', source: 'bounds', paint: {
-        'line-color': ['case', ['boolean', ['feature-state', 'selected'], false], '#6D4AF5', '#1E2340'],
+        'line-color': ['case', ['boolean', ['feature-state', 'selected'], false], CONFIG.highlight, '#1E2340'],
         'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 3.5, ['boolean', ['feature-state', 'hover'], false], 2.5, 0],
     } });
     // Rows from the loaded file that carry geometry: polygons, lines, points.
@@ -197,15 +217,35 @@ function addMapLayers() {
     // or dashed, so the difference doesn't rely on color alone.
     const isPoly = ['==', ['geometry-type'], 'Polygon'], isPt = ['==', ['geometry-type'], 'Point'];
     addStreetsOverAreas(before);
+    // Lines get thicker as you zoom in, most of all from the zoom where streets draw over the areas.
+    const isLine = ['==', ['geometry-type'], 'LineString'];
+    const lineW = k => ['interpolate', ['linear'], ['zoom'], 12, 2.5 * k, 14, 4 * k, 16, 7 * k, 18, 10 * k];
     map.addLayer({ id: 'rows-fill', type: 'fill', source: 'rows', filter: ['all', isPoly, ['get', '_in']], paint: { 'fill-opacity': 0.18 } });
-    map.addLayer({ id: 'rows-line-glow', type: 'line', source: 'rows', filter: ['!', isPt], paint: { 'line-width': 6, 'line-blur': 2.5, 'line-opacity': 0.9 } });
-    map.addLayer({ id: 'rows-line', type: 'line', source: 'rows', filter: ['all', ['!', isPt], ['get', '_in']], paint: { 'line-width': 2, 'line-opacity': 0.9 } });
-    map.addLayer({ id: 'rows-line-out', type: 'line', source: 'rows', filter: ['all', ['!', isPt], ['!', ['get', '_in']]],
-        paint: { 'line-width': 2, 'line-opacity': 0.9, 'line-dasharray': [2, 2] } });
-    map.addLayer({ id: 'rows-point', type: 'circle', source: 'rows', filter: isPt, paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 3, 13, 4.5, 16, 7.5],
-        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 10, ['case', ['get', '_in'], 0.8, 1.8], 14, ['case', ['get', '_in'], 1.4, 2.2]],
-        'circle-opacity': 1 } });
+    // Lines from the file draw from linesFromZoom; zoomed out, each line is a dot at its midpoint.
+    map.addLayer({ id: 'rows-line-glow', type: 'line', source: 'rows', filter: ['all', ['!', isPt], ['!', isLine]], paint: { 'line-width': 6, 'line-blur': 2.5, 'line-opacity': 0.9 } });
+    map.addLayer({ id: 'rows-sline-glow', type: 'line', source: 'rows', minzoom: CONFIG.linesFromZoom, filter: isLine,
+        paint: { 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 6.5, 14, 9, 16, 13, 18, 17], 'line-blur': 2.5, 'line-opacity': 0.9 } });
+    map.addLayer({ id: 'rows-line', type: 'line', source: 'rows', filter: ['all', ['!', isPt], ['!', isLine], ['get', '_in']], paint: { 'line-width': 2.5, 'line-opacity': 0.9 } });
+    map.addLayer({ id: 'rows-line-out', type: 'line', source: 'rows', filter: ['all', ['!', isPt], ['!', isLine], ['!', ['get', '_in']]],
+        paint: { 'line-width': 2.5, 'line-opacity': 0.9, 'line-dasharray': [2, 2] } });
+    map.addLayer({ id: 'rows-sline', type: 'line', source: 'rows', minzoom: CONFIG.linesFromZoom, filter: ['all', isLine, ['get', '_in']],
+        layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-width': lineW(1), 'line-opacity': 0.95 } });
+    map.addLayer({ id: 'rows-sline-out', type: 'line', source: 'rows', minzoom: CONFIG.linesFromZoom, filter: ['all', isLine, ['!', ['get', '_in']]],
+        paint: { 'line-width': lineW(0.8), 'line-opacity': 0.95, 'line-dasharray': [1.5, 1] } });
+    // Points, and line midpoints below linesFromZoom (features with _mid).
+    const stroke = ['interpolate', ['linear'], ['zoom'], 10, ['case', ['get', '_in'], 0.8, 1.8], 14, ['case', ['get', '_in'], 1.4, 2.2]];
+    map.addLayer({ id: 'rows-mid', type: 'circle', source: 'rows', maxzoom: CONFIG.linesFromZoom, filter: ['get', '_mid'],
+        paint: { 'circle-stroke-width': stroke, 'circle-opacity': 1 } });
+    map.addLayer({ id: 'rows-point', type: 'circle', source: 'rows', filter: ['all', isPt, ['!', ['get', '_mid']]],
+        paint: { 'circle-stroke-width': stroke, 'circle-opacity': 1 } });
+    // Highlight: rows in the area under the cursor (map or list), or the row hovered in an expanded list.
+    map.addSource('rows-hl', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({ id: 'rows-hl-line', type: 'line', source: 'rows-hl', filter: ['!=', ['geometry-type'], 'Point'],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': CONFIG.highlight, 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 4, 14, 7, 16, 11], 'line-opacity': 0.55 } });
+    map.addLayer({ id: 'rows-hl-point', type: 'circle', source: 'rows-hl', filter: ['==', ['geometry-type'], 'Point'],
+        paint: { 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': CONFIG.highlight, 'circle-stroke-width': 2.5, 'circle-radius': 6 } });
+    applyPointSize();
     applyPalette();
     // Area labels sit above the basemap's own labels.
     map.addLayer({ id: 'area-labels', type: 'symbol', source: 'labels', layout: {
@@ -221,24 +261,25 @@ function addMapLayers() {
     applyLabelSize();
 
     // One handler for areas and rows: a row under the cursor wins over the area beneath it.
-    const ROW_LAYERS = ['rows-point', 'rows-line', 'rows-line-out', 'rows-fill'];
+    const ROW_LAYERS = ['rows-point', 'rows-mid', 'rows-line', 'rows-line-out', 'rows-sline', 'rows-sline-out', 'rows-fill'];
     const hit = e => {
         const near = [[e.point.x - 4, e.point.y - 4], [e.point.x + 4, e.point.y + 4]];
         const row = map.queryRenderedFeatures(near, { layers: ROW_LAYERS.filter(l => l !== 'rows-fill') })[0]
             || map.queryRenderedFeatures(e.point, { layers: ['rows-fill'] })[0];
         if (row) return { row: row.properties._i };
-        const area = map.queryRenderedFeatures(e.point, { layers: ['bounds-fill'] })[0];
+        const area = S.showAreas && map.queryRenderedFeatures(e.point, { layers: ['bounds-fill'] })[0];
         return area ? { area: area.properties._jid } : {};
     };
     map.on('mousemove', e => {
         const h = hit(e);
         setHover(h.area ?? (h.row != null ? S.rowArea[h.row] ?? null : null));
+        hlRows(h.row != null ? { row: h.row } : null);
         if (h.row != null) showRowTip(e.point, h.row);
         else if (h.area != null) showTip(e.point, h.area);
         else $('tip').hidden = true;
         map.getCanvas().style.cursor = h.row != null || h.area != null ? 'pointer' : '';
     });
-    map.on('mouseout', () => { setHover(null); $('tip').hidden = true; });
+    map.on('mouseout', () => { setHover(null); hlRows(null); $('tip').hidden = true; });
     map.on('click', e => {
         const h = hit(e);
         if (h.row != null) { select(null); popup.setLngLat(e.lngLat).setHTML(rowPopupHTML(h.row)).addTo(map); }
@@ -270,11 +311,13 @@ function applyPalette() {
     const color = pick(colors, CONFIG.other), glow = pick(colors.map(glowFor), glowFor(CONFIG.other));
     map.setPaintProperty('rows-fill', 'fill-color', color);
     map.setPaintProperty('rows-line', 'line-color', color);
-    map.setPaintProperty('rows-line-out', 'line-color', color);
-    map.setPaintProperty('rows-line-glow', 'line-color', glow);
-    map.setPaintProperty('rows-point', 'circle-color', ['case', ['get', '_in'], color, '#ffffff']);
-    // Light colors (the pale ends of a ramp, yellow) get a dark ring instead of a white one.
-    map.setPaintProperty('rows-point', 'circle-stroke-color', ['case', ['get', '_in'], glow, color]);
+    for (const id of ['rows-line', 'rows-line-out', 'rows-sline', 'rows-sline-out']) map.setPaintProperty(id, 'line-color', color);
+    for (const id of ['rows-line-glow', 'rows-sline-glow']) map.setPaintProperty(id, 'line-color', glow);
+    for (const id of ['rows-point', 'rows-mid']) {
+        map.setPaintProperty(id, 'circle-color', ['case', ['get', '_in'], color, '#ffffff']);
+        // Light colors (the pale ends of a ramp, yellow) get a dark ring instead of a white one.
+        map.setPaintProperty(id, 'circle-stroke-color', ['case', ['get', '_in'], glow, color]);
+    }
     document.documentElement.style.setProperty('--rows', p.rows);
 }
 
@@ -297,15 +340,62 @@ function renderTabs() {
 const shortLabel = l => l.label.replace(/\s*\(\d+\)$/, '');
 
 async function loadGeo(id) {
+    if (S.layers.get(id).hex) return loadHex();
     if (!S.geo.has(id)) {
-        const fc = await (await fetch(CONFIG.boundaries + S.layers.get(id).file)).json();
+        const meta = S.layers.get(id);
+        const fc = await (await fetch(CONFIG.boundaries + meta.file)).json();
         fc.features.forEach(f => { f.properties._jid = String(f.id); });
         S.geo.set(id, fc);
         const anchors = new Map();
-        fc.features.forEach(f => anchors.set(f.id, focusOf(f.geometry)));
+        fc.features.forEach(f => anchors.set(f.id, focusOf(f.geometry, meta.bbox || fc.bbox)));
         S.anchors.set(id, anchors);
     }
     return S.geo.get(id);
+}
+
+// ── H3 hexagons ──
+const isHex = id => !!S.layers.get(id)?.hex;
+const hexResNow = () => S.hex.auto ? CONFIG.hexAutoRes(map.getZoom()) : S.hex.res;
+S.hexCache = new Map();   // resolution → { fc, anchors, cellOfRow: Map(src → [cell|null]) }
+// Cells covering SF's land (the analysis neighborhoods), plus the cell of every row from the
+// loaded file inside the city's bounds, so rows on piers and islands aren't lost.
+async function loadHex() {
+    const res = S.hexRes = hexResNow();
+    let c = S.hexCache.get(res);
+    if (!c) {
+        const land = await loadGeo('analysis_neighborhoods');
+        const fine = Math.min(10, res + 2), cells = new Set();
+        for (const f of land.features) {
+            const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
+            for (const p of polys) for (const cell of h3.polygonToCells(p, fine, true)) cells.add(fine === res ? cell : h3.cellToParent(cell, res));
+        }
+        const features = [...cells].sort().map(cell => ({ type: 'Feature', id: cell, properties: { h3: cell, _jid: cell },
+            geometry: { type: 'Polygon', coordinates: [h3.cellToBoundary(cell, true)] } }));
+        c = { fc: { type: 'FeatureCollection', features }, cells, land: cells.size };
+        S.hexCache.set(res, c);
+    }
+    // Add cells for this file's rows (kept per file, so each file starts from the land grid).
+    if (c.src !== S.src) {
+        const home = unionBbox(S.manifest.layers.map(l => l.bbox).filter(Boolean));
+        c.fc.features = c.fc.features.slice(0, c.land);
+        const seen = new Set(c.fc.features.map(f => f.id));
+        for (const p of S.src?.points || []) {
+            if (!p || p[0] < home[0] || p[0] > home[2] || p[1] < home[1] || p[1] > home[3]) continue;
+            const cell = h3.latLngToCell(p[1], p[0], res);
+            if (seen.has(cell)) continue;
+            seen.add(cell);
+            c.fc.features.push({ type: 'Feature', id: cell, properties: { h3: cell, _jid: cell }, geometry: { type: 'Polygon', coordinates: [h3.cellToBoundary(cell, true)] } });
+        }
+        c.src = S.src;
+    }
+    const anchors = new Map();
+    for (const f of c.fc.features) {
+        const [lat, lng] = h3.cellToLatLng(f.id), b = bbox(f.geometry);
+        anchors.set(f.id, { anchor: [lng, lat], fit: b, area: (b[2] - b[0]) * (b[3] - b[1]) });
+    }
+    S.geo.set('h3', c.fc); S.anchors.set('h3', anchors);
+    S.areaOf.delete('h3');
+    return c.fc;
 }
 
 async function setLayer(id) {
@@ -315,6 +405,7 @@ async function setLayer(id) {
     history.replaceState(null, '', '#layer=' + id);
     renderTabs();
     const fc = await loadGeo(id);
+    renderHexControls();
     S.selectedId = null; S.hoverId = null; S.expanded = null; popup.remove();
     map.removeFeatureState({ source: 'bounds' });
     map.getSource('bounds').setData(fc);
@@ -337,17 +428,34 @@ function repPoint(g) {
     switch (g.type) {
         case 'Point': return g.coordinates;
         case 'MultiPoint': return g.coordinates[0];
-        case 'LineString': return g.coordinates[Math.floor(g.coordinates.length / 2)];
-        case 'MultiLineString': { const l = g.coordinates[0]; return l[Math.floor(l.length / 2)]; }
+        case 'LineString': return alongMid(g.coordinates);
+        case 'MultiLineString': return alongMid(g.coordinates.reduce((a, l) => lineLen(l) > lineLen(a) ? l : a, g.coordinates[0]));
         case 'Polygon': case 'MultiPolygon': return focusOf(g).anchor;
         default: return null;
     }
 }
 
+// The point halfway along a line (by length, with longitude scaled for latitude).
+const segLen = (a, b) => { const k = Math.cos(a[1] * Math.PI / 180); return Math.hypot((b[0] - a[0]) * k, b[1] - a[1]); };
+const lineLen = l => { let d = 0; for (let i = 1; i < l.length; i++) d += segLen(l[i - 1], l[i]); return d; };
+function alongMid(l) {
+    if (!l?.length) return null;
+    let half = lineLen(l) / 2;
+    for (let i = 1; i < l.length; i++) {
+        const d = segLen(l[i - 1], l[i]);
+        if (d >= half && d > 0) { const t = half / d; return [l[i - 1][0] + (l[i][0] - l[i - 1][0]) * t, l[i - 1][1] + (l[i][1] - l[i - 1][1]) * t]; }
+        half -= d;
+    }
+    return l[l.length - 1];
+}
+
 function areasForRows(layerId) {
     if (!S.areaOf.has(layerId)) {
         const pts = S.src.points;
-        S.areaOf.set(layerId, JoinKit.assignPointsToPolygons(pts, S.geo.get(layerId).features, { idOf: f => f.id }));
+        if (isHex(layerId)) {
+            const ids = new Set(S.geo.get(layerId).features.map(f => f.id));
+            S.areaOf.set(layerId, pts.map(p => { if (!p) return null; const c = h3.latLngToCell(p[1], p[0], S.hexRes); return ids.has(c) ? c : null; }));
+        } else S.areaOf.set(layerId, JoinKit.assignPointsToPolygons(pts, S.geo.get(layerId).features, { idOf: f => f.id }));
     }
     return S.areaOf.get(layerId);
 }
@@ -395,6 +503,10 @@ function recompute() {
         S.candidates = keyCandidates(meta, fc, normalize);
         let keyCol = S.keyCols[S.layerId];
         if (!keyCol || !S.candidates.some(c => c.col === keyCol)) keyCol = S.candidates[0]?.hits ? S.candidates[0].col : null;
+        // The column the menu shows (also when placing by location): the user's pick, else the best column.
+        const cols = S.candidates.filter(c => c.col !== LOCATION);
+        if (!S.colKeys[S.layerId] || !cols.some(c => c.col === S.colKeys[S.layerId])) S.colKeys[S.layerId] = keyCol !== LOCATION && keyCol ? keyCol : cols[0]?.col ?? null;
+        if (keyCol && keyCol !== LOCATION) S.colKeys[S.layerId] = keyCol;
         S.rowArea = new Array(S.src.rows.length).fill(null);
         if (keyCol === LOCATION) {
             S.keyCols[S.layerId] = keyCol;
@@ -579,7 +691,7 @@ function activeLabelFields() {
     if (S.labels) ids = S.labels.filter(id => avail.has(id));
     else {
         const meta = S.layers.get(S.layerId);
-        ids = ['id', ...(S.src && S.join ? [S.metric] : []), ...(meta.labelExtras || []).filter(x => x.default).map(x => 'x:' + x.id)];
+        ids = [...(meta.hex ? [] : ['id']), ...(S.src && S.join ? [S.metric] : []), ...(meta.labelExtras || []).filter(x => x.default).map(x => 'x:' + x.id)];
     }
     return ids.map(id => avail.get(id)).filter(Boolean);
 }
@@ -612,7 +724,7 @@ const visibleLines = (n, zoom) => n <= 2 ? n : 2 + [...Array(n - 2).keys()].filt
 function updateLabels() {
     const fc = S.geo.get(S.layerId);
     if (!fc || !map.getSource('labels')) return;
-    const fields = activeLabelFields();
+    const fields = activeLabelFields(), meta = S.layers.get(S.layerId);
     const steps = labelSteps(fields.length);
     const zooms = [-Infinity, ...steps];
     const anchors = S.anchors.get(S.layerId);
@@ -628,6 +740,7 @@ function updateLabels() {
                 if (!t) return '';
                 return pre && fl.prefix ? `${fl.prefix}: ${t}` : t;
             });
+            if (meta.hex && !(S.values.get(f.id) > 0)) { props['_h' + k] = props['_r' + k] = ''; return; }
             props['_h' + k] = lines[0] || '';
             props['_r' + k] = lines.slice(1).filter(Boolean).map(l => '\n' + l).join('');
         });
@@ -668,6 +781,7 @@ function renderLabelControls() {
     $('label-auto').hidden = !S.labels;
     $('roads-check').checked = S.basemap.roads;
     $('hoods-check').checked = S.basemap.hoodLabels;
+    $('areas-check').checked = S.showAreas;
     renderPaletteSeg();
     $('size-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.size === S.labelSize));
     renderFormatFeatures();
@@ -686,6 +800,14 @@ function renderFormatFeatures() {
     $('row-color-hint').textContent = !rc ? 'Solid when placed in an area, hollow when not.'
         : rc.type === 'numeric' ? `A number: ${rc.colors.length} classes by natural breaks, on the ${S.palette === 'blues' ? 'yellow–red' : 'blue'} ramp so rows stand out from the areas.`
         : `${rc.cats.length} most common values${rc.otherN ? ', the rest as Other' : ''}.` + (rc.cats.length > 3 ? ' More than 3 colors can be hard to tell apart; hover names the value.' : '');
+    const nums = JoinKit.classifyColumns(S.src.rows, cols).numericCols.filter(c => !isIdColumn(c) && !isCoordColumn(c));
+    $('row-size').innerHTML = `<option value="">Same size</option>` + nums.map(c => `<option value="${esc(c)}"${c === S.rowStyle.sizeBy ? ' selected' : ''}>${esc(c)}</option>`).join('');
+    $('size-log').checked = !!S.rowStyle.sizeLog;
+    $('size-log').disabled = !S.rowStyle.sizeBy;
+    const z = S.rowSizes;
+    $('row-size-hint').textContent = !nums.length ? 'No numeric columns.' : !z ? 'Size points by a number.'
+        : `${fmtNum(z.min)} to ${fmtNum(z.max)}; ` + (z.log ? 'log scale, so small values stay visible.' : 'circle area follows the value.');
+    $('psize-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.psize === S.pointSize));
     const labs = S.rowStyle.labels;
     $('row-label-chips').innerHTML = cols.map(c => {
         const i = labs.indexOf(c);
@@ -714,11 +836,18 @@ function renderPanel() {
 
     if (S.src) {
         const total = S.src.rows.length;
-        $('key-select').innerHTML = S.candidates.map(c => `<option value="${esc(c.col)}"${c.col === S.join?.keyCol ? ' selected' : ''}>${esc(keyLabel(c.col))}${c.hits ? ` — ${c.hits} of ${total} rows match` : ''}</option>`).join('')
-            + (S.join ? '' : '<option value="" selected>— no column matches this layer —</option>');
+        const byLoc = S.join?.keyCol === LOCATION, loc = S.candidates.find(c => c.col === LOCATION);
+        $('loc-row').hidden = !loc;
+        $('loc-check').checked = byLoc;
+        if (loc) $('loc-n').textContent = `${loc.hits.toLocaleString()} of ${total.toLocaleString()} inside an area`;
+        const cols = S.candidates.filter(c => c.col !== LOCATION), shown = S.colKeys[S.layerId];
+        $('key-select').innerHTML = cols.map(c => `<option value="${esc(c.col)}"${c.col === shown ? ' selected' : ''}>${esc(c.col)}${c.hits ? ` — ${c.hits} of ${total} rows match` : ''}</option>`).join('')
+            + (shown ? '' : '<option value="" selected>— no column matches this layer —</option>');
+        $('key-select').disabled = byLoc;
+        $('key-row').classList.toggle('off', byLoc);
         const meta = S.layers.get(S.layerId);
-        $('key-hint').textContent = S.join?.keyCol === LOCATION
-            ? `Each row is placed in the area that contains its location (${S.src.geomFrom}).`
+        $('key-hint').textContent = byLoc
+            ? `Each row is placed in the ${meta.hex ? 'hexagon' : 'area'} that contains its location (${S.src.geomFrom}). Turn this off to match by a column.`
             : `Compared with ${shortLabel(meta)} “${meta.key}”` + (meta.match?.delimiter ? `; cells with “${meta.match.delimiter}” count toward each value` : '') + '.';
         $('metric-select').innerHTML = metricOptions().map(m => `<option value="${esc(m.value)}"${m.value === S.metric ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
         $('metric-select').disabled = !S.join;
@@ -742,6 +871,7 @@ function renderPanel() {
             $('unmatched').hidden = true;
         }
     }
+    $('clear-btn').hidden = !S.src;
     renderList();
 }
 
@@ -752,10 +882,13 @@ function renderList() {
     const listExtras = extrasWith('list');
     const rows = fc.features.map(f => ({ id: f.id, name: String(nameOf(f)), v: S.values.get(f.id) ?? null,
         sub: listExtras.map(x => extraValue(x, f)).filter(Boolean).join(' · ') }));
-    const max = Math.max(0, ...rows.map(r => r.v || 0));
-    rows.sort(S.sort === 'name' || !showV ? (a, b) => a.name.localeCompare(b.name, 'en', { numeric: true })
+    const meta = S.layers.get(S.layerId);
+    let list = rows;
+    if (meta.hex) list = showV ? rows.filter(r => r.v > 0) : [];
+    const max = Math.max(0, ...list.map(r => r.v || 0));
+    list.sort(S.sort === 'name' || !showV ? (a, b) => a.name.localeCompare(b.name, 'en', { numeric: true })
         : (a, b) => (b.v ?? -Infinity) - (a.v ?? -Infinity) || a.name.localeCompare(b.name, 'en', { numeric: true }));
-    $('area-list').innerHTML = rows.map(r => {
+    $('area-list').innerHTML = (meta.hex ? `<li class="note">${showV ? `${list.length.toLocaleString()} of ${rows.length.toLocaleString()} hexagons have rows` : `${rows.length.toLocaleString()} hexagons at resolution ${S.hexRes}`}</li>` : '') + list.map(r => {
         const c = S.classes ? S.classes.classOf(r.v) : -1;
         const w = max > 0 && r.v > 0 ? Math.max(2, r.v / max * 100) : 0;
         const open = showV && r.id === S.expanded;
@@ -784,8 +917,8 @@ function itemsHTML(id) {
 
 function renderLegend() {
     const lg = $('legend');
-    if (!S.src || (!S.join && !S.rowClasses)) { lg.hidden = true; return; }
-    if (!S.join) { lg.hidden = false; lg.innerHTML = rowLegendHTML(); return; }
+    if (!S.src || (!S.join && !S.rowClasses && !S.rowSizes)) { lg.hidden = true; return; }
+    if (!S.join || !S.showAreas) { const h = rowLegendHTML(); lg.hidden = !h; lg.innerHTML = h; return; }
     lg.hidden = false;
     const zeroLabel = S.metric.startsWith('avg_') ? 'No rows' : fmt(0);
     const nZero = [...S.values.values()].filter(v => !(v > 0)).length;
@@ -797,14 +930,19 @@ function renderLegend() {
 
 function rowLegendHTML() {
     const rc = S.rowClasses;
-    if (!rc) return '';
+    if (!rc) return S.rowSizes ? `<h4 class="rows-h">Rows</h4>` + sizeLegendHTML() : '';
     const dot = c => `<i class="dot" style="background:${c}"></i>`;
     const rows = rc.type === 'numeric'
         ? [...rc.ranges].reverse().map(r => `<div class="row">${dot(r.color)}<span>${r.lo === r.hi ? fmtNum(r.hi) : `${fmtNum(r.lo)} – ${fmtNum(r.hi)}`}</span><span class="n">${r.n}</span></div>`)
         : rc.cats.map(c => `<div class="row">${dot(c.color)}<span>${esc(c.v)}</span><span class="n">${c.n}</span></div>`)
             .concat(rc.otherN ? [`<div class="row">${dot(CONFIG.other)}<span>Other</span><span class="n">${rc.otherN}</span></div>`] : []);
     if (rc.none) rows.push(`<div class="row">${dot(CONFIG.other)}<span>No value</span><span class="n">${rc.none}</span></div>`);
-    return `<h4 class="rows-h">Rows: ${esc(rc.col)}</h4>` + rows.join('');
+    return `<h4 class="rows-h">Rows: ${esc(rc.col)}</h4>` + rows.join('') + sizeLegendHTML();
+}
+function sizeLegendHTML() {
+    const z = S.rowSizes;
+    if (!z) return '';
+    return `<div class="foot">Size: ${esc(z.col)}${z.log ? ' (log)' : ''} · ${fmtNum(z.min)} – ${fmtNum(z.max)}</div>`;
 }
 const fmtNum = v => v.toLocaleString('en-US', { maximumFractionDigits: 1 });
 
@@ -817,6 +955,20 @@ function showTip(point, id) {
         + (S.src && S.join ? `<div>${esc(metricLabel())}: ${fmt(S.values.get(id))}</div>` : '');
     tip.style.left = point.x + 'px'; tip.style.top = point.y + 'px';
     tip.hidden = false;
+}
+
+// Highlight rows on the map: those in an area ({ area }) or one row ({ row }); null clears.
+let hlKey = null;
+function hlRows(t) {
+    const key = t ? (t.area != null ? 'a:' + t.area : 'r:' + t.row) : null;
+    if (key === hlKey || !map.getSource('rows-hl')) return;
+    hlKey = key;
+    let feats = [];
+    if (t && S.src?.geoms && S.basemap.points) {
+        const idx = t.row != null ? [t.row] : S.rowArea.map((a, i) => a === t.area ? i : -1).filter(i => i >= 0);
+        feats = idx.slice(0, 5000).filter(i => S.src.geoms[i]).map(i => ({ type: 'Feature', geometry: S.src.geoms[i], properties: { _s: sizeOf(i) } }));
+    }
+    map.getSource('rows-hl').setData({ type: 'FeatureCollection', features: feats });
 }
 
 function setHover(id) {
@@ -847,10 +999,14 @@ function select(id, { lngLat, fromPopup = false, fly = false, noPopup = false } 
 // Where to zoom, where to pin a popup or label, and how big an area is. Small outlying
 // parts (Treasure Island, the Farallones, rocks in the bay) are left out of the zoom, and
 // the anchor is a point inside the largest part rather than a bbox center in the water.
-function focusOf(geom) {
+// clip: the layer's mainland bbox. Parts outside it (District 4's Farallones, whose ocean
+// outline has a bigger bbox than its Sunset part) never hold the label.
+function focusOf(geom, clip) {
     const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
-    const parts = polys.map(p => { const b = bbox({ coordinates: p[0] }); return { p, b, a: (b[2] - b[0]) * (b[3] - b[1]) }; })
-        .sort((x, y) => y.a - x.a);
+    const within = b => !clip || (b[0] < clip[2] && b[2] > clip[0] && b[1] < clip[3] && b[3] > clip[1]);
+    let parts = polys.map(p => { const b = bbox({ coordinates: p[0] }); return { p, b, a: ringArea(p[0]), inClip: within(b) }; });
+    if (parts.some(x => x.inClip)) parts = parts.filter(x => x.inClip);
+    parts.sort((x, y) => y.a - x.a);
     const main = parts.filter(x => x.a >= parts[0].a * 0.1);
     const fit = unionBbox(main.map(x => x.b));
     const big = { type: 'Polygon', coordinates: parts[0].p }, b = parts[0].b;
@@ -864,6 +1020,12 @@ function focusOf(geom) {
         if (d > bestD) { bestD = d; anchor = pt; }
     }
     return { fit, anchor, area: parts.reduce((s, x) => s + x.a, 0) };
+}
+
+function ringArea(r) {
+    let a = 0;
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) a += (r[j][0] - r[i][0]) * (r[j][1] + r[i][1]);
+    return Math.abs(a / 2);
 }
 
 function distToRing([x, y], ring) {
@@ -912,14 +1074,53 @@ function computeRowClasses() {
         classOf: i => { const v = cellOf(rows[i]).trim(); return idx.has(v) ? idx.get(v) : -1; } };
 }
 
+// Point size from a numeric column: 0–1 by area (square root), or by log; -1 = no value.
+function computeRowSizes() {
+    const col = S.rowStyle.sizeBy;
+    if (!S.src || !col || !S.src.headers.includes(col)) return null;
+    const vals = S.src.rows.map(r => JoinKit.parseNum(r[col]));
+    const nums = vals.filter(v => v !== null);
+    if (!nums.length) return null;
+    const lo = Math.min(0, ...nums), hi = Math.max(...nums), log = !!S.rowStyle.sizeLog;
+    const scale = v => v === null ? -1 : hi === lo ? 1 : log ? Math.log1p(v - lo) / Math.log1p(hi - lo) : Math.sqrt((v - lo) / (hi - lo));
+    return { col, log, min: Math.min(...nums), max: hi, s: vals.map(scale) };
+}
+const sizeOf = i => S.rowSizes ? S.rowSizes.s[i] : 0;
+
+// Radius at zoom 10 / 13 / 16, times the size setting; sized points range from 0.45× to 2×.
+function radiusExpr(extra = 0) {
+    const m = CONFIG.pointSizes[S.pointSize] || 1;
+    const r = base => S.rowSizes ? ['+', extra, ['*', base * m, ['+', 0.45, ['*', 1.55, ['max', 0, ['get', '_s']]]]]] : base * m + extra;
+    const [a, b, c] = CONFIG.pointRadius;
+    return ['interpolate', ['linear'], ['zoom'], 10, r(a), 13, r(b), 16, r(c)];
+}
+function applyPointSize() {
+    for (const id of ['rows-point', 'rows-mid']) {
+        map.setPaintProperty(id, 'circle-radius', radiusExpr());
+        // Big circles under small ones.
+        map.setLayoutProperty(id, 'circle-sort-key', S.rowSizes ? ['-', 0, ['get', '_s']] : 0);
+    }
+    map.setPaintProperty('rows-hl-point', 'circle-radius', radiusExpr(3));
+}
+
 function updateRowLayer() {
     const src = map.getSource('rows');
     if (!src) return;
     const show = S.src?.geoms && S.basemap.points;
     S.rowClasses = show ? computeRowClasses() : null;
+    S.rowSizes = show ? computeRowSizes() : null;
     const k = i => S.rowClasses ? S.rowClasses.classOf(i) : 0;
-    src.setData({ type: 'FeatureCollection', features: !show ? [] : S.src.geoms.map((g, i) => g && {
-        type: 'Feature', geometry: g, properties: { _i: i, _in: S.rowArea[i] != null, _k: k(i) } }).filter(Boolean) });
+    const feats = [];
+    if (show) S.src.geoms.forEach((g, i) => {
+        if (!g) return;
+        const props = { _i: i, _in: S.rowArea[i] != null, _k: k(i), _s: sizeOf(i), _mid: false };
+        feats.push({ type: 'Feature', geometry: g, properties: props });
+        // Zoomed out, a line shows as a dot at its midpoint.
+        if (/LineString$/.test(g.type) && S.src.points[i]) feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: S.src.points[i] }, properties: { ...props, _mid: true } });
+    });
+    src.setData({ type: 'FeatureCollection', features: feats });
+    hlKey = undefined; hlRows(null);   // force a reset: rows changed
+    applyPointSize();
     const labs = show ? S.rowStyle.labels.filter(c => S.src.headers.includes(c)) : [];
     map.getSource('rowlabels').setData({ type: 'FeatureCollection', features: !labs.length ? [] : S.src.points.map((p, i) => {
         if (!p) return null;
@@ -928,6 +1129,33 @@ function updateRowLayer() {
     }).filter(Boolean) });
     applyPalette();
     renderLegend();
+}
+
+function applyAreasVisible() {
+    const v = S.showAreas ? 'visible' : 'none';
+    for (const id of ['bounds-fill', 'bounds-glow', 'bounds-line', 'bounds-hl', 'area-labels']) map.setLayoutProperty(id, 'visibility', v);
+    store.set('showAreas', S.showAreas);
+    renderLegend();
+}
+
+function clearFile() {
+    S.src = null; S.areaOf = new Map(); S.expanded = null; S.rowArea = [];
+    S.keyCols = {}; S.colKeys = {}; S.metric = 'count'; S.rowStyle = { colorBy: '', labels: [], sizeBy: '', sizeLog: false };
+    popup.remove();
+    updateRowLayer();
+    if (isHex(S.layerId)) setLayer(S.layerId); else recompute();
+}
+
+function renderHexControls() {
+    const on = isHex(S.layerId);
+    $('hex-card').hidden = !on;
+    if (!on) return;
+    $('hex-seg').innerHTML = `<button type="button" data-res="auto" aria-pressed="${S.hex.auto}">Auto${S.hex.auto ? ` (${S.hexRes})` : ''}</button>`
+        + Array.from({ length: CONFIG.hexRange[1] - CONFIG.hexRange[0] + 1 }, (_, i) => CONFIG.hexRange[0] + i)
+            .map(r => `<button type="button" data-res="${r}" aria-pressed="${!S.hex.auto && S.hex.res === r}">${r}</button>`).join('');
+    const km = h3.getHexagonEdgeLengthAvg(S.hexRes, 'km');
+    $('hex-hint').textContent = `Resolution ${S.hexRes}: hexagons about ${km >= 1 ? km.toFixed(1) + ' km' : Math.round(km * 1000) + ' m'} across each side.`
+        + (S.hex.auto ? ' Auto picks a finer grid as you zoom in.' : '');
 }
 
 function applyLabelSize() {
@@ -988,18 +1216,21 @@ async function loadFile(file) {
         src.points = src.geoms ? src.geoms.map(repPoint) : null;
         S.src = src;
         S.areaOf = new Map();
-        S.rowStyle = { colorBy: '', labels: [] }; S.expanded = null;
-        S.keyCols = {}; S.metric = 'count';
+        S.rowStyle = { colorBy: '', labels: [], sizeBy: '', sizeLog: false }; S.expanded = null;
+        S.keyCols = {}; S.colKeys = {}; S.metric = 'count';
         const st = src.settings;
         if (st) {
             Object.assign(S.keyCols, st.keyCols || {});
             if (st.metric) S.metric = st.metric;
             if (st.palette && CONFIG.palettes[st.palette]) { S.palette = st.palette; applyPalette(); }
-            if (st.rowStyle) S.rowStyle = { colorBy: st.rowStyle.colorBy || '', labels: st.rowStyle.labels || [] };
+            if (st.rowStyle) S.rowStyle = { colorBy: st.rowStyle.colorBy || '', labels: st.rowStyle.labels || [], sizeBy: st.rowStyle.sizeBy || '', sizeLog: !!st.rowStyle.sizeLog };
+            if (st.pointSize && CONFIG.pointSizes[st.pointSize]) S.pointSize = st.pointSize;
+            if (st.hex) S.hex = { ...S.hex, ...st.hex };
             if (st.labelSize && CONFIG.labelSizes[st.labelSize]) { S.labelSize = st.labelSize; applyLabelSize(); }
             if (st.labels) { S.labels = st.labels.fields ?? null; S.prefix = st.labels.prefix ?? S.prefix; S.prefixZoom = st.labels.prefixZoom ?? S.prefixZoom; }
             if (st.layerId && S.layers.has(st.layerId) && st.layerId !== S.layerId) { await setLayer(st.layerId); return; }
         }
+        if (isHex(S.layerId)) { await setLayer(S.layerId); return; }   // the grid gains the file's cells
         recompute();
     } catch (e) {
         alert(e.message);
@@ -1008,7 +1239,7 @@ async function loadFile(file) {
 }
 
 function saveSnapshot() {
-    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize,
+    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, pointSize: S.pointSize, hex: S.hex,
         labels: { fields: S.labels, prefix: S.prefix, prefixZoom: S.prefixZoom } });
     const blob = new Blob([JSON.stringify(snap)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -1041,7 +1272,26 @@ function wireUI() {
     $('file-input').onchange = e => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ''; };
     $('save-btn').onclick = saveSnapshot;
 
-    $('key-select').onchange = e => { if (e.target.value) { S.keyCols[S.layerId] = e.target.value; recompute(); } };
+    $('key-select').onchange = e => { if (e.target.value) { S.keyCols[S.layerId] = S.colKeys[S.layerId] = e.target.value; recompute(); } };
+    $('loc-check').onchange = e => {
+        S.keyCols[S.layerId] = e.target.checked ? LOCATION : (S.colKeys[S.layerId] || S.candidates.find(c => c.col !== LOCATION)?.col);
+        recompute();
+    };
+    $('clear-btn').onclick = clearFile;
+    $('areas-check').onchange = e => { S.showAreas = e.target.checked; applyAreasVisible(); };
+    $('row-size').onchange = e => { S.rowStyle.sizeBy = e.target.value; updateRowLayer(); renderFormatFeatures(); };
+    $('size-log').onchange = e => { S.rowStyle.sizeLog = e.target.checked; updateRowLayer(); renderFormatFeatures(); };
+    $('psize-seg').onclick = e => {
+        const b = e.target.closest('button'); if (!b) return;
+        S.pointSize = b.dataset.psize; store.set('pointSize', S.pointSize);
+        applyPointSize(); renderFormatFeatures();
+    };
+    $('hex-seg').onclick = e => {
+        const b = e.target.closest('button'); if (!b) return;
+        S.hex = b.dataset.res === 'auto' ? { ...S.hex, auto: true } : { auto: false, res: +b.dataset.res };
+        store.set('hex', S.hex);
+        setLayer('h3');
+    };
     $('metric-select').onchange = e => { S.metric = e.target.value; recompute(); };
     $('sort-seg').onclick = e => {
         const b = e.target.closest('button'); if (!b) return;
@@ -1111,8 +1361,15 @@ function wireUI() {
         renderList();
         document.querySelector(`#area-list li[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest' });
     });
-    list.addEventListener('mouseover', e => { const li = e.target.closest('li[data-id]'); if (li) setHover(li.dataset.id); });
-    list.addEventListener('mouseleave', () => setHover(null));
+    // Hovering an area in the list highlights it and its rows on the map; hovering a row in an
+    // expanded area highlights just that row.
+    list.addEventListener('mouseover', e => {
+        const li = e.target.closest('li[data-id]'); if (!li) return;
+        setHover(li.dataset.id);
+        const item = e.target.closest('.items li[data-row]');
+        hlRows(item && item.dataset.row !== '' ? { row: +item.dataset.row } : { area: li.dataset.id });
+    });
+    list.addEventListener('mouseleave', () => { setHover(null); hlRows(null); });
 
     let depth = 0;
     const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
