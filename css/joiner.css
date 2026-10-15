@@ -1,0 +1,149 @@
+/* Joiner — Civic Joy Fund palette and type, shared with civic-joy-fund/block-party */
+:root {
+  --ink: #1E2340;
+  --ink-soft: #545B7F;
+  --paper: #F4F7FF;
+  --card: #FFFFFF;
+  --line: #D6DCF0;
+  --pink: #FF3D7F;
+  --sun: #FFC53D;
+  --grape: #6D4AF5;
+  --grape-wash: #EEE9FF;
+  --nodata: #F0EFEC;
+  --radius: 14px;
+  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --body: "Figtree", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+}
+[hidden] { display: none !important; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { font-family: var(--body); font-size: 15px; line-height: 1.45; color: var(--ink); background: var(--paper); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; }
+
+.app {
+  display: grid; height: 100vh; height: 100dvh;
+  grid-template-columns: 360px 1fr;
+  grid-template-rows: auto 1fr;
+  grid-template-areas: "bar bar" "panel map";
+}
+
+/* ── top bar ─────────────────────────────────────────── */
+.bar {
+  grid-area: bar; display: flex; align-items: center; gap: 18px;
+  padding: 8px 16px; background: var(--card); border-bottom: 2px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--ink); flex: none; }
+.brand span { font-family: var(--display); font-weight: 800; font-size: 22px; letter-spacing: -0.01em; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 2px solid transparent; background: none; border-radius: 999px;
+  padding: 5px 14px; font-weight: 600; cursor: pointer; color: var(--ink-soft);
+}
+.tab:hover { color: var(--ink); background: var(--paper); }
+.tab[aria-selected="true"] { color: #fff; background: var(--ink); }
+.tab select {
+  border: 0; background: transparent; font-weight: 600; color: inherit; cursor: pointer;
+  padding: 0 2px; max-width: 220px;
+}
+.tab[aria-selected="true"] select option { color: var(--ink); }
+.bar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.source-chip {
+  font-size: 13px; color: var(--ink-soft); background: var(--paper);
+  border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px;
+  max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.btn {
+  border: 2px solid var(--ink); background: var(--sun); border-radius: 999px;
+  padding: 5px 14px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 0 var(--ink);
+}
+.btn:active { transform: translateY(1px); box-shadow: 0 1px 0 var(--ink); }
+.btn.ghost { background: var(--card); }
+.btn:disabled { opacity: .45; cursor: default; box-shadow: none; }
+
+/* ── side panel ──────────────────────────────────────── */
+.panel {
+  grid-area: panel; overflow: hidden; display: flex; flex-direction: column;
+  border-right: 2px solid var(--line); background: var(--paper);
+}
+.card {
+  margin: 12px 12px 0; padding: 12px 14px; background: var(--card);
+  border: 1px solid var(--line); border-radius: var(--radius);
+}
+.card.empty h2 { font-family: var(--display); font-weight: 800; font-size: 22px; margin: 0 0 6px; }
+.card.empty p { margin: 0 0 8px; }
+.card.empty ul { margin: 0 0 8px; padding-left: 18px; }
+.card.empty code { font-size: 13px; background: var(--paper); padding: 0 4px; border-radius: 4px; }
+.linkish { border: 0; background: none; padding: 0; color: var(--grape); font-weight: 600; text-decoration: underline; cursor: pointer; }
+.hint { font-size: 13px; color: var(--ink-soft); margin: 4px 0 0; }
+.field { margin-bottom: 10px; }
+.field label { display: block; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 3px; }
+.field select { width: 100%; padding: 6px 8px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--card); }
+.match { font-size: 14px; }
+.match b { font-variant-numeric: tabular-nums; }
+.match .bar-track { height: 6px; border-radius: 3px; background: var(--nodata); margin: 4px 0 2px; overflow: hidden; }
+.match .bar-fill { height: 100%; background: var(--ink); border-radius: 3px; }
+.unmatched { margin-top: 8px; font-size: 13px; }
+.unmatched summary { cursor: pointer; color: var(--ink-soft); font-weight: 600; }
+.unmatched ul { list-style: none; margin: 6px 0 0; padding: 0; max-height: 160px; overflow: auto; }
+.unmatched li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px solid var(--paper); }
+.unmatched li span:last-child { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+.list-card { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: 12px 12px 12px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
+.list-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px 6px; }
+.list-head h3 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 17px; }
+.seg { display: inline-flex; border: 1.5px solid var(--ink); border-radius: 999px; overflow: hidden; }
+.seg button { border: 0; background: none; font-size: 12.5px; font-weight: 600; padding: 3px 10px; cursor: pointer; }
+.seg button + button { border-left: 1.5px solid var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+.area-list { list-style: none; margin: 0; padding: 0 6px 8px; overflow: auto; flex: 1; }
+.area-list li {
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center;
+  padding: 5px 8px; border-radius: 8px; cursor: pointer;
+}
+.area-list li:hover, .area-list li.hover { background: var(--paper); }
+.area-list li.selected { background: var(--grape-wash); box-shadow: inset 3px 0 0 var(--grape); }
+.area-list .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.area-list .v { font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; }
+.area-list .sw { grid-column: 1 / -1; height: 4px; border-radius: 2px; background: var(--nodata); overflow: hidden; }
+.area-list .sw i { display: block; height: 100%; border-radius: 2px; }
+.area-list li.zero .nm, .area-list li.zero .v { color: var(--ink-soft); font-weight: 500; }
+
+/* ── map ─────────────────────────────────────────────── */
+.map-wrap { grid-area: map; position: relative; min-height: 0; }
+#map { position: absolute; inset: 0; }
+.legend {
+  position: absolute; left: 12px; bottom: 28px; z-index: 2;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 8px 10px; font-size: 12.5px; box-shadow: 0 2px 8px rgba(30,35,64,.12); min-width: 150px;
+}
+.legend h4 { margin: 0 0 4px; font-size: 12px; font-weight: 700; color: var(--ink-soft); }
+.legend .row { display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
+.legend .row i { width: 18px; height: 12px; border-radius: 3px; border: 1px solid rgba(30,35,64,.25); }
+.tip {
+  position: absolute; z-index: 3; pointer-events: none; transform: translate(12px, 12px);
+  background: var(--ink); color: #fff; border-radius: 10px; padding: 6px 10px; font-size: 13px;
+  box-shadow: 0 4px 12px rgba(30,35,64,.25); max-width: 260px;
+}
+.tip b { display: block; font-size: 14px; }
+.drop {
+  position: fixed; inset: 0; z-index: 50; background: rgba(109,74,245,.18);
+  display: grid; place-items: center; pointer-events: none;
+}
+.drop div {
+  font-family: var(--display); font-weight: 800; font-size: 28px; color: var(--ink);
+  background: var(--card); border: 3px dashed var(--grape); border-radius: 22px; padding: 28px 48px;
+}
+.maplibregl-popup-content { font-family: var(--body); border-radius: 12px; padding: 10px 12px; font-size: 13.5px; box-shadow: 0 4px 0 rgba(30,35,64,.25); max-width: 300px; }
+.pop h4 { margin: 0 0 4px; font-family: var(--display); font-size: 17px; }
+.pop .big { font-size: 15px; margin-bottom: 4px; }
+.pop ul { margin: 4px 0 0; padding-left: 16px; max-height: 160px; overflow: auto; }
+.pop .more { color: var(--ink-soft); }
+
+@media (max-width: 860px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 55vh 1fr; grid-template-areas: "bar" "map" "panel"; }
+  .bar { flex-wrap: wrap; gap: 8px; }
+  .bar-actions { margin-left: 0; }
+  .panel { border-right: 0; border-top: 2px solid var(--line); }
+}

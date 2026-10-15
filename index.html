@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Joiner · Civic Joy Fund</title>
+<link rel="icon" href="img/civic-joy.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.16.0/dist/maplibre-gl.css">
+<link rel="stylesheet" href="css/joiner.css">
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <a class="brand" href="./" title="Civic Joy Fund · Joiner">
+      <img src="img/civic-joy.png" alt="Civic Joy Fund" width="36" height="36">
+      <span>Joiner</span>
+    </a>
+    <nav class="tabs" id="tabs" aria-label="Boundaries"></nav>
+    <div class="bar-actions">
+      <span class="source-chip" id="source-chip" hidden></span>
+      <button class="btn" id="load-btn" type="button">Load data</button>
+      <button class="btn ghost" id="save-btn" type="button" disabled title="Save the loaded rows and settings to a file you can reopen later">Save snapshot</button>
+      <input type="file" id="file-input" accept=".csv,.tsv,.txt,.json,.geojson" hidden>
+    </div>
+  </header>
+
+  <aside class="panel" id="panel">
+    <section class="card" id="join-card" hidden>
+      <div class="field">
+        <label for="key-select">Match rows by</label>
+        <select id="key-select"></select>
+        <p class="hint" id="key-hint"></p>
+      </div>
+      <div class="field">
+        <label for="metric-select">Color by</label>
+        <select id="metric-select"></select>
+      </div>
+      <div class="match" id="match-summary"></div>
+      <details class="unmatched" id="unmatched" hidden>
+        <summary></summary>
+        <ul></ul>
+      </details>
+    </section>
+
+    <section class="card empty" id="empty-card">
+      <h2>Map your data</h2>
+      <p>Drop a CSV or JSON file anywhere on the page, or <button class="linkish" id="empty-load" type="button">choose a file</button>.</p>
+      <ul>
+        <li><b>CSV</b> exported from Airtable or a spreadsheet</li>
+        <li><b>Airtable JSON</b> — the <code>records</code> response from the API</li>
+        <li><b>Joiner snapshot</b> saved from this page</li>
+      </ul>
+      <p class="hint">Rows are matched to the boundaries chosen above by district, ZIP, neighborhood or tract. Nothing leaves your browser.</p>
+    </section>
+
+    <section class="list-card">
+      <div class="list-head">
+        <h3 id="list-title">Areas</h3>
+        <div class="seg" id="sort-seg" role="group" aria-label="Sort">
+          <button type="button" data-sort="value" aria-pressed="true">Value</button>
+          <button type="button" data-sort="name" aria-pressed="false">A–Z</button>
+        </div>
+      </div>
+      <ol class="area-list" id="area-list"></ol>
+    </section>
+  </aside>
+
+  <main class="map-wrap">
+    <div id="map"></div>
+    <div class="legend" id="legend" hidden></div>
+    <div class="tip" id="tip" hidden></div>
+    <div class="drop" id="drop" hidden><div>Drop to load</div></div>
+  </main>
+</div>
+
+<script src="https://unpkg.com/maplibre-gl@5.16.0/dist/maplibre-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<!-- JoinKit: shared join logic, pinned to the commit that merged burritojustice/maplibre#13 -->
+<script src="https://cdn.jsdelivr.net/gh/burritojustice/maplibre@0824cce5433096c669d4a822dbc6773be0624daa/joinkit/joinkit.js"></script>
+<script src="js/sources.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -4,6 +4,22 @@ A map for Civic Joy Fund data. It joins rows from Airtable tables (and CSVs) to 
 
 *Work in progress.*
 
+## Using the map
+
+Open `index.html` (on GitHub Pages, or any local web server — `python3 -m http.server` from this folder). Pick a boundary set from the tabs, then drop a file anywhere on the page or use **Load data**:
+
+- a **CSV** exported from Airtable or a spreadsheet;
+- **Airtable JSON** — the `records` response from the Airtable API (one page or an array of pages);
+- a **Joiner snapshot** saved from this page.
+
+Joiner guesses which column to match on for each tab by trying every column and counting how many rows land on an area; the **Match rows by** menu shows the counts and lets you pick another. Each tab remembers its own choice. **Color by** switches between the number of rows and the total or average of any numeric column. The panel shows how many rows were placed and lists the values that matched no area, with how often each appears — those are what the crosswalk will fix.
+
+**Save snapshot** downloads the rows plus the current settings as one JSON file; loading it later restores the same view without Airtable. Snapshots contain every column of the file you loaded, so remove personal fields (names, emails, phone numbers) before loading a file you plan to share.
+
+Nothing is uploaded: files are read in the browser. Join logic is [JoinKit](https://github.com/burritojustice/maplibre/tree/main/joinkit), loaded from jsDelivr pinned to a commit.
+
+How each layer matches values is set by `match` in `config/layers.json`: districts accept `5`, `D5` or `District 5` and split multi-select cells like `1,3`; neighborhood names ignore case and extra spaces.
+
 ## Boundary layers
 
 The polygon sets live in `data/boundaries/`, one GeoJSON file per layer, plus `index.json`, which the map reads to build its tabs. They are downloaded from DataSF by a script and committed, so the map never calls DataSF at runtime.
