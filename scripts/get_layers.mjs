@@ -109,6 +109,14 @@ async function load(layer) {
         console.log(`  reading ${files[layer.id]}`);
         return { gj: JSON.parse(fs.readFileSync(files[layer.id], 'utf8')), source: 'file:' + path.basename(files[layer.id]) };
     }
+    // Layers built from files already in the repo (e.g. Who's on First, from get_wof.mjs).
+    if (layer.localFiles) {
+        const features = layer.localFiles.flatMap(f => {
+            console.log(`  reading ${f}`);
+            return JSON.parse(fs.readFileSync(path.join(ROOT, f), 'utf8')).features;
+        });
+        return { gj: { type: 'FeatureCollection', features }, source: layer.localFiles.join(' + ') };
+    }
     const url = `${CONFIG.portal}/resource/${layer.dataset}.geojson?$limit=${SODA_LIMIT}`;
     console.log(`  fetching ${url}`);
     const res = await fetch(url, { headers: { Accept: 'application/geo+json, application/json' } });
@@ -152,7 +160,7 @@ function serialize(fc) {
 }
 
 async function processLayer(layer) {
-    console.log(`${layer.id} (${layer.dataset})`);
+    console.log(`${layer.id} (${layer.dataset || "local files"})`);
     const { gj, source } = await load(layer);
     const { features, merged, warnings } = clean(layer, gj);
     const { extent, view, offshore } = bboxes(features, CONFIG.mainlandBbox);
@@ -181,7 +189,7 @@ function manifestEntry(layer, fc, bytes, source) {
         ...(layer.labelExtras ? { labelExtras: layer.labelExtras } : {}),
         ...(layer.match && Object.keys(layer.match).length ? { match: layer.match } : {}),
         count: fc.features.length, bbox: fc.bbox, extent: fc.extent, bytes,
-        dataset: layer.dataset, page: layer.page, source, retrieved: new Date().toISOString().slice(0, 10),
+        ...(layer.dataset ? { dataset: layer.dataset } : {}), page: layer.page, source, retrieved: new Date().toISOString().slice(0, 10),
     };
 }
 

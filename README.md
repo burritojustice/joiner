@@ -10,6 +10,7 @@ Open `index.html` (on GitHub Pages, or any local web server — `python3 -m http
 
 - a **CSV** exported from Airtable or a spreadsheet;
 - **Airtable JSON** — the `records` response from the Airtable API (one page or an array of pages);
+- **GeoJSON**, or a CSV with WKT or latitude/longitude columns — each row is drawn on the map, and **Match rows by → Location** places rows in the area that contains them;
 - a **Joiner snapshot** saved from this page.
 
 Joiner guesses which column to match on for each tab by trying every column and counting how many rows land on an area; the **Match rows by** menu shows the counts and lets you pick another. Each tab remembers its own choice. **Color by** switches between the number of rows and the total or average of any numeric column. The panel shows how many rows were placed and lists the values that matched no area, with how often each appears — those are what the crosswalk will fix.
@@ -38,9 +39,11 @@ The polygon sets live in `data/boundaries/`, one GeoJSON file per layer, plus `i
 | `analysis_neighborhoods` | Neighborhood | `nhood` | 41 | [p5b7-5n3h](https://data.sf.gov/-/Analysis-Neighborhoods/p5b7-5n3h) |
 | `planning_neighborhoods` | Neighborhood | `neighborho` | 37 | [mw29-m2za](https://data.sf.gov/-/Planning-Neighborhood-Groups-Map/iacs-ws63) |
 | `realtor_neighborhoods` | Neighborhood | `nbrhood` | 92 | [5gzd-g9ns](https://data.sf.gov/-/Realtor-Neighborhoods/5gzd-g9ns) |
+| `wof_neighbourhoods` | Neighborhood | `name` | 116 | from `data/wof/` (84 current + 32 unverified) |
+| `wof_macrohoods` | Neighborhood | `name` | 4 | from `data/wof/` |
 | `census_tracts` | Census Tract | `geoid` | 242 | [sevw-6tgi](https://data.sf.gov/Geographic-Locations-and-Boundaries/Analysis-Neighborhoods-2020-census-tracts-assigned/sevw-6tgi) |
 
-The Neighborhood tab offers the neighborhood sets in the order above — SF Find first and as the default, since its names match the most Airtable values, then Analysis, Planning and Realtor. The order in `config/layers.json` sets the order in the tab, and `"default": true` picks the one it opens with. Census tracts carry their analysis neighborhood and 2022 supervisor district, which is useful later for comparing how the sets overlap.
+The Neighborhood tab offers the neighborhood sets in the order above — SF Find first and as the default, since its names match the most Airtable values, then Analysis, Planning, Realtor, and the Who's on First neighbourhoods and macrohoods. The order in `config/layers.json` sets the order in the tab, and `"default": true` picks the one it opens with. Census tracts carry their analysis neighborhood and 2022 supervisor district, which is useful later for comparing how the sets overlap.
 
 ### Refreshing them
 

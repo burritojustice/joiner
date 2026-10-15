@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v5';
+const _BUILD_VERSION = 'v6';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -14,6 +14,7 @@ const CONFIG = {
     ramp: ['#86b6ef', '#5598e7', '#2a78d6', '#1c5cab', '#0d366b'],
     nodata: '#F0EFEC',
     popupRows: 8,
+    pointColor: '#1E2340', pointOutside: '#FF3D7F',   // rows placed in an area / not placed
     fonts: { bold: ['Noto Sans Medium'], regular: ['Noto Sans Regular'] },
     // Label lines beyond the first two appear as you zoom in: the third one whole zoom
     // level in from the opening view, each further line one level after that. MapLibre
@@ -51,7 +52,9 @@ const S = {
     prefix: true,
     prefixZoom: null,     // set from the home zoom at boot
     homeZoom: 12,
-    basemap: { roads: true, hoodLabels: true },
+    basemap: { roads: true, hoodLabels: true, points: true },
+    rowArea: [],          // row index → area id it was placed in (null = not placed), active layer
+    areaOf: new Map(),    // layer id → row index → area id containing the row's location
     hoverId: null,
     selectedId: null,
 };
@@ -140,20 +143,47 @@ function addMapLayers() {
         'line-color': ['case', ['boolean', ['feature-state', 'selected'], false], '#6D4AF5', '#1E2340'],
         'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 3.5, ['boolean', ['feature-state', 'hover'], false], 2.5, 0],
     } });
+    // Rows from the loaded file that carry geometry: polygons, lines, points.
+    map.addSource('rows', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    const placed = ['case', ['get', '_in'], CONFIG.pointColor, CONFIG.pointOutside];
+    map.addLayer({ id: 'rows-fill', type: 'fill', source: 'rows', filter: ['==', ['geometry-type'], 'Polygon'],
+        paint: { 'fill-color': placed, 'fill-opacity': 0.12 } });
+    map.addLayer({ id: 'rows-line', type: 'line', source: 'rows', filter: ['!=', ['geometry-type'], 'Point'],
+        paint: { 'line-color': placed, 'line-width': 1.5, 'line-opacity': 0.8 } });
+    map.addLayer({ id: 'rows-point', type: 'circle', source: 'rows', filter: ['==', ['geometry-type'], 'Point'], paint: {
+        'circle-color': placed, 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2.5, 13, 4, 16, 7],
+        'circle-stroke-color': '#fff', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 10, 0.6, 14, 1.2],
+        'circle-opacity': 0.9 } });
     // Area labels sit above the basemap's own labels.
     map.addLayer({ id: 'area-labels', type: 'symbol', source: 'labels', layout: {
         'text-field': '', 'text-font': CONFIG.fonts.regular, 'text-size': 12, 'text-line-height': 1.15,
         'text-max-width': 9, 'text-padding': 3, 'symbol-sort-key': ['get', '_rank'],
     }, paint: { 'text-color': '#1E2340', 'text-halo-color': 'rgba(255,255,255,0.92)', 'text-halo-width': 1.6 } });
 
-    map.on('mousemove', 'bounds-fill', e => {
-        const f = e.features[0]; if (!f) return;
-        setHover(f.properties._jid);
-        showTip(e.point, f.properties._jid);
-        map.getCanvas().style.cursor = 'pointer';
+    // One handler for areas and rows: a row under the cursor wins over the area beneath it.
+    const ROW_LAYERS = ['rows-point', 'rows-line', 'rows-fill'];
+    const hit = e => {
+        const near = [[e.point.x - 4, e.point.y - 4], [e.point.x + 4, e.point.y + 4]];
+        const row = map.queryRenderedFeatures(near, { layers: ROW_LAYERS.filter(l => l !== 'rows-fill') })[0]
+            || map.queryRenderedFeatures(e.point, { layers: ['rows-fill'] })[0];
+        if (row) return { row: row.properties._i };
+        const area = map.queryRenderedFeatures(e.point, { layers: ['bounds-fill'] })[0];
+        return area ? { area: area.properties._jid } : {};
+    };
+    map.on('mousemove', e => {
+        const h = hit(e);
+        setHover(h.area ?? (h.row != null ? S.rowArea[h.row] ?? null : null));
+        if (h.row != null) showRowTip(e.point, h.row);
+        else if (h.area != null) showTip(e.point, h.area);
+        else $('tip').hidden = true;
+        map.getCanvas().style.cursor = h.row != null || h.area != null ? 'pointer' : '';
     });
-    map.on('mouseleave', 'bounds-fill', () => { setHover(null); $('tip').hidden = true; map.getCanvas().style.cursor = ''; });
-    map.on('click', 'bounds-fill', e => { const f = e.features[0]; if (f) select(f.properties._jid, { lngLat: e.lngLat }); });
+    map.on('mouseout', () => { setHover(null); $('tip').hidden = true; });
+    map.on('click', e => {
+        const h = hit(e);
+        if (h.row != null) { select(null); popup.setLngLat(e.lngLat).setHTML(rowPopupHTML(h.row)).addTo(map); }
+        else if (h.area != null) select(h.area, { lngLat: e.lngLat });
+    });
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -201,6 +231,32 @@ async function setLayer(id) {
 // ═════════════════════════════════════════════════════════════════════════
 // Joining
 // ═════════════════════════════════════════════════════════════════════════
+// "Match rows by" can be a column, or the row's own location when the file has geometry.
+const LOCATION = '\u0000location';
+const AREA_COL = '\u0000area';
+const keyLabel = col => col === LOCATION ? 'Location (inside the area)' : col;
+
+// One point per row for placing it in an area: the point itself, a line's middle vertex,
+// or a spot well inside a polygon.
+function repPoint(g) {
+    if (!g) return null;
+    switch (g.type) {
+        case 'Point': return g.coordinates;
+        case 'MultiPoint': return g.coordinates[0];
+        case 'LineString': return g.coordinates[Math.floor(g.coordinates.length / 2)];
+        case 'MultiLineString': { const l = g.coordinates[0]; return l[Math.floor(l.length / 2)]; }
+        case 'Polygon': case 'MultiPolygon': return focusOf(g).anchor;
+        default: return null;
+    }
+}
+
+function areasForRows(layerId) {
+    if (!S.areaOf.has(layerId)) {
+        const pts = S.src.points;
+        S.areaOf.set(layerId, JoinKit.assignPointsToPolygons(pts, S.geo.get(layerId).features, { idOf: f => f.id }));
+    }
+    return S.areaOf.get(layerId);
+}
 function normalizerFor(meta) {
     const m = meta.match || {};
     return JoinKit.makeKeyNormalizer({
@@ -218,7 +274,13 @@ const rawValues = (row, col, delimiter) => {
 function keyCandidates(meta, fc, normalize) {
     const index = JoinKit.buildFeatureIndex(fc.features, meta.key, { normalize, idOf: f => f.id });
     const delimiter = meta.match?.delimiter;
-    return S.src.headers.map(col => {
+    const loc = [];
+    if (S.src.points) {
+        const areas = areasForRows(S.layerId);
+        loc.push({ col: LOCATION, hits: areas.filter(a => a != null).length, filled: S.src.points.filter(Boolean).length });
+    }
+    // Location first on a tie: it doesn't depend on how names are spelled.
+    return [...loc, ...S.src.headers.filter(c => !(S.src.geomCols || []).includes(c)).map(col => {
         let hits = 0, filled = 0;
         for (const row of S.src.rows) {
             const keys = JoinKit.rowKeys(row, col, normalize, delimiter);
@@ -227,7 +289,7 @@ function keyCandidates(meta, fc, normalize) {
             if (keys.some(k => index.has(k))) hits++;
         }
         return { col, hits, filled };
-    }).sort((a, b) => b.hits - a.hits || a.col.localeCompare(b.col));
+    })].sort((a, b) => b.hits - a.hits || (a.col === LOCATION ? -1 : b.col === LOCATION ? 1 : a.col.localeCompare(b.col)));
 }
 
 function recompute() {
@@ -238,13 +300,29 @@ function recompute() {
         const normalize = normalizerFor(meta);
         S.candidates = keyCandidates(meta, fc, normalize);
         let keyCol = S.keyCols[S.layerId];
-        if (!keyCol || !S.src.headers.includes(keyCol)) keyCol = S.candidates[0]?.hits ? S.candidates[0].col : null;
-        if (keyCol) {
+        if (!keyCol || !S.candidates.some(c => c.col === keyCol)) keyCol = S.candidates[0]?.hits ? S.candidates[0].col : null;
+        S.rowArea = new Array(S.src.rows.length).fill(null);
+        if (keyCol === LOCATION) {
+            S.keyCols[S.layerId] = keyCol;
+            const areas = areasForRows(S.layerId);
+            const rows = S.src.rows.map((r, i) => ({ ...r, [AREA_COL]: areas[i] ?? '' }));
+            S.join = JoinKit.buildJoin({ rows, headers: [...S.src.headers, AREA_COL], keyCol: AREA_COL, features: fc.features,
+                propKey: '_jid', idOf: f => f.id });
+            S.join.keyCol = keyCol;
+            S.join.numericCols = S.join.numericCols.filter(c => !(S.src.geomCols || []).includes(c));
+            areas.forEach((a, i) => { S.rowArea[i] = a; });
+            const outside = S.src.points.filter((p, i) => p && areas[i] == null).length;
+            S.unmatched = outside ? [{ label: 'Outside every area', n: outside }] : [];
+            S.join.nullRows = S.src.points.filter(p => !p).length;
+        } else if (keyCol) {
             S.keyCols[S.layerId] = keyCol;
             const delimiter = meta.match?.delimiter;
             S.join = JoinKit.buildJoin({ rows: S.src.rows, headers: S.src.headers, keyCol, features: fc.features,
                 propKey: meta.key, normalize, delimiter, idOf: f => f.id });
             S.join.keyCol = keyCol;
+            S.join.numericCols = S.join.numericCols.filter(c => !(S.src.geomCols || []).includes(c));
+            const idx = new Map(S.src.rows.map((r, i) => [r, i]));
+            for (const [id, e] of Object.entries(S.join.byId)) for (const r of e.rows) { const i = idx.get(r); if (i != null && S.rowArea[i] == null) S.rowArea[i] = id; }
             // Unmatched values with row counts, labelled with the text as it appears in the data.
             const index = JoinKit.buildFeatureIndex(fc.features, meta.key, { normalize, idOf: f => f.id });
             const tally = new Map();
@@ -256,6 +334,7 @@ function recompute() {
             }
             S.unmatched = [...tally.values()].sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
         }
+        updateRowLayer();
         if (!metricOptions().some(m => m.value === S.metric)) S.metric = 'count';
         for (const f of fc.features) S.values.set(f.id, statFor(f.id, S.metric));
         S.classes = classify([...S.values.values()].filter(v => v !== null && v > 0));
@@ -284,7 +363,7 @@ function metricOptions() {
                   { value: 'pct_count', label: '% of all rows', short: '% of rows' }];
     if (!S.join) return opts.slice(0, 1);
     for (const col of S.join.numericCols) {
-        if (isIdColumn(col)) continue;
+        if (isIdColumn(col) || isCoordColumn(col)) continue;
         opts.push({ value: `sum_${col}`, label: `Total ${col}`, short: `total ${col}` },
                   { value: `avg_${col}`, label: `Average ${col}`, short: `avg ${col}` },
                   { value: `pct_${col}`, label: `% of total ${col}`, short: `% of ${col}` });
@@ -292,7 +371,9 @@ function metricOptions() {
     return opts;
 }
 // Record numbers (Airtable autonumber "Id", "Record ID", "project_id") are numeric but not amounts.
-const isIdColumn = col => /^(_airtable_id|id|record ?id|row ?id|unique ?id)$|[\s_-]id$/i.test(col.trim());
+const isIdColumn = col => /^(_airtable_id|id|record ?id|row ?id|unique ?id)$|[\s_-](id|code)$/i.test(col.trim());
+// Coordinates are numbers but never amounts.
+const isCoordColumn = col => /^(lat|lng|lon|long|latitude|longitude|x|y|point_?[xy])$|[\s_-](lat|lng|lon|latitude|longitude)$/i.test(col.trim());
 const statLabel = s => metricOptions().find(m => m.value === s)?.label || s;
 const metricLabel = () => statLabel(S.metric);
 
@@ -372,9 +453,17 @@ function labelIdOf(f, meta = S.layers.get(S.layerId)) {
 }
 const fill = (tpl, props) => tpl.replace(/\{(\w+)\}/g, (_, k) => props[k] ?? '');
 
+// The column that names a row: a name/title-like column, else the first mostly-unique text column.
 function rowLabelCol() {
-    const h = S.src.headers;
-    return h.find(c => /^(name|title)$/i.test(c)) || h.find(c => /(name|title)/i.test(c) && !/e-?mail/i.test(c)) || h[0];
+    if (S.src._labelCol) return S.src._labelCol;
+    const h = S.src.headers.filter(c => !c.startsWith('_'));
+    const named = h.find(c => /^(name|title|school|organization name|project|site|facility)$/i.test(c.trim()))
+        || h.find(c => /(name|title)/i.test(c) && !/(e-?mail|user|file)/i.test(c));
+    const texty = c => {
+        const vals = S.src.rows.slice(0, 200).map(r => JoinKit.cellText(r[c]).trim()).filter(Boolean);
+        return vals.length && vals.filter(v => isNaN(Number(v))).length / vals.length > 0.8 && new Set(vals).size / vals.length > 0.6;
+    };
+    return (S.src._labelCol = named || h.find(texty) || h[0]);
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -400,15 +489,19 @@ function activeLabelFields() {
     return ids.map(id => avail.get(id)).filter(Boolean);
 }
 
+function extraValue(x, f, { short = true } = {}) {
+    let v = f.properties[x.prop];
+    if (v == null || v === '') return '';
+    v = String(v).trim();
+    if (x.values) v = x.values[v] ?? v;
+    if (short && x.lastWord) v = v.split(/\s+/).pop();
+    return x.template ? x.template.replace('{}', v) : v;
+}
+const extrasWith = flag => (S.layers.get(S.layerId).labelExtras || []).filter(x => x[flag]);
+
 function labelText(field, f) {
     if (field.id === 'id') return labelIdOf(f);
-    if (field.extra) {
-        let v = f.properties[field.extra.prop];
-        if (v == null || v === '') return '';
-        v = String(v).trim();
-        if (field.extra.lastWord) v = v.split(/\s+/).pop();
-        return field.extra.template ? field.extra.template.replace('{}', v) : v;
-    }
+    if (field.extra) return extraValue(field.extra, f);
     return fmtShort(statFor(f.id, field.id), field.id);
 }
 
@@ -480,6 +573,9 @@ function renderLabelControls() {
     $('label-auto').hidden = !S.labels;
     $('roads-check').checked = S.basemap.roads;
     $('hoods-check').checked = S.basemap.hoodLabels;
+    $('points-check').checked = S.basemap.points;
+    $('points-opt').hidden = !S.src?.geoms;
+    if (S.src?.geoms) $('points-count').textContent = S.src.geoms.filter(Boolean).length.toLocaleString();
     updateZoomReadout();
 }
 function updateZoomReadout() { const el = $('zoom-now'); if (el && map) el.textContent = map.getZoom().toFixed(1); }
@@ -499,10 +595,12 @@ function renderPanel() {
 
     if (S.src) {
         const total = S.src.rows.length;
-        $('key-select').innerHTML = S.candidates.map(c => `<option value="${esc(c.col)}"${c.col === S.join?.keyCol ? ' selected' : ''}>${esc(c.col)}${c.hits ? ` — ${c.hits} of ${total} rows match` : ''}</option>`).join('')
+        $('key-select').innerHTML = S.candidates.map(c => `<option value="${esc(c.col)}"${c.col === S.join?.keyCol ? ' selected' : ''}>${esc(keyLabel(c.col))}${c.hits ? ` — ${c.hits} of ${total} rows match` : ''}</option>`).join('')
             + (S.join ? '' : '<option value="" selected>— no column matches this layer —</option>');
         const meta = S.layers.get(S.layerId);
-        $('key-hint').textContent = `Compared with ${shortLabel(meta)} “${meta.key}”` + (meta.match?.delimiter ? `; cells with “${meta.match.delimiter}” count toward each value` : '') + '.';
+        $('key-hint').textContent = S.join?.keyCol === LOCATION
+            ? `Each row is placed in the area that contains its location (${S.src.geomFrom}).`
+            : `Compared with ${shortLabel(meta)} “${meta.key}”` + (meta.match?.delimiter ? `; cells with “${meta.match.delimiter}” count toward each value` : '') + '.';
         $('metric-select').innerHTML = metricOptions().map(m => `<option value="${esc(m.value)}"${m.value === S.metric ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
         $('metric-select').disabled = !S.join;
         $('metric-hint').textContent = S.metric.startsWith('pct_') ? `Share of the total across all ${total.toLocaleString()} rows, including rows that matched no area.` +
@@ -514,10 +612,11 @@ function renderPanel() {
             const areas = Object.keys(j.byId).length, nAreas = S.geo.get(S.layerId).features.length;
             $('match-summary').innerHTML = `<b>${j.matchedRows.toLocaleString()}</b> of ${total.toLocaleString()} rows placed (${pct}%) in <b>${areas}</b> of ${nAreas} areas
                 <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
-                <span class="hint">${unmatchedRows ? `${unmatchedRows} rows have a value that matches no area` : 'Every value matched'}${j.nullRows ? ` · ${j.nullRows} rows are blank` : ''}</span>`;
+                <span class="hint">${unmatchedRows ? (j.keyCol === LOCATION ? `${unmatchedRows} rows are outside every area` : `${unmatchedRows} rows have a value that matches no area`) : 'Every row placed'}${j.nullRows ? ` · ${j.nullRows} rows have ${j.keyCol === LOCATION ? 'no location' : 'a blank value'}` : ''}</span>`;
             const um = $('unmatched');
             um.hidden = !S.unmatched.length;
-            um.querySelector('summary').textContent = `${S.unmatched.length} unmatched value${S.unmatched.length === 1 ? '' : 's'}`;
+            um.querySelector('summary').textContent = S.join.keyCol === LOCATION ? `${S.unmatched[0]?.n || 0} rows outside every area`
+                : `${S.unmatched.length} unmatched value${S.unmatched.length === 1 ? '' : 's'}`;
             um.querySelector('ul').innerHTML = S.unmatched.map(u => `<li><span>${esc(u.label)}</span><span>${u.n}</span></li>`).join('');
         } else {
             $('match-summary').innerHTML = `<span class="hint">No column in ${esc(S.src.name)} matches ${esc(shortLabel(S.layers.get(S.layerId)))}. Try another tab, or pick a column above.</span>`;
@@ -531,7 +630,9 @@ function renderList() {
     const fc = S.geo.get(S.layerId);
     if (!fc) return;
     const showV = !!(S.src && S.join);
-    const rows = fc.features.map(f => ({ id: f.id, name: String(nameOf(f)), v: S.values.get(f.id) ?? null }));
+    const listExtras = extrasWith('list');
+    const rows = fc.features.map(f => ({ id: f.id, name: String(nameOf(f)), v: S.values.get(f.id) ?? null,
+        sub: listExtras.map(x => extraValue(x, f)).filter(Boolean).join(' · ') }));
     const max = Math.max(0, ...rows.map(r => r.v || 0));
     rows.sort(S.sort === 'name' || !showV ? (a, b) => a.name.localeCompare(b.name, 'en', { numeric: true })
         : (a, b) => (b.v ?? -Infinity) - (a.v ?? -Infinity) || a.name.localeCompare(b.name, 'en', { numeric: true }));
@@ -539,7 +640,7 @@ function renderList() {
         const c = S.classes ? S.classes.classOf(r.v) : -1;
         const w = max > 0 && r.v > 0 ? Math.max(2, r.v / max * 100) : 0;
         return `<li data-id="${esc(r.id)}" class="${r.v ? '' : 'zero'}${r.id === S.selectedId ? ' selected' : ''}">
-            <span class="nm">${esc(r.name)}</span><span class="v">${showV ? fmt(r.v) : ''}</span>
+            <span class="nm">${esc(r.name)}${r.sub ? ` <small>${esc(r.sub)}</small>` : ''}</span><span class="v">${showV ? fmt(r.v) : ''}</span>
             ${showV ? `<span class="sw"><i style="width:${w}%;background:${c >= 0 ? CONFIG.ramp[c] : 'transparent'}"></i></span>` : ''}</li>`;
     }).join('');
 }
@@ -560,7 +661,9 @@ function showTip(point, id) {
     const f = S.geo.get(S.layerId).features.find(f => f.id === id);
     if (!f) return;
     const tip = $('tip');
-    tip.innerHTML = `<b>${esc(nameOf(f))}</b>${S.src && S.join ? `${esc(metricLabel())}: ${fmt(S.values.get(id))}` : ''}`;
+    const extras = extrasWith('hover').map(x => [x.label, extraValue(x, f, { short: false })]).filter(([, v]) => v);
+    tip.innerHTML = `<b>${esc(nameOf(f))}</b>` + extras.map(([k, v]) => `<div>${esc(k)}: ${esc(v)}</div>`).join('')
+        + (S.src && S.join ? `<div>${esc(metricLabel())}: ${fmt(S.values.get(id))}</div>` : '');
     tip.style.left = point.x + 'px'; tip.style.top = point.y + 'px';
     tip.hidden = false;
 }
@@ -624,8 +727,38 @@ function distToRing([x, y], ring) {
     return m;
 }
 
+function updateRowLayer() {
+    const src = map.getSource('rows');
+    if (!src) return;
+    const show = S.src?.geoms && S.basemap.points;
+    src.setData({ type: 'FeatureCollection', features: !show ? [] : S.src.geoms.map((g, i) => g && {
+        type: 'Feature', geometry: g, properties: { _i: i, _in: S.rowArea[i] != null } }).filter(Boolean) });
+}
+
+function rowTitle(i) {
+    const r = S.src.rows[i], col = rowLabelCol();
+    return JoinKit.cellText(r[col]) || `Row ${i + 1}`;
+}
+function areaName(id) {
+    const f = id != null && S.geo.get(S.layerId).features.find(f => f.id === id);
+    return f ? nameOf(f) : null;
+}
+function showRowTip(point, i) {
+    const tip = $('tip'), a = areaName(S.rowArea[i]);
+    tip.innerHTML = `<b>${esc(rowTitle(i))}</b><div>${a ? esc(a) : 'Not placed in an area'}</div>`;
+    tip.style.left = point.x + 'px'; tip.style.top = point.y + 'px';
+    tip.hidden = false;
+}
+function rowPopupHTML(i) {
+    const r = S.src.rows[i], a = areaName(S.rowArea[i]);
+    const fields = S.src.headers.filter(h => !h.startsWith('_') && JoinKit.cellText(r[h]) !== '').slice(0, 12);
+    return `<div class="pop"><h4>${esc(rowTitle(i))}</h4><div class="sub">${a ? `In ${esc(a)}` : 'Not placed in an area'}</div>
+        <table>${fields.map(h => `<tr><th>${esc(h)}</th><td>${esc(JoinKit.cellText(r[h]))}</td></tr>`).join('')}</table></div>`;
+}
+
 function popupHTML(f) {
     let html = `<div class="pop"><h4>${esc(nameOf(f))}</h4>`;
+    for (const x of extrasWith('hover')) { const v = extraValue(x, f, { short: false }); if (v) html += `<div class="sub">${esc(x.label)}: ${esc(v)}</div>`; }
     if (!S.src || !S.join) return html + '</div>';
     const entry = S.join.byId[f.id];
     html += `<div class="big">${esc(metricLabel())}: <b>${fmt(S.values.get(f.id))}</b></div>`;
@@ -650,7 +783,9 @@ function bbox(geom) {
 async function loadFile(file) {
     try {
         const src = await JoinerSources.readFile(file);
+        src.points = src.geoms ? src.geoms.map(repPoint) : null;
         S.src = src;
+        S.areaOf = new Map();
         S.keyCols = {}; S.metric = 'count';
         const st = src.settings;
         if (st) {
@@ -719,6 +854,7 @@ function wireUI() {
     $('prefix-zoom').onchange = () => { saveLabelPrefs(); updateLabels(); };
     $('roads-check').onchange = e => { S.basemap.roads = e.target.checked; applyBasemapToggles(); };
     $('hoods-check').onchange = e => { S.basemap.hoodLabels = e.target.checked; applyBasemapToggles(); };
+    $('points-check').onchange = e => { S.basemap.points = e.target.checked; store.set('basemap', S.basemap); updateRowLayer(); };
 
     const list = $('area-list');
     list.addEventListener('click', e => { const li = e.target.closest('li'); if (li) select(li.dataset.id, { fly: true }); });

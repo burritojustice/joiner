@@ -2,6 +2,15 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v6
+- **Rows with a location are drawn on the map** and can be placed by location. Joiner finds geometry in GeoJSON files, in CSV columns holding WKT (`POINT (-122.4 37.7)`, lines, polygons) or Socrata-style `(37.7, -122.4)` text, and in latitude/longitude column pairs. Points are dark when placed in an area and pink when not; polygons and lines from the file are outlined. Hover a point for its name and area; click for its fields. **Data → Show the N rows with a location** turns them off.
+- **Match rows by → Location (inside the area)** places each row in the area that contains it (a line's middle, or a point well inside a polygon). It's offered whenever the file has geometry and chosen when it places at least as many rows as any column. Rows outside every area, and rows with no location, are counted in the panel.
+- **Supervisor districts:** the supervisor's last name is in the area list ("District 8 Mandelman"), and the full name is in the hover tooltip and popup. On the map it's still the line that appears one zoom level in.
+- **Who's on First** neighbourhoods (116: 84 current plus 32 unverified) and macrohoods (4) are in the Neighborhood menu, after Realtor. Their hover shows WOF status and macrohood.
+- The legend moved to the top left of the map.
+- Latitude/longitude columns and code columns (e.g. `cds_code`) are no longer offered as amounts. Popups for rows use a name-like column (`school`, `name`, `title`…) or the first mostly-unique text column.
+- `get_layers.mjs` builds layers from repo files with `localFiles`; `labelExtras` gain `hover`, `list` and `values`.
+
 ## v5
 - The census tract tab reads **Census Tract** instead of "Tract".
 - Versioning: `_BUILD_VERSION` in `js/app.js`, shown in the top bar (linking here) and logged to the console; this changelog; a **Tag version** GitHub Action that tags each new version on main.
