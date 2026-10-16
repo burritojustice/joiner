@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v14';
+const _BUILD_VERSION = 'v15';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -19,7 +19,7 @@ const CONFIG = {
     nodata: '#F0EFEC',         // 0 / no value in the list and legend; on the map those areas are left clear
     // Area and row label colors: text, halo, halo width. Auto picks black or white per area.
     labelColors: {
-        black:        { label: 'Black',            text: '#1E2340', halo: 'rgba(255,255,255,0.92)', width: 1.4 },
+        black:        { label: 'Black',            text: '#1E2340', halo: 'rgba(255,255,255,0.92)', width: 2.5 },
         white:        { label: 'White',            text: '#ffffff', halo: 'rgba(10,22,56,0.6)', width: 1.2 },
         'navy-yellow':{ label: 'Navy on yellow',   text: '#0D1B3E', halo: '#FFE27A', width: 1.6, hint: 'for Blues' },
         'navy-blue':  { label: 'Navy on light blue', text: '#0D1B3E', halo: '#CFE8FF', width: 1.6, hint: 'for Yellow–red' },
@@ -84,7 +84,7 @@ const S = {
     prefix: true,
     prefixZoom: null,     // set from the home zoom at boot
     homeZoom: 12,
-    basemap: { roads: true, hoodLabels: true, points: true },
+    basemap: { roads: true, places: false, points: true },
     palette: 'blues',
     labelSize: 'auto',    // 'auto' (by the size of the areas) | 'small' | 'medium' | 'large'
     revealAll: false,     // show every label line at once instead of adding them as you zoom in
@@ -179,7 +179,9 @@ function firstSymbolLayer() {
 // ═════════════════════════════════════════════════════════════════════════
 const styleLayers = () => map.getStyle().layers;
 const roadLayers = () => styleLayers().filter(l => l['source-layer'] === 'roads' || /^(over_)?roads_/.test(l.id)).map(l => l.id);
-const hoodLabelLayers = () => styleLayers().filter(l => l.id === 'places_subplace').map(l => l.id);
+// Place names from the basemap (city, neighborhoods, islands): off while areas are shown, so
+// "San Francisco" and "Twin Peaks" don't sit on top of the areas' own labels.
+const placeLayers = () => styleLayers().filter(l => /^places_/.test(l.id) || l.id === 'earth_label_islands').map(l => l.id);
 
 // Always: no highway shields or one-way arrows, road labels for major streets only, and
 // the creek fix shared with Block Party and Selecter.
@@ -254,7 +256,7 @@ function applyBasemapToggles() {
     const vis = on => on ? 'visible' : 'none';
     for (const id of roadLayers()) if (id !== 'roads_shields' && id !== 'roads_oneway')
         map.setLayoutProperty(id, 'visibility', vis(S.basemap.roads && !(id.startsWith('over_') && areasUnder())));
-    for (const id of hoodLabelLayers()) map.setLayoutProperty(id, 'visibility', vis(S.basemap.hoodLabels));
+    for (const id of placeLayers()) map.setLayoutProperty(id, 'visibility', vis(S.basemap.places));
     store.set('basemap', S.basemap);
 }
 
@@ -316,14 +318,14 @@ function addMapLayers() {
     applyPalette();
     // Area labels sit above the basemap's own labels.
     map.addLayer({ id: 'area-labels', type: 'symbol', source: 'labels', layout: {
-        'text-field': '', 'text-font': CONFIG.fonts.regular, 'text-size': 12, 'text-line-height': 1.15,
+        'text-field': '', 'text-font': CONFIG.fonts.bold, 'text-size': 12, 'text-line-height': 1.15,
         'text-max-width': 9, 'text-padding': 3, 'symbol-sort-key': ['get', '_rank'],
     }, paint: { 'text-color': ['coalesce', ['get', '_lc'], '#1E2340'], 'text-halo-color': ['coalesce', ['get', '_hc'], 'rgba(255,255,255,0.92)'],
         'text-halo-width': ['coalesce', ['get', '_hw'], 1.4], 'text-halo-blur': 0.4 } });
     // Row labels from Format features, beside each row's point.
     map.addSource('rowlabels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     map.addLayer({ id: 'rows-labels', type: 'symbol', source: 'rowlabels', minzoom: 13, layout: {
-        'text-field': ['get', '_lab'], 'text-font': CONFIG.fonts.regular, 'text-size': 11, 'text-anchor': 'left',
+        'text-field': ['get', '_lab'], 'text-font': CONFIG.fonts.bold, 'text-size': 11, 'text-anchor': 'left',
         'text-offset': [0.8, 0], 'text-justify': 'left', 'text-max-width': 12, 'text-padding': 2, 'text-optional': true,
     }, paint: { 'text-color': '#1E2340', 'text-halo-color': 'rgba(255,255,255,0.95)', 'text-halo-width': 1.4 } });
     applyLabelSize();
@@ -343,6 +345,7 @@ function addMapLayers() {
         const h = hit(e);
         setHover(h.area ?? (h.row != null ? S.rowArea[h.row] ?? null : null));
         hlRows(h.row != null ? { row: h.row } : null);
+        tableHover(h.row ?? null);
         if (h.row != null) showRowTip(e.point, h.row);
         else if (h.area != null) showTip(e.point, h.area);
         else $('tip').hidden = true;
@@ -382,6 +385,8 @@ function applyPalette() {
     map.setPaintProperty('rows-line', 'line-color', color);
     for (const id of ['rows-line', 'rows-line-out', 'rows-sline', 'rows-sline-out']) map.setPaintProperty(id, 'line-color', color);
     map.setPaintProperty('rows-line-glow', 'line-color', glow);
+    // Line casing follows the line's color, as points' rings do: dark under light colors, white under dark ones.
+    map.setPaintProperty('rows-sline-casing', 'line-color', glow);
     for (const id of ['rows-point', 'rows-mid']) {
         map.setPaintProperty(id, 'circle-color', ['case', ['get', '_in'], color, '#ffffff']);
         // Light colors (the pale ends of a ramp, yellow) get a dark ring instead of a white one.
@@ -478,7 +483,8 @@ async function setLayer(id) {
     applyAreaOrder();
     applyLabelSize();   // Auto size follows the set's typical area
     // Thousands of hexagons: keep their outlines light.
-    map.setPaintProperty('bounds-line', 'line-opacity', meta.hex ? 0.22 : 0.5);
+    map.setPaintProperty('bounds-line', 'line-opacity', meta.hex ? 0.7 : 0.5);
+    map.setPaintProperty('bounds-line', 'line-color', meta.hex ? '#c4c4c0' : '#1E2340');
     // Clear hover and selection by id. removeFeatureState({ source }) here was applied after the
     // new layer's colors were set in the same frame, wiping some of them (areas with rows left blank).
     if (S.selectedId !== null) map.setFeatureState({ source: 'bounds', id: S.selectedId }, { selected: false });
@@ -625,6 +631,7 @@ function recompute() {
     }
     paint();
     renderPanel();
+    renderTable();
     renderLabelControls();
     updateLabels();
 }
@@ -903,7 +910,7 @@ function labelColors(id) {
     const fill = c >= 0 ? ramp()[c] : CONFIG.nodata, ink = '#1E2340';
     return contrast('#ffffff', fill) > contrast(ink, fill)
         ? { _lc: '#ffffff', _hc: 'rgba(10,22,56,0.45)', _hw: 1 }
-        : { _lc: ink, _hc: 'rgba(255,255,255,0.9)', _hw: 1.4 };
+        : { _lc: ink, _hc: 'rgba(255,255,255,0.9)', _hw: 2.5 };
 }
 
 function renderLabelControls() {
@@ -930,7 +937,7 @@ function renderLabelControls() {
     $('prefix-zoom-val').textContent = S.prefixZoom;
     $('label-auto').hidden = !S.labels;
     $('roads-check').checked = S.basemap.roads;
-    $('hoods-check').checked = S.basemap.hoodLabels;
+    $('hoods-check').checked = S.basemap.places;
     $('areas-check').checked = S.showAreas;
     renderPaletteSeg();
     $('size-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.size === S.labelSize));
@@ -1029,6 +1036,8 @@ function renderPanel() {
         }
     }
     $('clear-btn').hidden = !S.src;
+    $('table-toggle').hidden = !S.src;
+    if (!S.src && T.open) setTableOpen(false);
     syncBarToggles();
     renderList();
 }
@@ -1138,12 +1147,81 @@ function setHover(id) {
     if (id !== null) document.querySelector(`#area-list li[data-id="${CSS.escape(id)}"]`)?.classList.add('hover');
 }
 
+// ═════════════════════════════════════════════════════════════════════════
+// Table (bottom drawer)
+// ═════════════════════════════════════════════════════════════════════════
+// Every row of the file, sortable. Show: all rows, the rows in the selected area, or those in view.
+// Hovering a row highlights it on the map (or its area); hovering a feature on the map highlights
+// its row here; clicking a row goes to it.
+const TABLE_MAX = 1000;
+const T = { open: false, filter: 'all', sort: null, dir: 1, height: 280, shown: [] };
+function tableCols() {
+    // Every column but internal ones and raw geometry text (WKT); latitude/longitude stay.
+    // The row's name column comes first.
+    const cols = (S.src?.headers || []).filter(h => !h.startsWith('_') && !/^(wkt|geom|geometry|the_geom|shape)$/i.test(h.trim()));
+    const name = rowLabelCol();
+    return cols.includes(name) ? [name, ...cols.filter(c => c !== name)] : cols;
+}
+function setTableOpen(on) {
+    T.open = on && !!S.src;
+    $('table-drawer').hidden = !T.open;
+    $('table-toggle').setAttribute('aria-pressed', T.open);
+    document.querySelector('.map-wrap').style.setProperty('--drawer', T.open ? T.height + 'px' : '0px');
+    store.set('table', { open: on, height: T.height });
+    map.resize();
+    if (T.open) renderTable();
+}
+function tableRowIdx() {
+    const n = S.src?.rows.length || 0;
+    let idx = [...Array(n).keys()];
+    if (T.filter === 'area') idx = S.selectedId == null ? [] : idx.filter(i => S.rowArea[i] === S.selectedId);
+    else if (T.filter === 'view') {
+        const b = map.getBounds();
+        idx = idx.filter(i => { const p = S.src.points?.[i]; return p && b.contains(p); });
+    }
+    if (T.sort) {
+        const c = T.sort, num = JoinKit.classifyColumns(S.src.rows, [c]).numericCols.length > 0;
+        const key = i => { const v = S.src.rows[i][c]; return num ? JoinKit.parseNum(v) : JoinKit.cellText(v).toLowerCase(); };
+        idx.sort((a, b) => { const x = key(a), y = key(b); return (x === null || x === '') - (y === null || y === '') || (x < y ? -T.dir : x > y ? T.dir : 0); });
+    }
+    return idx;
+}
+function renderTable() {
+    if (!T.open || !S.src) return;
+    const cols = tableCols(), idx = tableRowIdx(), shown = T.shown = idx.slice(0, TABLE_MAX);
+    const area = i => S.rowArea[i] != null ? areaName(S.rowArea[i]) : '';
+    $('table-count').textContent = `${idx.length.toLocaleString()} of ${S.src.rows.length.toLocaleString()} rows`
+        + (T.filter === 'area' ? (S.selectedId == null ? ' · click an area to show its rows' : ` in ${areaName(S.selectedId)}`) : T.filter === 'view' ? ' in view' : '')
+        + (idx.length > TABLE_MAX ? ` · showing the first ${TABLE_MAX.toLocaleString()}` : '');
+    $('table-filter').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.filter === T.filter));
+    const head = `<tr><th class="area">${esc(shortLabel(S.layers.get(S.layerId)))}</th>${cols.map(c => `<th data-col="${esc(c)}" title="${esc(c)}" class="${T.sort === c ? (T.dir > 0 ? 'asc' : 'desc') : ''}">${esc(c)}</th>`).join('')}</tr>`;
+    const body = shown.map(i => `<tr data-row="${i}" class="${S.src.points?.[i] ? 'has-loc' : ''}"><td class="area">${esc(area(i))}</td>${cols.map(c => { const t = cellShow(S.src.rows[i][c]); return `<td title="${esc(t.length > 40 ? t : '')}">${esc(t)}</td>`; }).join('')}</tr>`).join('');
+    $('table-grid').innerHTML = `<thead>${head}</thead><tbody>${body}</tbody>`;
+}
+// A feature hovered on the map: highlight and reveal its row.
+let tableHoverRow = null;
+function tableHover(i) {
+    if (!T.open || i === tableHoverRow) return;
+    const grid = $('table-grid');
+    grid.querySelector('tr.hl')?.classList.remove('hl');
+    tableHoverRow = i;
+    if (i == null) return;
+    const tr = grid.querySelector(`tr[data-row="${i}"]`);
+    if (tr) {   // scroll vertically only, so the columns in view stay put
+        tr.classList.add('hl');
+        const box = tr.closest('.table-scroll'), head = grid.tHead?.offsetHeight || 0;
+        if (tr.offsetTop - head < box.scrollTop) box.scrollTop = tr.offsetTop - head;
+        else if (tr.offsetTop + tr.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = tr.offsetTop + tr.offsetHeight - box.clientHeight;
+    }
+}
+
 function select(id, { lngLat, fromPopup = false, fly = false, noPopup = false } = {}) {
     if (S.selectedId !== null) map.setFeatureState({ source: 'bounds', id: S.selectedId }, { selected: false });
     S.selectedId = id;
     document.querySelectorAll('#area-list li.selected').forEach(li => li.classList.remove('selected'));
     if (id === null) { if (!fromPopup) popup.remove(); return; }
     map.setFeatureState({ source: 'bounds', id }, { selected: true });
+    if (T.filter === 'area') renderTable();
     const li = document.querySelector(`#area-list li[data-id="${CSS.escape(id)}"]`);
     li?.classList.add('selected');
     if (!fly) li?.scrollIntoView({ block: 'nearest' });
@@ -1291,6 +1369,8 @@ function updateRowLayer() {
 
 function applyAreasVisible() {
     const v = S.showAreas ? 'visible' : 'none';
+    // Places follow the areas: hidden while areas show, back when they're hidden (the checkbox can override until the next change).
+    if (S.basemap.places === S.showAreas) { S.basemap.places = !S.showAreas; applyBasemapToggles(); $('hoods-check').checked = S.basemap.places; }
     syncBarToggles();
     for (const id of ['bounds-fill', 'bounds-glow', 'bounds-line', 'bounds-hl', 'area-labels']) map.setLayoutProperty(id, 'visibility', v);
     store.set('showAreas', S.showAreas);
@@ -1455,6 +1535,8 @@ async function useSource(src, { keep = false } = {}) {
             if (st.labels) { S.labels = st.labels.fields ?? null; S.prefix = st.labels.prefix ?? S.prefix; S.prefixZoom = st.labels.prefixZoom ?? S.prefixZoom; }
             if (st.layerId && S.layers.has(st.layerId) && st.layerId !== S.layerId) { await setLayer(st.layerId); return; }
         }
+        T.sort = null;
+        if (T.wanted && !T.open) setTableOpen(true);
         if (isHex(S.layerId)) { await setLayer(S.layerId); return; }   // the grid gains the file's cells
         recompute();
 }
@@ -1611,7 +1693,7 @@ function wireUI() {
     $('prefix-zoom').oninput = e => { S.prefixZoom = +e.target.value; $('prefix-zoom-val').textContent = S.prefixZoom; };
     $('prefix-zoom').onchange = () => { saveLabelPrefs(); updateLabels(); };
     $('roads-check').onchange = e => { S.basemap.roads = e.target.checked; applyBasemapToggles(); };
-    $('hoods-check').onchange = e => { S.basemap.hoodLabels = e.target.checked; applyBasemapToggles(); };
+    $('hoods-check').onchange = e => { S.basemap.places = e.target.checked; applyBasemapToggles(); };
     $('palette-seg').onclick = e => {
         const b = e.target.closest('button'); if (!b) return;
         S.palette = b.dataset.palette; store.set('palette', S.palette);
@@ -1619,6 +1701,34 @@ function wireUI() {
     };
     $('points-check').onchange = e => setFeaturesVisible(e.target.checked);
     $('empty-check').onchange = e => { S.hideEmpty = e.target.checked; store.set('hideEmpty', S.hideEmpty); recompute(); };
+    // Table drawer
+    { const t = store.get('table', {}); if (t.height) T.height = Math.max(120, Math.min(t.height, innerHeight * 0.7)); T.wanted = !!t.open; }
+    $('table-toggle').onclick = () => setTableOpen(!T.open);
+    $('table-close').onclick = () => setTableOpen(false);
+    $('table-filter').onclick = e => { const b = e.target.closest('button'); if (!b) return; T.filter = b.dataset.filter; renderTable(); };
+    map.on('moveend', () => { if (T.filter === 'view') renderTable(); });
+    $('table-grid').addEventListener('click', e => {
+        const th = e.target.closest('th[data-col]');
+        if (th) { const c = th.dataset.col; T.dir = T.sort === c ? -T.dir : 1; T.sort = c; renderTable(); return; }
+        const tr = e.target.closest('tr[data-row]'); if (!tr) return;
+        const i = +tr.dataset.row, p = S.src.points?.[i];
+        if (p) { map.flyTo({ center: p, zoom: Math.max(map.getZoom(), 15), duration: 600 }); popup.setLngLat(p).setHTML(rowPopupHTML(i)).addTo(map); }
+        else if (S.rowArea[i] != null) select(S.rowArea[i], { fly: true });
+    });
+    $('table-grid').addEventListener('mouseover', e => {
+        const tr = e.target.closest('tr[data-row]'); if (!tr) return;
+        const i = +tr.dataset.row;
+        hlRows({ row: i }); setHover(S.rowArea[i] ?? null);
+    });
+    $('table-grid').addEventListener('mouseleave', () => { hlRows(null); setHover(null); });
+    // Drag the drawer's top edge to resize it.
+    $('table-grip').addEventListener('pointerdown', e => {
+        e.preventDefault();
+        const y0 = e.clientY, h0 = T.height, wrap = document.querySelector('.map-wrap');
+        const move = ev => { T.height = Math.max(120, Math.min(h0 + y0 - ev.clientY, wrap.clientHeight - 120)); wrap.style.setProperty('--drawer', T.height + 'px'); map.resize(); };
+        const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); store.set('table', { open: T.open, height: T.height }); };
+        addEventListener('pointermove', move); addEventListener('pointerup', up);
+    });
     $('areas-toggle').onclick = () => { S.showAreas = !S.showAreas; applyAreasVisible(); };
     $('features-toggle').onclick = () => setFeaturesVisible(!S.basemap.points);
     $('lcolor-seg').onclick = e => {
@@ -1719,6 +1829,6 @@ function labelStyle(o = {}) {
         note: 'Halos stop growing past about a quarter of the text size (MapLibre’s glyph buffer).' };
 }
 
-window.Joiner = { version: _BUILD_VERSION, state: S, loadFile, ckmeans, labelStyle, get map() { return map; } };   // for debugging in the console
+window.Joiner = { version: _BUILD_VERSION, state: S, table: T, loadFile, ckmeans, labelStyle, get map() { return map; } };   // for debugging in the console
 boot().catch(e => { console.error(e); alert('Joiner failed to start: ' + e.message); });
 })();

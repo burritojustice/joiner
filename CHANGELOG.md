@@ -2,6 +2,17 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v15
+- **Table:** a **Table** button next to Areas opens every row in a drawer below the map. Drag its top edge to resize it.
+  - Click a column to sort; the row's name column comes first, after the area it's in.
+  - Show **All** rows, the rows in the **Selected area**, or those **In view**.
+  - Hovering a row highlights it on the map (and its area); hovering a feature on the map highlights its row; clicking a row goes to it.
+  - It remembers whether it was open and how tall.
+- **Labels in Medium weight with a 2.5px glow** (Black, and dark text in Auto).
+- **Line casings follow the line's color**, like the rings on points: white under dark lines, dark under light ones.
+- **Places** (Basemap) replaces Neighborhood labels and covers all the basemap's place names: city, neighborhoods, islands. It turns off while areas are shown and back on when they're hidden.
+- **Hexagon borders are light gray.**
+
 ## v14
 - **Hover a row in an expanded area to see its fields** in a card beside the list, whether or not the row has a location (rows matched by a column have none).
 - **The Airtable panel is below the area list.**
