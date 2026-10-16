@@ -19,10 +19,11 @@ const CONFIG = {
     nodata: '#F0EFEC',         // 0 / no value in the list and legend; on the map those areas are left clear
     // Area and row label colors: text, halo, halo width. Auto picks black or white per area.
     labelColors: {
-        black:   { text: '#1E2340', halo: 'rgba(255,255,255,0.92)', width: 1.4 },
-        white:   { text: '#ffffff', halo: 'rgba(10,22,56,0.6)', width: 1.2 },
-        magenta: { text: '#D4007F', halo: 'rgba(150,250,255,0.95)', width: 1.6 },
-        aqua:    { text: '#00B8C8', halo: 'rgba(120,0,80,0.85)', width: 1.4 },
+        black:        { label: 'Black',            text: '#1E2340', halo: 'rgba(255,255,255,0.92)', width: 1.4 },
+        white:        { label: 'White',            text: '#ffffff', halo: 'rgba(10,22,56,0.6)', width: 1.2 },
+        'navy-yellow':{ label: 'Navy on yellow',   text: '#0D1B3E', halo: '#FFE27A', width: 1.6, hint: 'for Blues' },
+        'navy-blue':  { label: 'Navy on light blue', text: '#0D1B3E', halo: '#CFE8FF', width: 1.6, hint: 'for Yellow–red' },
+        'white-red':  { label: 'White on deep red', text: '#ffffff', halo: '#6B0020', width: 1.4, hint: 'for Yellow–red' },
     },
     popupRows: 8,
     fonts: { bold: ['Noto Sans Medium'], regular: ['Noto Sans Regular'] },
@@ -85,7 +86,7 @@ const S = {
     basemap: { roads: true, hoodLabels: true, points: true },
     palette: 'blues',
     labelSize: 'small',
-    labelColor: 'auto',   // 'auto' | 'black' | 'white' | 'magenta' | 'aqua'
+    labelColor: 'auto',   // 'auto' or a key of CONFIG.labelColors
     rowStyle: { colorBy: '', labels: [], sizeBy: '', sizeLog: false },   // Format features: color rows by a column, label them with columns
     rowClasses: null,     // { type: 'numeric'|'category', colors, ranges|cats, classOf(row) }
     expanded: null,       // area id expanded in the list
@@ -1309,7 +1310,10 @@ function applyLabelColor() {
     map.setPaintProperty('rows-labels', 'text-color', z.text);
     map.setPaintProperty('rows-labels', 'text-halo-color', z.halo);
     map.setPaintProperty('rows-labels', 'text-halo-width', z.width);
-    $('lcolor-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.lcolor === S.labelColor));
+    // Each choice shows a sample of its text and glow; "Auto" is black or white per area.
+    const sample = c => `<i style="color:${c.text};text-shadow:${[...Array(8)].map((_, k) => { const t = k * Math.PI / 4; return `${(Math.cos(t) * 1.3).toFixed(1)}px ${(Math.sin(t) * 1.3).toFixed(1)}px 0.5px ${c.halo}`; }).join(',')}">Aa</i>`;
+    $('lcolor-seg').innerHTML = [['auto', { label: 'Auto', text: '#1E2340', halo: '#fff', hint: 'black or white per area' }], ...Object.entries(CONFIG.labelColors)]
+        .map(([k, c]) => `<button type="button" class="chip" data-lcolor="${k}" aria-pressed="${k === S.labelColor}" title="${esc(c.label + (c.hint ? ' — ' + c.hint : ''))}">${sample(c)}${esc(c.label)}</button>`).join('');
     updateLabels();
 }
 

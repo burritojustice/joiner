@@ -5,6 +5,7 @@ Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the
 ## v12
 - **Numbers formatted as in Selecter.** Map labels abbreviate from 1,000 (1K, 1M, 1B, 1T), with one decimal until the abbreviated number reaches 100: `$79.4K`, `$104K`, `1.2M`. Unabbreviated values get two decimals below 1, one below 100, none above.
 - **No cents on dollar amounts** anywhere: totals and averages, legends, row popups and row labels (Airtable's `$5,000.00` shows as `$5,000`), and the size and color legends for currency columns.
+- **Label colors:** Auto · Black · White · **Navy on yellow** (for Blues) · **Navy on light blue** and **White on deep red** (for Yellow–red). Each choice shows a sample. Magenta and Aqua are gone.
 - **Hide N areas without data**, under the match summary (as in Selecter): areas no row was placed in are left off the map, the labels and the list. Remembered and saved in snapshots.
 
 ## v11
