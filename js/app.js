@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v11';
+const _BUILD_VERSION = 'v12';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -19,10 +19,11 @@ const CONFIG = {
     nodata: '#F0EFEC',         // 0 / no value in the list and legend; on the map those areas are left clear
     // Area and row label colors: text, halo, halo width. Auto picks black or white per area.
     labelColors: {
-        black:   { text: '#1E2340', halo: 'rgba(255,255,255,0.92)', width: 1.4 },
-        white:   { text: '#ffffff', halo: 'rgba(10,22,56,0.6)', width: 1.2 },
-        magenta: { text: '#D4007F', halo: 'rgba(150,250,255,0.95)', width: 1.6 },
-        aqua:    { text: '#00B8C8', halo: 'rgba(120,0,80,0.85)', width: 1.4 },
+        black:        { label: 'Black',            text: '#1E2340', halo: 'rgba(255,255,255,0.92)', width: 1.4 },
+        white:        { label: 'White',            text: '#ffffff', halo: 'rgba(10,22,56,0.6)', width: 1.2 },
+        'navy-yellow':{ label: 'Navy on yellow',   text: '#0D1B3E', halo: '#FFE27A', width: 1.6, hint: 'for Blues' },
+        'navy-blue':  { label: 'Navy on light blue', text: '#0D1B3E', halo: '#CFE8FF', width: 1.6, hint: 'for Yellow–red' },
+        'white-red':  { label: 'White on deep red', text: '#ffffff', halo: '#6B0020', width: 1.4, hint: 'for Yellow–red' },
     },
     popupRows: 8,
     fonts: { bold: ['Noto Sans Medium'], regular: ['Noto Sans Regular'] },
@@ -85,7 +86,7 @@ const S = {
     basemap: { roads: true, hoodLabels: true, points: true },
     palette: 'blues',
     labelSize: 'small',
-    labelColor: 'auto',   // 'auto' | 'black' | 'white' | 'magenta' | 'aqua'
+    labelColor: 'auto',   // 'auto' or a key of CONFIG.labelColors
     rowStyle: { colorBy: '', labels: [], sizeBy: '', sizeLog: false },   // Format features: color rows by a column, label them with columns
     rowClasses: null,     // { type: 'numeric'|'category', colors, ranges|cats, classOf(row) }
     expanded: null,       // area id expanded in the list
@@ -93,7 +94,8 @@ const S = {
     areaOf: new Map(),    // layer id → row index → area id containing the row's location
     hoverId: null,
     selectedId: null,
-    showAreas: true,      // draw the joining polygons (off = features only)
+    showAreas: true,
+    hideEmpty: false,     // leave areas no row was placed in off the map      // draw the joining polygons (off = features only)
     pointSize: 'small',
     areaOrder: 'auto',    // areas over or under the basemap's water and roads: 'auto' | 'over' | 'under'
     hex: { auto: true, res: 8 },   // H3 layer: resolution follows the zoom, or a fixed one
@@ -126,6 +128,7 @@ async function boot() {
     S.labelColor = store.get('labelColor', 'auto'); if (S.labelColor !== 'auto' && !CONFIG.labelColors[S.labelColor]) S.labelColor = 'auto';
     S.labelSize = CONFIG.labelSizes[store.get('labelSize', 'small')] ? store.get('labelSize', 'small') : 'small';
     S.showAreas = store.get('showAreas', true);
+    S.hideEmpty = !!store.get('hideEmpty', false);
     S.areaOrder = ['auto', 'over', 'under'].includes(store.get('areaOrder', 'auto')) ? store.get('areaOrder', 'auto') : 'auto';
     S.pointSize = CONFIG.pointSizes[store.get('pointSize', 'small')] ? store.get('pointSize', 'small') : 'small';
     S.hex = { ...S.hex, ...store.get('hex', {}) };
@@ -458,6 +461,7 @@ async function setLayer(id) {
     if (S.hoverId !== null) map.setFeatureState({ source: 'bounds', id: S.hoverId }, { hover: false });
     S.selectedId = null; S.hoverId = null; S.expanded = null; popup.remove();
     map.getSource('bounds').setData(fc);
+    boundsKey = id + '|all|' + fc.features.length;
     $('list-title').textContent = shortLabel(meta);
     recompute();
 }
@@ -683,9 +687,23 @@ function classify(vals) {
     return { classOf, ranges };
 }
 
+// "Hide areas without data": areas no row was placed in are left off the map, the labels and the list.
+const hidingEmpty = () => !!(S.hideEmpty && S.src && S.join);
+const isEmptyArea = id => hidingEmpty() && !S.join.byId[id];
+let boundsKey = null;
+function applyBoundsData() {
+    const fc = S.geo.get(S.layerId);
+    if (!fc) return;
+    const key = hidingEmpty() ? S.layerId + '|' + Object.keys(S.join.byId).sort().join(',') : S.layerId + '|all|' + fc.features.length;
+    if (key === boundsKey) return;
+    boundsKey = key;
+    map.getSource('bounds').setData(hidingEmpty() ? { type: 'FeatureCollection', features: fc.features.filter(f => S.join.byId[f.id]) } : fc);
+}
+
 function paint() {
     const fc = S.geo.get(S.layerId);
     if (!fc) return;
+    applyBoundsData();
     for (const f of fc.features) {
         const c = S.classes ? S.classes.classOf(S.values.get(f.id)) : -1;
         map.setFeatureState({ source: 'bounds', id: f.id }, { c });
@@ -698,24 +716,49 @@ function paint() {
 // ═════════════════════════════════════════════════════════════════════════
 const isMoney = stat => /^(sum|avg)_/.test(stat) && S.join?.currencyCols.has(stat.replace(/^(sum|avg)_/, ''));
 
+// Numbers, as in Selecter: abbreviated values (1K, 1M, 1B, 1T) get one decimal below 100
+// of the unit and none above ($79.4K, $104K, 1.2M); plain values get two decimals below 1,
+// one below 100 and none above. Dollar amounts never show cents.
+function fmtNumber(v, { money = false, abbrev = false, whole = false } = {}) {
+    if (v === null || v === undefined || !isFinite(v)) return '—';
+    const a = Math.abs(v), sign = v < 0 ? '-' : '';
+    const dec = (x, max) => x.toLocaleString('en-US', { maximumFractionDigits: max, minimumFractionDigits: 0 });
+    let out;
+    const unit = abbrev && [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']].find(([d]) => a >= d);
+    if (unit) { const u = a / unit[0]; out = (u >= 100 ? String(Math.round(u)) : String(+u.toFixed(1))) + unit[1]; }
+    else if (money || whole) out = dec(Math.round(a), 0);
+    else out = dec(a, a < 1 ? 2 : a < 100 ? 1 : 0);
+    if (out === '0' && a > 0 && !money) out = a < 0.01 ? '<0.01' : out;
+    return sign + (money ? '$' : '') + out;
+}
+const fmtPct = v => (v === 0 ? '0' : v < 0.1 ? '<0.1' : v.toFixed(1)) + '%';
+
 function fmt(v, stat = S.metric) {
     if (v === null || v === undefined) return '—';
-    if (stat.startsWith('pct_')) return (v === 0 ? '0' : v < 0.1 ? '<0.1' : v.toFixed(1)) + '%';
-    const digits = stat.startsWith('avg_') && !isMoney(stat) ? 1 : 0;
-    const n = v.toLocaleString('en-US', { maximumFractionDigits: digits, minimumFractionDigits: 0 });
-    return isMoney(stat) ? '$' + n : n;
+    if (stat.startsWith('pct_')) return fmtPct(v);
+    return fmtNumber(v, { money: isMoney(stat), whole: !/^avg_/.test(stat) && Number.isInteger(v) });
 }
 
-// Short form for map labels: $104K, $1.2M.
+// Short form for map labels: $104K, $79.4K, 1.2M.
 function fmtShort(v, stat) {
     if (v === null || v === undefined) return '—';
-    if (stat.startsWith('pct_')) return fmt(v, stat);
-    const money = isMoney(stat), a = Math.abs(v);
-    let s;
-    if (a >= 1e6) s = (v / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'M';
-    else if (a >= 1e4 || (money && a >= 1000)) s = (v / 1e3).toFixed(a >= 1e5 || !money ? 0 : 1).replace(/\.0$/, '') + 'K';
-    else s = v.toLocaleString('en-US', { maximumFractionDigits: stat.startsWith('avg_') && !money ? 1 : 0 });
-    return (money ? '$' : '') + s;
+    if (stat.startsWith('pct_')) return fmtPct(v);
+    return fmtNumber(v, { money: isMoney(stat), abbrev: true });
+}
+
+// A column of dollar amounts (for rows colored or sized by it).
+function isMoneyCol(col) {
+    if (!S.src) return false;
+    const memo = S.src._money || (S.src._money = new Map());
+    if (!memo.has(col)) memo.set(col, JoinKit.classifyColumns(S.src.rows, [col]).currencyCols.has(col));
+    return memo.get(col);
+}
+const fmtCol = (v, col) => fmtNumber(v, { money: isMoneyCol(col) });
+// A cell as shown in popups, lists and row labels: dollar amounts without cents.
+function cellShow(v) {
+    const t = JoinKit.cellText(v);
+    const m = /^\s*(-?)\$\s?([\d,]+(?:\.\d+)?)\s*$/.exec(t);
+    return m ? m[1] + '$' + Math.round(Number(m[2].replace(/,/g, ''))).toLocaleString('en-US') : t;
 }
 
 function nameOf(f, meta = S.layers.get(S.layerId)) {
@@ -797,7 +840,7 @@ function updateLabels() {
     const anchors = S.anchors.get(S.layerId);
     const ranked = [...fc.features].sort((a, b) => anchors.get(b.id).area - anchors.get(a.id).area);
     const rank = new Map(ranked.map((f, i) => [f.id, i]));
-    const features = fc.features.map(f => {
+    const features = fc.features.filter(f => !isEmptyArea(f.id)).map(f => {
         const texts = fields.map(fl => labelText(fl, f));
         const props = { _rank: rank.get(f.id), ...labelColors(f.id) };
         zooms.forEach((z, k) => {
@@ -888,7 +931,7 @@ function renderFormatFeatures() {
     $('size-log').disabled = !S.rowStyle.sizeBy;
     const z = S.rowSizes;
     $('row-size-hint').textContent = !nums.length ? 'No numeric columns.' : !z ? 'Size points by a number.'
-        : `${fmtNum(z.min)} to ${fmtNum(z.max)}; ` + (z.log ? 'log scale, so small values stay visible.' : 'circle area follows the value.');
+        : `${fmtCol(z.min, z.col)} to ${fmtCol(z.max, z.col)}; ` + (z.log ? 'log scale, so small values stay visible.' : 'circle area follows the value.');
     $('psize-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.psize === S.pointSize));
     const labs = S.rowStyle.labels;
     $('rowlabels-n').textContent = labs.length ? labs.join(', ') : 'none';
@@ -944,6 +987,10 @@ function renderPanel() {
             $('match-summary').innerHTML = `<b>${j.matchedRows.toLocaleString()}</b> of ${total.toLocaleString()} rows placed (${pct}%) in <b>${areas}</b> of ${nAreas} areas
                 <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
                 <span class="hint">${unmatchedRows ? (j.keyCol === LOCATION ? `${unmatchedRows} rows are outside every area` : `${unmatchedRows} rows have a value that matches no area`) : 'Every row placed'}${j.nullRows ? ` · ${j.nullRows} rows have ${j.keyCol === LOCATION ? 'no location' : 'a blank value'}` : ''}</span>`;
+            const nEmpty = nAreas - areas;
+            $('empty-row').hidden = !nEmpty || !!S.layers.get(S.layerId).hex;
+            $('empty-check').checked = S.hideEmpty;
+            $('empty-n').textContent = `${nEmpty.toLocaleString()} area${nEmpty === 1 ? '' : 's'}`;
             const um = $('unmatched');
             um.hidden = !S.unmatched.length;
             um.querySelector('summary').textContent = S.join.keyCol === LOCATION ? `${S.unmatched[0]?.n || 0} rows outside every area`
@@ -952,6 +999,7 @@ function renderPanel() {
         } else {
             $('match-summary').innerHTML = `<span class="hint">No column in ${esc(S.src.name)} matches ${esc(shortLabel(S.layers.get(S.layerId)))}. Try another tab, or pick a column above.</span>`;
             $('unmatched').hidden = true;
+            $('empty-row').hidden = true;
         }
     }
     $('clear-btn').hidden = !S.src;
@@ -969,6 +1017,7 @@ function renderList() {
     const meta = S.layers.get(S.layerId);
     let list = rows;
     if (meta.hex) list = showV ? rows.filter(r => r.v > 0) : [];
+    else if (hidingEmpty()) list = rows.filter(r => !isEmptyArea(r.id));
     const max = Math.max(0, ...list.map(r => r.v || 0));
     list.sort(S.sort === 'name' || !showV ? (a, b) => a.name.localeCompare(b.name, 'en', { numeric: true })
         : (a, b) => (b.v ?? -Infinity) - (a.v ?? -Infinity) || a.name.localeCompare(b.name, 'en', { numeric: true }));
@@ -1008,7 +1057,7 @@ function renderLegend() {
     const nZero = [...S.values.values()].filter(v => !(v > 0)).length;
     lg.innerHTML = `<h4>${esc(metricLabel())}</h4>` + [...(S.classes?.ranges || [])].reverse().map(r =>
         `<div class="row"><i style="background:${ramp()[r.c]}"></i><span>${r.lo === r.hi ? fmt(r.hi) : `${fmt(r.lo)} – ${fmt(r.hi)}`}</span><span class="n">${r.n}</span></div>`).join('')
-        + `<div class="row"><i class="clear"></i><span>${zeroLabel}</span><span class="n">${nZero}</span></div>`
+        + `<div class="row"><i class="clear"></i><span>${zeroLabel}${hidingEmpty() ? ' (hidden)' : ''}</span><span class="n">${nZero}</span></div>`
         + `<div class="foot">Natural breaks · areas per class</div>` + rowLegendHTML();
 }
 
@@ -1017,7 +1066,7 @@ function rowLegendHTML() {
     if (!rc) return S.rowSizes ? `<h4 class="rows-h">Rows</h4>` + sizeLegendHTML() : '';
     const dot = c => `<i class="dot" style="background:${c}"></i>`;
     const rows = rc.type === 'numeric'
-        ? [...rc.ranges].reverse().map(r => `<div class="row">${dot(r.color)}<span>${r.lo === r.hi ? fmtNum(r.hi) : `${fmtNum(r.lo)} – ${fmtNum(r.hi)}`}</span><span class="n">${r.n}</span></div>`)
+        ? [...rc.ranges].reverse().map(r => `<div class="row">${dot(r.color)}<span>${r.lo === r.hi ? fmtCol(r.hi, rc.col) : `${fmtCol(r.lo, rc.col)} – ${fmtCol(r.hi, rc.col)}`}</span><span class="n">${r.n}</span></div>`)
         : rc.cats.map(c => `<div class="row">${dot(c.color)}<span>${esc(c.v)}</span><span class="n">${c.n}</span></div>`)
             .concat(rc.otherN ? [`<div class="row">${dot(CONFIG.other)}<span>Other</span><span class="n">${rc.otherN}</span></div>`] : []);
     if (rc.none) rows.push(`<div class="row">${dot(CONFIG.other)}<span>No value</span><span class="n">${rc.none}</span></div>`);
@@ -1026,9 +1075,8 @@ function rowLegendHTML() {
 function sizeLegendHTML() {
     const z = S.rowSizes;
     if (!z) return '';
-    return `<div class="foot">Size: ${esc(z.col)}${z.log ? ' (log)' : ''} · ${fmtNum(z.min)} – ${fmtNum(z.max)}</div>`;
+    return `<div class="foot">Size: ${esc(z.col)}${z.log ? ' (log)' : ''} · ${fmtCol(z.min, z.col)} – ${fmtCol(z.max, z.col)}</div>`;
 }
-const fmtNum = v => v.toLocaleString('en-US', { maximumFractionDigits: 1 });
 
 function showTip(point, id) {
     const f = S.geo.get(S.layerId).features.find(f => f.id === id);
@@ -1208,7 +1256,7 @@ function updateRowLayer() {
     const labs = show ? S.rowStyle.labels.filter(c => S.src.headers.includes(c)) : [];
     map.getSource('rowlabels').setData({ type: 'FeatureCollection', features: !labs.length ? [] : S.src.points.map((p, i) => {
         if (!p) return null;
-        const text = labs.map(c => JoinKit.cellText(S.src.rows[i][c]).trim()).filter(Boolean).join('\n');
+        const text = labs.map(c => cellShow(S.src.rows[i][c]).trim()).filter(Boolean).join('\n');
         return text && { type: 'Feature', geometry: { type: 'Point', coordinates: p }, properties: { _lab: text } };
     }).filter(Boolean) });
     applyPalette();
@@ -1262,7 +1310,10 @@ function applyLabelColor() {
     map.setPaintProperty('rows-labels', 'text-color', z.text);
     map.setPaintProperty('rows-labels', 'text-halo-color', z.halo);
     map.setPaintProperty('rows-labels', 'text-halo-width', z.width);
-    $('lcolor-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.lcolor === S.labelColor));
+    // Each choice shows a sample of its text and glow; "Auto" is black or white per area.
+    const sample = c => `<i style="color:${c.text};text-shadow:${[...Array(8)].map((_, k) => { const t = k * Math.PI / 4; return `${(Math.cos(t) * 1.3).toFixed(1)}px ${(Math.sin(t) * 1.3).toFixed(1)}px 0.5px ${c.halo}`; }).join(',')}">Aa</i>`;
+    $('lcolor-seg').innerHTML = [['auto', { label: 'Auto', text: '#1E2340', halo: '#fff', hint: 'black or white per area' }], ...Object.entries(CONFIG.labelColors)]
+        .map(([k, c]) => `<button type="button" class="chip" data-lcolor="${k}" aria-pressed="${k === S.labelColor}" title="${esc(c.label + (c.hint ? ' — ' + c.hint : ''))}">${sample(c)}${esc(c.label)}</button>`).join('');
     updateLabels();
 }
 
@@ -1291,7 +1342,7 @@ function rowPopupHTML(i) {
     const fields = S.src.headers.filter(h => !h.startsWith('_') && JoinKit.cellText(r[h]) !== '').slice(0, 30);
     // Value first, field name under it (long names are cut short; the full name is in the tooltip).
     return `<div class="pop"><h4>${esc(rowTitle(i))}</h4><div class="sub">${a ? `In ${esc(a)}` : 'Not placed in an area'}</div>
-        <dl class="fields">${fields.map(h => `<div><dd>${esc(JoinKit.cellText(r[h]))}</dd><dt title="${esc(h)}">${esc(h)}</dt></div>`).join('')}</dl></div>`;
+        <dl class="fields">${fields.map(h => `<div><dd>${esc(cellShow(r[h]))}</dd><dt title="${esc(h)}">${esc(h)}</dt></div>`).join('')}</dl></div>`;
 }
 
 function popupHTML(f) {
@@ -1334,6 +1385,7 @@ async function loadFile(file) {
             if (st.rowStyle) S.rowStyle = { colorBy: st.rowStyle.colorBy || '', labels: st.rowStyle.labels || [], sizeBy: st.rowStyle.sizeBy || '', sizeLog: !!st.rowStyle.sizeLog };
             if (st.pointSize && CONFIG.pointSizes[st.pointSize]) S.pointSize = st.pointSize;
             if (st.hex) S.hex = { ...S.hex, ...st.hex };
+            if (typeof st.hideEmpty === 'boolean') S.hideEmpty = st.hideEmpty;
             if (['auto', 'over', 'under'].includes(st.areaOrder)) { S.areaOrder = st.areaOrder; applyAreaOrder(); }
             if (st.labelSize && CONFIG.labelSizes[st.labelSize]) { S.labelSize = st.labelSize; applyLabelSize(); }
             if (st.labelColor && (st.labelColor === 'auto' || CONFIG.labelColors[st.labelColor])) { S.labelColor = st.labelColor; applyLabelColor(); }
@@ -1349,7 +1401,7 @@ async function loadFile(file) {
 }
 
 function saveSnapshot() {
-    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, labelColor: S.labelColor, pointSize: S.pointSize, hex: S.hex, areaOrder: S.areaOrder,
+    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, labelColor: S.labelColor, pointSize: S.pointSize, hex: S.hex, areaOrder: S.areaOrder, hideEmpty: S.hideEmpty,
         labels: { fields: S.labels, prefix: S.prefix, prefixZoom: S.prefixZoom } });
     const blob = new Blob([JSON.stringify(snap)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -1438,6 +1490,7 @@ function wireUI() {
         updateRowLayer(); paint(); renderList(); renderPaletteSeg(); renderFormatFeatures(); updateLabels();
     };
     $('points-check').onchange = e => setFeaturesVisible(e.target.checked);
+    $('empty-check').onchange = e => { S.hideEmpty = e.target.checked; store.set('hideEmpty', S.hideEmpty); recompute(); };
     $('areas-toggle').onclick = () => { S.showAreas = !S.showAreas; applyAreasVisible(); };
     $('features-toggle').onclick = () => setFeaturesVisible(!S.basemap.points);
     $('lcolor-seg').onclick = e => {

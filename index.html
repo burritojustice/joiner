@@ -47,6 +47,7 @@
         <p class="hint" id="metric-hint"></p>
       </div>
       <div class="match" id="match-summary"></div>
+      <label class="check" id="empty-row" hidden><input type="checkbox" id="empty-check"> Hide <span id="empty-n"></span> without data</label>
       <details class="unmatched" id="unmatched" hidden>
         <summary></summary>
         <ul></ul>
@@ -130,9 +131,7 @@
       </div>
       <div class="basemap-opts tight">
         <span>Color</span>
-        <div class="seg lcolor" id="lcolor-seg" role="group" aria-label="Label color">
-          <button type="button" data-lcolor="auto" title="Black or white, whichever reads better on each area">Auto</button><button type="button" data-lcolor="black" title="Black text, white glow">Black</button><button type="button" data-lcolor="white" title="White text, dark glow">White</button><button type="button" data-lcolor="magenta" title="Magenta text, aqua glow">Magenta</button><button type="button" data-lcolor="aqua" title="Aqua text, magenta glow">Aqua</button>
-        </div>
+        <div class="lcolors" id="lcolor-seg" role="group" aria-label="Label color"></div>
       </div>
       <p class="hint">Now at zoom <span id="zoom-now"></span></p>
       <div class="basemap-opts">
