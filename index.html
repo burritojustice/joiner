@@ -54,12 +54,41 @@
       </details>
     </section>
 
+    <details class="card at-card" id="at-card">
+      <summary>Airtable</summary>
+      <form id="at-form" autocomplete="off">
+        <div class="field">
+          <label for="at-url">View link</label>
+          <input id="at-url" type="text" inputmode="url" spellcheck="false" placeholder="https://airtable.com/app…/tbl…/viw…">
+        </div>
+        <div class="field" id="at-token-row">
+          <label for="at-token">Personal access token</label>
+          <input id="at-token" type="password" spellcheck="false" placeholder="pat…">
+          <p class="hint">Kept in this tab until it closes, and sent only to Airtable. <a href="https://airtable.com/create/tokens" target="_blank" rel="noopener">Make a token</a> with <code>data.records:read</code> and <code>schema.bases:read</code> for the bases you want to map.</p>
+        </div>
+        <p class="hint" id="at-remembered" hidden>Token remembered for this tab. <button class="linkish" id="at-forget" type="button">Forget it</button></p>
+        <button class="btn" type="submit" id="at-load">Load from Airtable</button>
+        <p class="at-status" id="at-status" role="status"></p>
+      </form>
+      <div id="at-info" hidden>
+        <div class="field"><label for="at-table">Table</label><select id="at-table"></select></div>
+        <div class="field"><label for="at-view">View</label><select id="at-view"></select></div>
+        <p class="hint"><a id="at-open" target="_blank" rel="noopener">Open in Airtable</a> · <button class="linkish" id="at-copy" type="button">Copy map link</button></p>
+        <details class="sub" id="at-skipped-sub">
+          <summary><span id="at-skipped-n"></span></summary>
+          <p class="hint">Contact details aren’t loaded, so they stay out of the map and saved snapshots. Tick one to load it.</p>
+          <ul class="at-skipped" id="at-skipped"></ul>
+          <button class="btn ghost" id="at-reload" type="button" hidden>Reload with these fields</button>
+        </details>
+      </div>
+    </details>
+
     <section class="card empty" id="empty-card">
       <h2>Map your data</h2>
       <p>Drop a CSV or JSON file anywhere on the page, or <button class="linkish" id="empty-load" type="button">choose a file</button>.</p>
       <ul>
         <li><b>CSV</b> exported from Airtable or a spreadsheet</li>
-        <li><b>Airtable JSON</b> — the <code>records</code> response from the API</li>
+        <li><b>Airtable</b> — paste a view link under <b>Airtable</b> above, or load the <code>records</code> JSON from the API</li>
         <li><b>GeoJSON</b>, or a CSV with WKT or latitude/longitude columns — rows are drawn on the map and can be placed by location</li>
         <li><b>Joiner snapshot</b> saved from this page</li>
       </ul>
@@ -167,6 +196,7 @@
 <!-- JoinKit: shared join logic, pinned to the commit that merged burritojustice/maplibre#15 (0.2.0, indexed point-in-polygon) -->
 <script src="https://cdn.jsdelivr.net/gh/burritojustice/maplibre@696355e21f3546cf7414e6f1c1398a7f7eeb46f1/joinkit/joinkit.js"></script>
 <script src="js/sources.js"></script>
+<script src="js/airtable.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
