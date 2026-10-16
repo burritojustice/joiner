@@ -15,7 +15,7 @@ Open `index.html` (on GitHub Pages, or any local web server — `python3 -m http
 
 Joiner guesses which column to match on for each tab by trying every column and counting how many rows land on an area; the **Match rows by** menu shows the counts and lets you pick another. Each tab remembers its own choice. **Color by** switches between the number of rows and the total or average of any numeric column. The panel shows how many rows were placed and lists the values that matched no area, with how often each appears — those are what the crosswalk will fix.
 
-**Save snapshot** downloads the rows plus the current settings as one JSON file; loading it later restores the same view without Airtable. Snapshots contain every column of the file you loaded, so remove personal fields (names, emails, phone numbers) before loading a file you plan to share.
+**Save** downloads a snapshot: the rows plus the current settings as one JSON file; loading it later restores the same view without Airtable. Snapshots contain every column of the file you loaded, so remove personal fields (names, emails, phone numbers) before loading a file you plan to share.
 
 Nothing is uploaded: files are read in the browser. Join logic is [JoinKit](https://github.com/burritojustice/maplibre/tree/main/joinkit), loaded from jsDelivr pinned to a commit.
 
@@ -48,10 +48,9 @@ The polygon sets live in `data/boundaries/`, one GeoJSON file per layer, plus `i
 | `planning_neighborhoods` | Neighborhood | `neighborho` | 37 | [mw29-m2za](https://data.sf.gov/-/Planning-Neighborhood-Groups-Map/iacs-ws63) |
 | `realtor_neighborhoods` | Neighborhood | `nbrhood` | 92 | [5gzd-g9ns](https://data.sf.gov/-/Realtor-Neighborhoods/5gzd-g9ns) |
 | `wof_neighbourhoods` | Neighborhood | `name` | 116 | from `data/wof/` (84 current + 32 unverified) |
-| `wof_macrohoods` | Neighborhood | `name` | 4 | from `data/wof/` |
 | `census_tracts` | Census Tract | `geoid` | 242 | [sevw-6tgi](https://data.sf.gov/Geographic-Locations-and-Boundaries/Analysis-Neighborhoods-2020-census-tracts-assigned/sevw-6tgi) |
 
-The Neighborhood tab offers the neighborhood sets in the order above — SF Find first and as the default, since its names match the most Airtable values, then Analysis, Planning, Realtor, and the Who's on First neighbourhoods and macrohoods. The order in `config/layers.json` sets the order in the tab, and `"default": true` picks the one it opens with. Census tracts carry their analysis neighborhood and 2022 supervisor district, which is useful later for comparing how the sets overlap.
+The Neighborhood tab offers the neighborhood sets in the order above — SF Find first and as the default, since its names match the most Airtable values, then Analysis, Planning, Realtor, and the Who's on First neighbourhoods. The order in `config/layers.json` sets the order in the tab, and `"default": true` picks the one it opens with. Census tracts carry their analysis neighborhood and 2022 supervisor district, which is useful later for comparing how the sets overlap.
 
 ### Refreshing them
 
@@ -109,6 +108,8 @@ Each change that's merged is a new version:
 1. Bump `_BUILD_VERSION` at the top of `js/app.js` (`v5` → `v6`).
 2. Add a `## v6` section at the top of `CHANGELOG.md` saying what changed, in terms someone using the map would notice.
 3. Merge the PR. The **Tag version** action (`.github/workflows/tag-version.yml`) reads `_BUILD_VERSION` and tags the merge commit `v6`.
+
+To tag an older commit, run the action by hand: **Actions → Tag version → Run workflow**, with the tag (`v1`) and the commit SHA.
 
 ## License
 

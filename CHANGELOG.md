@@ -2,6 +2,18 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v11
+- **Fixed: areas with rows left uncolored after switching neighborhood sets.** Clearing the old set's map state raced with the new set's colors and wiped some of them; toggling Location redrew them. Up to 20 of the 41 analysis neighborhoods were affected in testing; now none are.
+- **Areas with no value are clear** instead of filled, so the basemap shows through. The legend shows them as an empty box.
+- **Areas and Features buttons next to the tabs** hide and show the polygons and the file's rows. Clicking any tab brings hidden areas back.
+- **Hovering an area in the list only outlines it**; its rows no longer light up. Hovering a row in an expanded area (a school, a block party) still enlarges that row on the map.
+- **Lines are more prominent:** a dark casing under a wider colored core by default (what hovering looked like in v10). Hovered lines grow bigger still, in yellow.
+- **Label color:** Map → Color: **Auto** (black or white per area, as in v10) · **Black** (white glow) · **White** (dark glow) · **Magenta** (aqua glow) · **Aqua** (magenta glow). Applies to area and row labels; remembered and saved in snapshots.
+- **Labels collapse:** the label field lists in Map and Format features have a ▸/▾ and show what's chosen when closed. Format features labels start closed.
+- **Who's on First macrohoods** are out of the Neighborhood menu for now (the data is still in `data/wof/`).
+- The top bar fits on one line: the tabs scroll if they run out of room, and **Save snapshot** is now **Save**.
+- The **Tag version** action can be run by hand (Actions → Tag version → Run workflow) to tag an older commit.
+
 ## v10
 - **Areas over or under the basemap:** Map → Show → **Auto · Over · Under roads**. Under draws the area colors beneath the basemap's water, roads and buildings, with the outlines still on top. Auto puts hexagons under (their grid ignores the coastline and streets) and named areas over, as before. Saved in snapshots.
 - **Streets over the areas sooner:** major roads and highways from zoom 13, every street from 14 (was 14). Street names from zoom 14 (was 15).
