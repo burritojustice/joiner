@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v10';
+const _BUILD_VERSION = 'v11';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -16,7 +16,14 @@ const CONFIG = {
         blues:  { label: 'Blues', ramp: ['#86b6ef', '#5598e7', '#2a78d6', '#1c5cab', '#0d366b'], rows: '#E8590C' },
         ylorrd: { label: 'Yellow–red', ramp: ['#feb24c', '#fd8d3c', '#fc4e2a', '#e31a1c', '#800026'], rows: '#1c5cab' },
     },
-    nodata: '#F0EFEC',
+    nodata: '#F0EFEC',         // 0 / no value in the list and legend; on the map those areas are left clear
+    // Area and row label colors: text, halo, halo width. Auto picks black or white per area.
+    labelColors: {
+        black:   { text: '#1E2340', halo: 'rgba(255,255,255,0.92)', width: 1.4 },
+        white:   { text: '#ffffff', halo: 'rgba(10,22,56,0.6)', width: 1.2 },
+        magenta: { text: '#D4007F', halo: 'rgba(150,250,255,0.95)', width: 1.6 },
+        aqua:    { text: '#00B8C8', halo: 'rgba(120,0,80,0.85)', width: 1.4 },
+    },
     popupRows: 8,
     fonts: { bold: ['Noto Sans Medium'], regular: ['Noto Sans Regular'] },
     labelSizes: { small: { areas: 12, rows: 11 }, medium: { areas: 14, rows: 12.5 }, large: { areas: 16, rows: 14 } },
@@ -78,6 +85,7 @@ const S = {
     basemap: { roads: true, hoodLabels: true, points: true },
     palette: 'blues',
     labelSize: 'small',
+    labelColor: 'auto',   // 'auto' | 'black' | 'white' | 'magenta' | 'aqua'
     rowStyle: { colorBy: '', labels: [], sizeBy: '', sizeLog: false },   // Format features: color rows by a column, label them with columns
     rowClasses: null,     // { type: 'numeric'|'category', colors, ranges|cats, classOf(row) }
     expanded: null,       // area id expanded in the list
@@ -115,6 +123,7 @@ async function boot() {
     S.tabChoice[S.layers.get(first).tab] = first;
     S.basemap = { ...S.basemap, ...store.get('basemap', {}) };
     S.palette = CONFIG.palettes[store.get('palette', 'blues')] ? store.get('palette', 'blues') : 'blues';
+    S.labelColor = store.get('labelColor', 'auto'); if (S.labelColor !== 'auto' && !CONFIG.labelColors[S.labelColor]) S.labelColor = 'auto';
     S.labelSize = CONFIG.labelSizes[store.get('labelSize', 'small')] ? store.get('labelSize', 'small') : 'small';
     S.showAreas = store.get('showAreas', true);
     S.areaOrder = ['auto', 'over', 'under'].includes(store.get('areaOrder', 'auto')) ? store.get('areaOrder', 'auto') : 'auto';
@@ -247,19 +256,20 @@ function addMapLayers() {
     addStreetsOverAreas(before);
     // Lines get thicker as you zoom in, most of all from the zoom where streets draw over the areas.
     const isLine = ['==', ['geometry-type'], 'LineString'];
-    const lineW = k => ['interpolate', ['linear'], ['zoom'], 12, 2.5 * k, 14, 4 * k, 16, 7 * k, 18, 10 * k];
+    const lineW = k => ['interpolate', ['linear'], ['zoom'], 12, 4.5 * k, 14, 7 * k, 16, 11 * k, 18, 14 * k];
     map.addLayer({ id: 'rows-fill', type: 'fill', source: 'rows', filter: ['all', isPoly, ['get', '_in']], paint: { 'fill-opacity': 0.18 } });
     // Lines from the file draw from linesFromZoom; zoomed out, each line is a dot at its midpoint.
     map.addLayer({ id: 'rows-line-glow', type: 'line', source: 'rows', filter: ['all', ['!', isPt], ['!', isLine]], paint: { 'line-width': 6, 'line-blur': 2.5, 'line-opacity': 0.9 } });
-    map.addLayer({ id: 'rows-sline-glow', type: 'line', source: 'rows', minzoom: CONFIG.linesFromZoom, filter: isLine,
-        paint: { 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 6.5, 14, 9, 16, 13, 18, 17], 'line-blur': 2.5, 'line-opacity': 0.9 } });
+    // Lines: a dark casing under a colored core.
+    map.addLayer({ id: 'rows-sline-casing', type: 'line', source: 'rows', minzoom: CONFIG.linesFromZoom, filter: isLine,
+        layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': CONFIG.hover.ring, 'line-width': lineW(1.55), 'line-opacity': 0.85 } });
     map.addLayer({ id: 'rows-line', type: 'line', source: 'rows', filter: ['all', ['!', isPt], ['!', isLine], ['get', '_in']], paint: { 'line-width': 2.5, 'line-opacity': 0.9 } });
     map.addLayer({ id: 'rows-line-out', type: 'line', source: 'rows', filter: ['all', ['!', isPt], ['!', isLine], ['!', ['get', '_in']]],
         paint: { 'line-width': 2.5, 'line-opacity': 0.9, 'line-dasharray': [2, 2] } });
     map.addLayer({ id: 'rows-sline', type: 'line', source: 'rows', minzoom: CONFIG.linesFromZoom, filter: ['all', isLine, ['get', '_in']],
         layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-width': lineW(1), 'line-opacity': 0.95 } });
     map.addLayer({ id: 'rows-sline-out', type: 'line', source: 'rows', minzoom: CONFIG.linesFromZoom, filter: ['all', isLine, ['!', ['get', '_in']]],
-        paint: { 'line-width': lineW(0.8), 'line-opacity': 0.95, 'line-dasharray': [1.5, 1] } });
+        paint: { 'line-width': lineW(1), 'line-opacity': 0.95, 'line-dasharray': [1.2, 0.8] } });
     // Points, and line midpoints below linesFromZoom (features with _mid).
     const stroke = ['interpolate', ['linear'], ['zoom'], 10, ['case', ['get', '_in'], 0.8, 1.8], 14, ['case', ['get', '_in'], 1.4, 2.2]];
     map.addLayer({ id: 'rows-mid', type: 'circle', source: 'rows', maxzoom: CONFIG.linesFromZoom, filter: ['get', '_mid'],
@@ -269,7 +279,7 @@ function addMapLayers() {
     // Highlight: rows in the area under the cursor (map or list), or the row hovered in an expanded list.
     map.addSource('rows-hl', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     // Hovered rows draw bigger, in yellow with a dark ring, above every other row.
-    const hlW = k => ['interpolate', ['linear'], ['zoom'], 10, 4 * k, 14, 7 * k, 16, 11 * k];
+    const hlW = k => ['interpolate', ['linear'], ['zoom'], 10, 5 * k, 12, 7 * k, 14, 10.5 * k, 16, 16 * k, 18, 20 * k];
     map.addLayer({ id: 'rows-hl-casing', type: 'line', source: 'rows-hl', filter: ['!=', ['geometry-type'], 'Point'],
         layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': CONFIG.hover.ring, 'line-width': hlW(1.6) } });
     map.addLayer({ id: 'rows-hl-line', type: 'line', source: 'rows-hl', filter: ['!=', ['geometry-type'], 'Point'],
@@ -291,6 +301,7 @@ function addMapLayers() {
         'text-offset': [0.8, 0], 'text-justify': 'left', 'text-max-width': 12, 'text-padding': 2, 'text-optional': true,
     }, paint: { 'text-color': '#1E2340', 'text-halo-color': 'rgba(255,255,255,0.95)', 'text-halo-width': 1.4 } });
     applyLabelSize();
+    applyLabelColor();
 
     // One handler for areas and rows: a row under the cursor wins over the area beneath it.
     const ROW_LAYERS = ['rows-point', 'rows-mid', 'rows-line', 'rows-line-out', 'rows-sline', 'rows-sline-out', 'rows-fill'];
@@ -334,7 +345,7 @@ const rowCategorical = () => CONFIG.categorical.filter(c => S.palette === 'blues
 function applyPalette() {
     const p = pal();
     map.setPaintProperty('bounds-fill', 'fill-color',
-        ['match', ['coalesce', ['feature-state', 'c'], -1], ...p.ramp.flatMap((c, i) => [i, c]), CONFIG.nodata]);
+        ['match', ['coalesce', ['feature-state', 'c'], -1], ...p.ramp.flatMap((c, i) => [i, c]), 'rgba(0,0,0,0)']);
     // Rows: one contrasting color, or one per class when colored by a column (property _k).
     const rc = S.rowClasses;
     const colors = rc ? rc.colors : [p.rows];
@@ -344,7 +355,7 @@ function applyPalette() {
     map.setPaintProperty('rows-fill', 'fill-color', color);
     map.setPaintProperty('rows-line', 'line-color', color);
     for (const id of ['rows-line', 'rows-line-out', 'rows-sline', 'rows-sline-out']) map.setPaintProperty(id, 'line-color', color);
-    for (const id of ['rows-line-glow', 'rows-sline-glow']) map.setPaintProperty(id, 'line-color', glow);
+    map.setPaintProperty('rows-line-glow', 'line-color', glow);
     for (const id of ['rows-point', 'rows-mid']) {
         map.setPaintProperty(id, 'circle-color', ['case', ['get', '_in'], color, '#ffffff']);
         // Light colors (the pale ends of a ramp, yellow) get a dark ring instead of a white one.
@@ -441,8 +452,11 @@ async function setLayer(id) {
     applyAreaOrder();
     // Thousands of hexagons: keep their outlines light.
     map.setPaintProperty('bounds-line', 'line-opacity', meta.hex ? 0.22 : 0.5);
+    // Clear hover and selection by id. removeFeatureState({ source }) here was applied after the
+    // new layer's colors were set in the same frame, wiping some of them (areas with rows left blank).
+    if (S.selectedId !== null) map.setFeatureState({ source: 'bounds', id: S.selectedId }, { selected: false });
+    if (S.hoverId !== null) map.setFeatureState({ source: 'bounds', id: S.hoverId }, { hover: false });
     S.selectedId = null; S.hoverId = null; S.expanded = null; popup.remove();
-    map.removeFeatureState({ source: 'bounds' });
     map.getSource('bounds').setData(fc);
     $('list-title').textContent = shortLabel(meta);
     recompute();
@@ -815,6 +829,8 @@ const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p
 // Label colors on an area: dark text with a white halo on light fills, white text with a dark
 // halo on dark ones, whichever has more contrast. With the areas hidden, labels are dark.
 function labelColors(id) {
+    const fixed = CONFIG.labelColors[S.labelColor];
+    if (fixed) return { _lc: fixed.text, _hc: fixed.halo, _hw: fixed.width };
     const c = S.classes && S.showAreas ? S.classes.classOf(S.values.get(id)) : -1;
     const fill = c >= 0 ? ramp()[c] : CONFIG.nodata, ink = '#1E2340';
     return contrast('#ffffff', fill) > contrast(ink, fill)
@@ -838,6 +854,7 @@ function renderLabelControls() {
     const hints = [];
     for (let i = 2; i < n; i++) hints.push(`line ${i + 1} from zoom ${S.homeZoom + CONFIG.revealAfter + (i - 2) * CONFIG.revealStep}`);
     if (hints.length) hints[0] = hints[0][0].toUpperCase() + hints[0].slice(1);
+    $('labels-n').textContent = activeLabelFields().map(f => f.label).join(', ') || 'none';
     $('label-hint').textContent = hints.length ? hints.join(', ') + '.' : '';
     $('prefix-check').checked = S.prefix;
     $('prefix-zoom').value = S.prefixZoom;
@@ -874,6 +891,7 @@ function renderFormatFeatures() {
         : `${fmtNum(z.min)} to ${fmtNum(z.max)}; ` + (z.log ? 'log scale, so small values stay visible.' : 'circle area follows the value.');
     $('psize-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.psize === S.pointSize));
     const labs = S.rowStyle.labels;
+    $('rowlabels-n').textContent = labs.length ? labs.join(', ') : 'none';
     $('row-label-chips').innerHTML = cols.map(c => {
         const i = labs.indexOf(c);
         return `<button type="button" class="chip" data-col="${esc(c)}" title="${esc(c)}" aria-pressed="${i >= 0}">${i >= 0 ? `<b>${i + 1}</b>` : ''}<span>${esc(c)}</span></button>`;
@@ -937,6 +955,7 @@ function renderPanel() {
         }
     }
     $('clear-btn').hidden = !S.src;
+    syncBarToggles();
     renderList();
 }
 
@@ -989,7 +1008,7 @@ function renderLegend() {
     const nZero = [...S.values.values()].filter(v => !(v > 0)).length;
     lg.innerHTML = `<h4>${esc(metricLabel())}</h4>` + [...(S.classes?.ranges || [])].reverse().map(r =>
         `<div class="row"><i style="background:${ramp()[r.c]}"></i><span>${r.lo === r.hi ? fmt(r.hi) : `${fmt(r.lo)} – ${fmt(r.hi)}`}</span><span class="n">${r.n}</span></div>`).join('')
-        + `<div class="row"><i style="background:${CONFIG.nodata}"></i><span>${zeroLabel}</span><span class="n">${nZero}</span></div>`
+        + `<div class="row"><i class="clear"></i><span>${zeroLabel}</span><span class="n">${nZero}</span></div>`
         + `<div class="foot">Natural breaks · areas per class</div>` + rowLegendHTML();
 }
 
@@ -1198,10 +1217,24 @@ function updateRowLayer() {
 
 function applyAreasVisible() {
     const v = S.showAreas ? 'visible' : 'none';
+    syncBarToggles();
     for (const id of ['bounds-fill', 'bounds-glow', 'bounds-line', 'bounds-hl', 'area-labels']) map.setLayoutProperty(id, 'visibility', v);
     store.set('showAreas', S.showAreas);
     updateLabels();
     renderLegend();
+}
+
+// Areas / Features buttons next to the tabs (pressed = shown).
+function syncBarToggles() {
+    const a = $('areas-toggle'), f = $('features-toggle');
+    a.setAttribute('aria-pressed', S.showAreas); a.title = S.showAreas ? 'Hide the areas' : 'Show the areas';
+    $('areas-check').checked = S.showAreas;
+    f.hidden = !S.src?.geoms;
+    f.setAttribute('aria-pressed', !!S.basemap.points); f.title = S.basemap.points ? 'Hide the features from the file' : 'Show the features from the file';
+}
+function setFeaturesVisible(on) {
+    S.basemap.points = on; store.set('basemap', S.basemap);
+    updateRowLayer(); renderFormatFeatures(); syncBarToggles();
 }
 
 function clearFile() {
@@ -1222,6 +1255,15 @@ function renderHexControls() {
     const km = h3.getHexagonEdgeLengthAvg(S.hexRes, 'km');
     $('hex-hint').textContent = `Resolution ${S.hexRes}: hexagons about ${km >= 1 ? km.toFixed(1) + ' km' : Math.round(km * 1000) + ' m'} across each side.`
         + (S.hex.auto ? ' Auto picks a finer grid as you zoom in.' : '');
+}
+
+function applyLabelColor() {
+    const z = CONFIG.labelColors[S.labelColor] || CONFIG.labelColors.black;
+    map.setPaintProperty('rows-labels', 'text-color', z.text);
+    map.setPaintProperty('rows-labels', 'text-halo-color', z.halo);
+    map.setPaintProperty('rows-labels', 'text-halo-width', z.width);
+    $('lcolor-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.lcolor === S.labelColor));
+    updateLabels();
 }
 
 function applyLabelSize() {
@@ -1294,6 +1336,7 @@ async function loadFile(file) {
             if (st.hex) S.hex = { ...S.hex, ...st.hex };
             if (['auto', 'over', 'under'].includes(st.areaOrder)) { S.areaOrder = st.areaOrder; applyAreaOrder(); }
             if (st.labelSize && CONFIG.labelSizes[st.labelSize]) { S.labelSize = st.labelSize; applyLabelSize(); }
+            if (st.labelColor && (st.labelColor === 'auto' || CONFIG.labelColors[st.labelColor])) { S.labelColor = st.labelColor; applyLabelColor(); }
             if (st.labels) { S.labels = st.labels.fields ?? null; S.prefix = st.labels.prefix ?? S.prefix; S.prefixZoom = st.labels.prefixZoom ?? S.prefixZoom; }
             if (st.layerId && S.layers.has(st.layerId) && st.layerId !== S.layerId) { await setLayer(st.layerId); return; }
         }
@@ -1306,7 +1349,7 @@ async function loadFile(file) {
 }
 
 function saveSnapshot() {
-    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, pointSize: S.pointSize, hex: S.hex, areaOrder: S.areaOrder,
+    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, labelColor: S.labelColor, pointSize: S.pointSize, hex: S.hex, areaOrder: S.areaOrder,
         labels: { fields: S.labels, prefix: S.prefix, prefixZoom: S.prefixZoom } });
     const blob = new Blob([JSON.stringify(snap)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -1321,6 +1364,8 @@ function saveSnapshot() {
 // ═════════════════════════════════════════════════════════════════════════
 function wireUI() {
     $('tabs').addEventListener('click', e => {
+        // Clicking any tab brings hidden areas back.
+        if (e.target.closest('.tab') && !S.showAreas) { S.showAreas = true; applyAreasVisible(); }
         if (e.target.closest('select')) return;
         const tab = e.target.closest('.tab')?.dataset.tab;
         if (tab && S.layers.get(S.layerId).tab !== tab) setLayer(S.tabChoice[tab]);
@@ -1392,7 +1437,14 @@ function wireUI() {
         S.palette = b.dataset.palette; store.set('palette', S.palette);
         updateRowLayer(); paint(); renderList(); renderPaletteSeg(); renderFormatFeatures(); updateLabels();
     };
-    $('points-check').onchange = e => { S.basemap.points = e.target.checked; store.set('basemap', S.basemap); updateRowLayer(); renderFormatFeatures(); };
+    $('points-check').onchange = e => setFeaturesVisible(e.target.checked);
+    $('areas-toggle').onclick = () => { S.showAreas = !S.showAreas; applyAreasVisible(); };
+    $('features-toggle').onclick = () => setFeaturesVisible(!S.basemap.points);
+    $('lcolor-seg').onclick = e => {
+        const b = e.target.closest('button'); if (!b) return;
+        S.labelColor = b.dataset.lcolor; store.set('labelColor', S.labelColor);
+        applyLabelColor();
+    };
     $('row-color').onchange = e => { S.rowStyle.colorBy = e.target.value; updateRowLayer(); renderFormatFeatures(); };
     $('row-label-chips').onclick = e => {
         const b = e.target.closest('.chip'); if (!b) return;
@@ -1406,7 +1458,7 @@ function wireUI() {
         applyLabelSize(); renderLabelControls();
     };
     // Remember which panel cards are open.
-    for (const id of ['fmt-card', 'labels-card']) {
+    for (const id of ['fmt-card', 'labels-card', 'labels-sub', 'rowlabels-sub']) {
         const el = $(id), open = store.get('open.' + id, null);
         if (open !== null) el.open = open;
         el.addEventListener('toggle', () => store.set('open.' + id, el.open));
@@ -1438,8 +1490,9 @@ function wireUI() {
     list.addEventListener('mouseover', e => {
         const li = e.target.closest('li[data-id]'); if (!li) return;
         setHover(li.dataset.id);
+        // Only a row in an expanded area is enlarged on the map; hovering the area just outlines it.
         const item = e.target.closest('.items li[data-row]');
-        hlRows(item && item.dataset.row !== '' ? { row: +item.dataset.row } : { area: li.dataset.id });
+        hlRows(item && item.dataset.row !== '' ? { row: +item.dataset.row } : null);
     });
     list.addEventListener('mouseleave', () => { setHover(null); hlRows(null); });
 

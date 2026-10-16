@@ -19,12 +19,16 @@
       <span>Joiner</span>
     </a>
     <nav class="tabs" id="tabs" aria-label="Boundaries"></nav>
+    <div class="bar-toggles" role="group" aria-label="Show on the map">
+      <button type="button" class="tog" id="areas-toggle" aria-pressed="true"><i aria-hidden="true"></i>Areas</button>
+      <button type="button" class="tog" id="features-toggle" aria-pressed="true" hidden><i aria-hidden="true"></i>Features</button>
+    </div>
     <div class="bar-actions">
       <a class="version" id="version" href="https://github.com/civic-joy-fund/joiner/blob/main/CHANGELOG.md" target="_blank" rel="noopener" title="What changed"></a>
       <span class="source-chip" id="source-chip" hidden></span>
       <button class="chip-x" id="clear-btn" type="button" hidden title="Remove the loaded file" aria-label="Remove the loaded file">✕</button>
       <button class="btn" id="load-btn" type="button">Load data</button>
-      <button class="btn ghost" id="save-btn" type="button" disabled title="Save the loaded rows and settings to a file you can reopen later">Save snapshot</button>
+      <button class="btn ghost" id="save-btn" type="button" disabled title="Save a snapshot: the loaded rows and settings, in a file you can reopen later">Save</button>
       <input type="file" id="file-input" accept=".csv,.tsv,.txt,.json,.geojson" hidden>
     </div>
   </header>
@@ -102,23 +106,32 @@
           <button type="button" data-psize="tiny">Tiny</button><button type="button" data-psize="small">Small</button><button type="button" data-psize="medium">Medium</button><button type="button" data-psize="big">Big</button><button type="button" data-psize="huge">Huge</button>
         </div>
       </div>
-      <div class="field">
-        <label>Labels</label>
+      <details class="sub" id="rowlabels-sub">
+        <summary>Labels <span class="n" id="rowlabels-n"></span></summary>
         <div class="chips" id="row-label-chips" role="group" aria-label="Row labels"></div>
         <p class="hint">Shown from zoom 13, next to each row. Lines show as a dot at their middle until zoom 12.</p>
-      </div>
+      </details>
     </details>
 
     <details class="card labels-card" id="labels-card" open>
       <summary>Map</summary>
-      <div class="chips" id="label-chips" role="group" aria-label="Label lines"></div>
-      <p class="hint"><span id="label-hint"></span> <button class="linkish" id="label-auto" type="button" hidden>Reset</button></p>
+      <details class="sub" id="labels-sub" open>
+        <summary>Labels <span class="n" id="labels-n"></span></summary>
+        <div class="chips" id="label-chips" role="group" aria-label="Label lines"></div>
+        <p class="hint"><span id="label-hint"></span> <button class="linkish" id="label-auto" type="button" hidden>Reset</button></p>
+      </details>
       <label class="check"><input type="checkbox" id="prefix-check"> Prefixes from zoom <b id="prefix-zoom-val"></b>
         <input type="range" id="prefix-zoom" min="10" max="17" step="1" aria-label="Zoom for label prefixes"></label>
       <div class="basemap-opts tight">
         <span>Size</span>
         <div class="seg" id="size-seg" role="group" aria-label="Label size">
           <button type="button" data-size="small">Small</button><button type="button" data-size="medium">Medium</button><button type="button" data-size="large">Large</button>
+        </div>
+      </div>
+      <div class="basemap-opts tight">
+        <span>Color</span>
+        <div class="seg lcolor" id="lcolor-seg" role="group" aria-label="Label color">
+          <button type="button" data-lcolor="auto" title="Black or white, whichever reads better on each area">Auto</button><button type="button" data-lcolor="black" title="Black text, white glow">Black</button><button type="button" data-lcolor="white" title="White text, dark glow">White</button><button type="button" data-lcolor="magenta" title="Magenta text, aqua glow">Magenta</button><button type="button" data-lcolor="aqua" title="Aqua text, magenta glow">Aqua</button>
         </div>
       </div>
       <p class="hint">Now at zoom <span id="zoom-now"></span></p>

@@ -180,27 +180,6 @@
       "short": "WOF Neighbourhoods"
     },
     {
-      "id": "wof_macrohoods",
-      "label": "Who's on First Macrohoods (4)",
-      "tab": "Neighborhood",
-      "localFiles": [
-        "data/wof/macrohoods.geojson"
-      ],
-      "page": "https://spelunker.whosonfirst.org/id/85922583/descendants/?placetype=macrohood",
-      "key": "name",
-      "name": "name",
-      "keep": [
-        "name",
-        "wof_id"
-      ],
-      "expectCount": 4,
-      "match": {
-        "caseInsensitive": true,
-        "collapseSpace": true
-      },
-      "short": "WOF Macrohoods"
-    },
-    {
       "id": "census_tracts",
       "label": "Census Tracts 2020",
       "tab": "Census Tract",
