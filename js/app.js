@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v9';
+const _BUILD_VERSION = 'v10';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -27,8 +27,12 @@ const CONFIG = {
     highlight: '#6D4AF5',
     hexAutoRes: z => Math.max(5, Math.min(10, Math.round(z * 0.75 - 0.5))),   // H3 resolution for a map zoom
     hexRange: [5, 10],
-    streetsOverZoom: 14,       // streets draw above the areas from here in
-    streetNamesZoom: 15,       // and are named from here in
+    // Streets draw above the areas: major roads and highways from streetsMajorZoom, every street
+    // from streetsOverZoom; all are named from streetNamesZoom.
+    streetsMajorZoom: 13,
+    streetsOverZoom: 14,
+    streetNamesZoom: 14,
+    hover: { fill: '#FFC53D', ring: '#1E2340' },   // hovered rows: Civic Joy sun yellow, ink ring
     // Categorical colors for rows, in the validated order (dataviz reference palette).
     categorical: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'],
     other: '#8a8a85',
@@ -83,6 +87,7 @@ const S = {
     selectedId: null,
     showAreas: true,      // draw the joining polygons (off = features only)
     pointSize: 'small',
+    areaOrder: 'auto',    // areas over or under the basemap's water and roads: 'auto' | 'over' | 'under'
     hex: { auto: true, res: 8 },   // H3 layer: resolution follows the zoom, or a fixed one
 };
 
@@ -112,6 +117,7 @@ async function boot() {
     S.palette = CONFIG.palettes[store.get('palette', 'blues')] ? store.get('palette', 'blues') : 'blues';
     S.labelSize = CONFIG.labelSizes[store.get('labelSize', 'small')] ? store.get('labelSize', 'small') : 'small';
     S.showAreas = store.get('showAreas', true);
+    S.areaOrder = ['auto', 'over', 'under'].includes(store.get('areaOrder', 'auto')) ? store.get('areaOrder', 'auto') : 'auto';
     S.pointSize = CONFIG.pointSizes[store.get('pointSize', 'small')] ? store.get('pointSize', 'small') : 'small';
     S.hex = { ...S.hex, ...store.get('hex', {}) };
     const lab = store.get('labels', null);
@@ -131,6 +137,7 @@ async function boot() {
     addMapLayers();
     applyBasemapToggles();   // after addMapLayers, so the street copies follow the Roads toggle too
     applyAreasVisible();
+    renderOrderSeg();
     wireUI();
     map.on('zoom', updateZoomReadout);
     map.on('zoomend', () => { if (isHex(S.layerId) && S.hex.auto && hexResNow() !== S.hexRes) setLayer(S.layerId); });
@@ -176,21 +183,42 @@ function fixCreeks() {
     } catch (e) { console.warn('[creek filter]', e); }
 }
 
-// From streetsOverZoom in, copies of the basemap's street lines draw above the colored areas
-// (and below the basemap's labels, so street names stay on top), so blocks read when zoomed in.
+// Copies of the basemap's street lines draw above the colored areas (and below the basemap's
+// labels, so street names stay on top), so blocks read when zoomed in: major roads, highways
+// and their links from streetsMajorZoom, every street from streetsOverZoom.
+const isMajorRoad = id => /(major|highway|link)/.test(id);
 function addStreetsOverAreas(beforeId) {
     for (const l of styleLayers()) {
         if (l.type !== 'line' || l['source-layer'] !== 'roads') continue;
         const copy = JSON.parse(JSON.stringify(l));
         copy.id = 'over_' + l.id;
-        copy.minzoom = Math.max(CONFIG.streetsOverZoom, l.minzoom || 0);
+        copy.minzoom = Math.max(isMajorRoad(l.id) ? CONFIG.streetsMajorZoom : CONFIG.streetsOverZoom, l.minzoom || 0);
         map.addLayer(copy, beforeId);
     }
 }
 
+// Areas draw over the basemap (as before) or under its water, roads and buildings, with their
+// outlines still on top. Auto: under for hexagons, whose grid ignores the coastline and streets;
+// over for named areas.
+const areasUnder = () => S.areaOrder === 'under' || (S.areaOrder === 'auto' && isHex(S.layerId));
+function applyAreaOrder() {
+    if (!map.getLayer('bounds-fill')) return;
+    const water = styleLayers().find(l => l['source-layer'] === 'water')?.id;
+    map.moveLayer('bounds-fill', areasUnder() && water ? water : 'bounds-glow');
+    applyBasemapToggles();   // the street copies are redundant when the areas are under the streets
+    renderOrderSeg();
+}
+function renderOrderSeg() {
+    const el = $('order-seg'); if (!el) return;
+    el.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.order === S.areaOrder));
+    const a = el.querySelector('[data-order="auto"]');
+    if (a) a.textContent = `Auto (${areasUnder() ? 'under' : 'over'})`;
+}
+
 function applyBasemapToggles() {
     const vis = on => on ? 'visible' : 'none';
-    for (const id of roadLayers()) if (id !== 'roads_shields' && id !== 'roads_oneway') map.setLayoutProperty(id, 'visibility', vis(S.basemap.roads));
+    for (const id of roadLayers()) if (id !== 'roads_shields' && id !== 'roads_oneway')
+        map.setLayoutProperty(id, 'visibility', vis(S.basemap.roads && !(id.startsWith('over_') && areasUnder())));
     for (const id of hoodLabelLayers()) map.setLayoutProperty(id, 'visibility', vis(S.basemap.hoodLabels));
     store.set('basemap', S.basemap);
 }
@@ -240,18 +268,22 @@ function addMapLayers() {
         paint: { 'circle-stroke-width': stroke, 'circle-opacity': 1 } });
     // Highlight: rows in the area under the cursor (map or list), or the row hovered in an expanded list.
     map.addSource('rows-hl', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    // Hovered rows draw bigger, in yellow with a dark ring, above every other row.
+    const hlW = k => ['interpolate', ['linear'], ['zoom'], 10, 4 * k, 14, 7 * k, 16, 11 * k];
+    map.addLayer({ id: 'rows-hl-casing', type: 'line', source: 'rows-hl', filter: ['!=', ['geometry-type'], 'Point'],
+        layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': CONFIG.hover.ring, 'line-width': hlW(1.6) } });
     map.addLayer({ id: 'rows-hl-line', type: 'line', source: 'rows-hl', filter: ['!=', ['geometry-type'], 'Point'],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': CONFIG.highlight, 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 4, 14, 7, 16, 11], 'line-opacity': 0.55 } });
+        layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': CONFIG.hover.fill, 'line-width': hlW(1) } });
     map.addLayer({ id: 'rows-hl-point', type: 'circle', source: 'rows-hl', filter: ['==', ['geometry-type'], 'Point'],
-        paint: { 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': CONFIG.highlight, 'circle-stroke-width': 2.5, 'circle-radius': 6 } });
+        paint: { 'circle-color': CONFIG.hover.fill, 'circle-stroke-color': CONFIG.hover.ring, 'circle-stroke-width': 2, 'circle-radius': 6 } });
     applyPointSize();
     applyPalette();
     // Area labels sit above the basemap's own labels.
     map.addLayer({ id: 'area-labels', type: 'symbol', source: 'labels', layout: {
         'text-field': '', 'text-font': CONFIG.fonts.regular, 'text-size': 12, 'text-line-height': 1.15,
         'text-max-width': 9, 'text-padding': 3, 'symbol-sort-key': ['get', '_rank'],
-    }, paint: { 'text-color': '#1E2340', 'text-halo-color': 'rgba(255,255,255,0.92)', 'text-halo-width': 1.6 } });
+    }, paint: { 'text-color': ['coalesce', ['get', '_lc'], '#1E2340'], 'text-halo-color': ['coalesce', ['get', '_hc'], 'rgba(255,255,255,0.92)'],
+        'text-halo-width': ['coalesce', ['get', '_hw'], 1.4], 'text-halo-blur': 0.4 } });
     // Row labels from Format features, beside each row's point.
     map.addSource('rowlabels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     map.addLayer({ id: 'rows-labels', type: 'symbol', source: 'rowlabels', minzoom: 13, layout: {
@@ -406,6 +438,9 @@ async function setLayer(id) {
     renderTabs();
     const fc = await loadGeo(id);
     renderHexControls();
+    applyAreaOrder();
+    // Thousands of hexagons: keep their outlines light.
+    map.setPaintProperty('bounds-line', 'line-opacity', meta.hex ? 0.22 : 0.5);
     S.selectedId = null; S.hoverId = null; S.expanded = null; popup.remove();
     map.removeFeatureState({ source: 'bounds' });
     map.getSource('bounds').setData(fc);
@@ -578,7 +613,25 @@ function metricOptions() {
     return opts;
 }
 // Record numbers (Airtable autonumber "Id", "Record ID", "project_id") are numeric but not amounts.
-const isIdColumn = col => /^(_airtable_id|id|record ?id|row ?id|unique ?id)$|[\s_-](id|code)$/i.test(col.trim());
+// Also: street segment ids (CNN), addresses, row numbers, ZIPs, parcels and census ids; and,
+// from the data, numbers that count up 1, 2, 3… (row numbers) or are fixed-length codes
+// (every value an integer with the same 5+ digits, mostly unique: CNNs, CDS codes, GEOIDs).
+const ID_NAMES = /^(_airtable_id|id|fid|objectid|record ?id|row ?id|unique ?id|cnn|address|addr|street|source_?row|row|row_?(num|number|no)|index|zip|zip_?code|zipcode|postal_?code|apn|blklot|block|lot|parcel|geoid|fips|tract|phone)$|[\s_-](id|code|cnn|row|zip|address|geoid|fips|number|no)$/i;
+function isIdColumn(col) {
+    if (ID_NAMES.test(col.trim())) return true;
+    if (!S.src) return false;
+    const memo = S.src._idCols || (S.src._idCols = new Map());
+    if (!memo.has(col)) memo.set(col, looksLikeIds(S.src.rows.map(r => JoinKit.cellText(r[col]).trim()).filter(Boolean)));
+    return memo.get(col);
+}
+function looksLikeIds(vals) {
+    if (vals.length < 10 || !vals.every(v => /^\d+$/.test(v))) return false;
+    const nums = vals.map(Number), uniq = new Set(nums);
+    const sorted = [...uniq].sort((a, b) => a - b);
+    if (uniq.size === nums.length && sorted[sorted.length - 1] - sorted[0] === sorted.length - 1) return true;   // 1, 2, 3…
+    const len = vals[0].length;
+    return len >= 5 && vals.every(v => v.length === len) && uniq.size / nums.length > 0.8;
+}
 // Coordinates are numbers but never amounts.
 const isCoordColumn = col => /^(lat|lng|lon|long|latitude|longitude|x|y|point_?[xy])$|[\s_-](lat|lng|lon|latitude|longitude)$/i.test(col.trim());
 const statLabel = s => metricOptions().find(m => m.value === s)?.label || s;
@@ -732,7 +785,7 @@ function updateLabels() {
     const rank = new Map(ranked.map((f, i) => [f.id, i]));
     const features = fc.features.map(f => {
         const texts = fields.map(fl => labelText(fl, f));
-        const props = { _rank: rank.get(f.id) };
+        const props = { _rank: rank.get(f.id), ...labelColors(f.id) };
         zooms.forEach((z, k) => {
             const n = visibleLines(fields.length, z), pre = S.prefix && z >= S.prefixZoom - 1e-6;
             const lines = fields.slice(0, n).map((fl, i) => {
@@ -755,6 +808,18 @@ function updateLabels() {
     map.setLayoutProperty('area-labels', 'text-field', textField);
     // Prefixed lines are long; give them room instead of wrapping mid-phrase.
     map.setLayoutProperty('area-labels', 'text-max-width', S.prefix ? ['step', ['zoom'], 9, S.prefixZoom, 22] : 9);
+}
+
+// Contrast ratio (WCAG) between two colors.
+const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+// Label colors on an area: dark text with a white halo on light fills, white text with a dark
+// halo on dark ones, whichever has more contrast. With the areas hidden, labels are dark.
+function labelColors(id) {
+    const c = S.classes && S.showAreas ? S.classes.classOf(S.values.get(id)) : -1;
+    const fill = c >= 0 ? ramp()[c] : CONFIG.nodata, ink = '#1E2340';
+    return contrast('#ffffff', fill) > contrast(ink, fill)
+        ? { _lc: '#ffffff', _hc: 'rgba(10,22,56,0.45)', _hw: 1 }
+        : { _lc: ink, _hc: 'rgba(255,255,255,0.9)', _hw: 1.4 };
 }
 
 function renderLabelControls() {
@@ -1088,8 +1153,8 @@ function computeRowSizes() {
 const sizeOf = i => S.rowSizes ? S.rowSizes.s[i] : 0;
 
 // Radius at zoom 10 / 13 / 16, times the size setting; sized points range from 0.45× to 2×.
-function radiusExpr(extra = 0) {
-    const m = CONFIG.pointSizes[S.pointSize] || 1;
+function radiusExpr(extra = 0, mul = 1) {
+    const m = (CONFIG.pointSizes[S.pointSize] || 1) * mul;
     const r = base => S.rowSizes ? ['+', extra, ['*', base * m, ['+', 0.45, ['*', 1.55, ['max', 0, ['get', '_s']]]]]] : base * m + extra;
     const [a, b, c] = CONFIG.pointRadius;
     return ['interpolate', ['linear'], ['zoom'], 10, r(a), 13, r(b), 16, r(c)];
@@ -1100,7 +1165,7 @@ function applyPointSize() {
         // Big circles under small ones.
         map.setLayoutProperty(id, 'circle-sort-key', S.rowSizes ? ['-', 0, ['get', '_s']] : 0);
     }
-    map.setPaintProperty('rows-hl-point', 'circle-radius', radiusExpr(3));
+    map.setPaintProperty('rows-hl-point', 'circle-radius', radiusExpr(2, 1.6));
 }
 
 function updateRowLayer() {
@@ -1135,6 +1200,7 @@ function applyAreasVisible() {
     const v = S.showAreas ? 'visible' : 'none';
     for (const id of ['bounds-fill', 'bounds-glow', 'bounds-line', 'bounds-hl', 'area-labels']) map.setLayoutProperty(id, 'visibility', v);
     store.set('showAreas', S.showAreas);
+    updateLabels();
     renderLegend();
 }
 
@@ -1226,6 +1292,7 @@ async function loadFile(file) {
             if (st.rowStyle) S.rowStyle = { colorBy: st.rowStyle.colorBy || '', labels: st.rowStyle.labels || [], sizeBy: st.rowStyle.sizeBy || '', sizeLog: !!st.rowStyle.sizeLog };
             if (st.pointSize && CONFIG.pointSizes[st.pointSize]) S.pointSize = st.pointSize;
             if (st.hex) S.hex = { ...S.hex, ...st.hex };
+            if (['auto', 'over', 'under'].includes(st.areaOrder)) { S.areaOrder = st.areaOrder; applyAreaOrder(); }
             if (st.labelSize && CONFIG.labelSizes[st.labelSize]) { S.labelSize = st.labelSize; applyLabelSize(); }
             if (st.labels) { S.labels = st.labels.fields ?? null; S.prefix = st.labels.prefix ?? S.prefix; S.prefixZoom = st.labels.prefixZoom ?? S.prefixZoom; }
             if (st.layerId && S.layers.has(st.layerId) && st.layerId !== S.layerId) { await setLayer(st.layerId); return; }
@@ -1239,7 +1306,7 @@ async function loadFile(file) {
 }
 
 function saveSnapshot() {
-    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, pointSize: S.pointSize, hex: S.hex,
+    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, pointSize: S.pointSize, hex: S.hex, areaOrder: S.areaOrder,
         labels: { fields: S.labels, prefix: S.prefix, prefixZoom: S.prefixZoom } });
     const blob = new Blob([JSON.stringify(snap)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -1279,6 +1346,11 @@ function wireUI() {
     };
     $('clear-btn').onclick = clearFile;
     $('areas-check').onchange = e => { S.showAreas = e.target.checked; applyAreasVisible(); };
+    $('order-seg').onclick = e => {
+        const b = e.target.closest('button'); if (!b) return;
+        S.areaOrder = b.dataset.order; store.set('areaOrder', S.areaOrder);
+        applyAreaOrder();
+    };
     $('row-size').onchange = e => { S.rowStyle.sizeBy = e.target.value; updateRowLayer(); renderFormatFeatures(); };
     $('size-log').onchange = e => { S.rowStyle.sizeLog = e.target.checked; updateRowLayer(); renderFormatFeatures(); };
     $('psize-seg').onclick = e => {
@@ -1318,7 +1390,7 @@ function wireUI() {
     $('palette-seg').onclick = e => {
         const b = e.target.closest('button'); if (!b) return;
         S.palette = b.dataset.palette; store.set('palette', S.palette);
-        updateRowLayer(); paint(); renderList(); renderPaletteSeg(); renderFormatFeatures();
+        updateRowLayer(); paint(); renderList(); renderPaletteSeg(); renderFormatFeatures(); updateLabels();
     };
     $('points-check').onchange = e => { S.basemap.points = e.target.checked; store.set('basemap', S.basemap); updateRowLayer(); renderFormatFeatures(); };
     $('row-color').onchange = e => { S.rowStyle.colorBy = e.target.value; updateRowLayer(); renderFormatFeatures(); };

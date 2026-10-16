@@ -2,6 +2,15 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v10
+- **Areas over or under the basemap:** Map → Show → **Auto · Over · Under roads**. Under draws the area colors beneath the basemap's water, roads and buildings, with the outlines still on top. Auto puts hexagons under (their grid ignores the coastline and streets) and named areas over, as before. Saved in snapshots.
+- **Streets over the areas sooner:** major roads and highways from zoom 13, every street from 14 (was 14). Street names from zoom 14 (was 15).
+- **Hovered rows are bigger and yellow** with a dark ring (lines get a dark casing) instead of a thin purple ring.
+- **Area labels flip to white** on dark fills (with a light, soft halo), and stay dark with a white halo on light fills, whichever has more contrast.
+- **No more statistics on IDs:** `cnn`, `address`, `source_row`, row numbers, ZIPs, parcels and census ids are no longer offered as amounts or sizes. Also skipped: any column of numbers that count 1, 2, 3…, or fixed-length codes of 5+ digits that are mostly unique.
+- Hexagon outlines are lighter, since there can be thousands of them.
+- JoinKit pinned to the commit that merged burritojustice/maplibre#15.
+
 ## v9
 - **Hexbins tab: H3 hexagons** as a boundary set, covering SF's land plus any cell a row falls in. **Auto** picks the resolution from the zoom (8 at the opening view, 10 from zoom 14), or pick one from 5 to 10. Rows are placed by location (or by a column of H3 cell ids); labels show only on hexagons with rows, and the list shows those hexagons.
 - **Match rows by → Location** is now its own checkbox, with how many rows fall inside an area, so it's available right away and the column menu stays set for when you turn it off.

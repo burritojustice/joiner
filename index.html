@@ -125,6 +125,9 @@
       <div class="basemap-opts">
         <span>Show</span>
         <label class="check"><input type="checkbox" id="areas-check"> Areas</label>
+        <div class="seg" id="order-seg" role="group" aria-label="Draw areas over or under the basemap's water and roads" title="Draw the areas over the basemap, or under its water, roads and buildings (outlines stay on top)">
+          <button type="button" data-order="auto">Auto</button><button type="button" data-order="over">Over</button><button type="button" data-order="under">Under roads</button>
+        </div>
       </div>
       <div class="basemap-opts">
         <span>Basemap</span>
@@ -149,8 +152,8 @@
 <script src="https://unpkg.com/maplibre-gl@5.16.0/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/h3-js@4.4.0/dist/h3-js.umd.js"></script>
-<!-- JoinKit: shared join logic, pinned to a commit (0.2.0, indexed point-in-polygon: burritojustice/maplibre#15) -->
-<script src="https://cdn.jsdelivr.net/gh/burritojustice/maplibre@bf1962c2089e02d7d7164ad21808c311e5646171/joinkit/joinkit.js"></script>
+<!-- JoinKit: shared join logic, pinned to the commit that merged burritojustice/maplibre#15 (0.2.0, indexed point-in-polygon) -->
+<script src="https://cdn.jsdelivr.net/gh/burritojustice/maplibre@696355e21f3546cf7414e6f1c1398a7f7eeb46f1/joinkit/joinkit.js"></script>
 <script src="js/sources.js"></script>
 <script src="js/app.js"></script>
 </body>
