@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v13';
+const _BUILD_VERSION = 'v14';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -40,6 +40,7 @@ const CONFIG = {
     streetsMajorZoom: 13,
     streetsOverZoom: 14,
     streetNamesZoom: 14,
+    streetHintWidth: 0.5, streetHintOpacity: 0.8,   // street copies over the areas: share of the basemap's width
     hover: { fill: '#FFC53D', ring: '#1E2340' },   // hovered rows: Civic Joy sun yellow, ink ring
     // Categorical colors for rows, in the validated order (dataviz reference palette).
     categorical: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'],
@@ -47,7 +48,7 @@ const CONFIG = {
     // Label lines beyond the first two appear as you zoom in: the third one whole zoom
     // level in from the opening view, each further line one level after that. MapLibre
     // evaluates zoom steps in label text at whole tile zooms, so thresholds are integers.
-    revealAfter: 1, revealStep: 1,
+    revealAfter: 0, revealStep: 1,
     prefixAfter: 2,            // default prefix zoom = opening zoom level + this
 };
 
@@ -85,7 +86,8 @@ const S = {
     homeZoom: 12,
     basemap: { roads: true, hoodLabels: true, points: true },
     palette: 'blues',
-    labelSize: 'small',
+    labelSize: 'auto',    // 'auto' (by the size of the areas) | 'small' | 'medium' | 'large'
+    revealAll: false,     // show every label line at once instead of adding them as you zoom in
     labelColor: 'auto',   // 'auto' or a key of CONFIG.labelColors
     rowStyle: { colorBy: '', labels: [], sizeBy: '', sizeLog: false },   // Format features: color rows by a column, label them with columns
     rowClasses: null,     // { type: 'numeric'|'category', colors, ranges|cats, classOf(row) }
@@ -126,7 +128,8 @@ async function boot() {
     S.basemap = { ...S.basemap, ...store.get('basemap', {}) };
     S.palette = CONFIG.palettes[store.get('palette', 'blues')] ? store.get('palette', 'blues') : 'blues';
     S.labelColor = store.get('labelColor', 'auto'); if (S.labelColor !== 'auto' && !CONFIG.labelColors[S.labelColor]) S.labelColor = 'auto';
-    S.labelSize = CONFIG.labelSizes[store.get('labelSize', 'small')] ? store.get('labelSize', 'small') : 'small';
+    { const ls = store.get('labelSize2', 'auto'); S.labelSize = ls === 'auto' || CONFIG.labelSizes[ls] ? ls : 'auto'; }
+    S.revealAll = !!store.get('revealAll', false);
     S.showAreas = store.get('showAreas', true);
     S.hideEmpty = !!store.get('hideEmpty', false);
     S.areaOrder = ['auto', 'over', 'under'].includes(store.get('areaOrder', 'auto')) ? store.get('areaOrder', 'auto') : 'auto';
@@ -207,11 +210,23 @@ function fixCreeks() {
 // labels, so street names stay on top), so blocks read when zoomed in: major roads, highways
 // and their links from streetsMajorZoom, every street from streetsOverZoom.
 const isMajorRoad = id => /(major|highway|link)/.test(id);
+// Just a hint of the network: no casings, half the width, a little transparent. Over areas left
+// clear the copies sit on the basemap's own (wider) roads, so those look unchanged.
+function scaleWidth(w, k) {
+    if (typeof w === 'number') return w * k;
+    if (Array.isArray(w) && (w[0] === 'interpolate' || w[0] === 'interpolate-hcl') && JSON.stringify(w[2]) === '["zoom"]')
+        return [...w.slice(0, 3), ...w.slice(3).map((v, i) => i % 2 ? scaleWidth(v, k) : v)];
+    if (Array.isArray(w) && w[0] === 'step' && JSON.stringify(w[1]) === '["zoom"]')
+        return [w[0], w[1], scaleWidth(w[2], k), ...w.slice(3).map((v, i) => i % 2 ? scaleWidth(v, k) : v)];
+    if (Array.isArray(w)) return ['*', k, w];
+    return w;
+}
 function addStreetsOverAreas(beforeId) {
     for (const l of styleLayers()) {
-        if (l.type !== 'line' || l['source-layer'] !== 'roads') continue;
+        if (l.type !== 'line' || l['source-layer'] !== 'roads' || /casing/.test(l.id)) continue;
         const copy = JSON.parse(JSON.stringify(l));
         copy.id = 'over_' + l.id;
+        copy.paint = { ...copy.paint, 'line-width': scaleWidth(copy.paint?.['line-width'] ?? 1, CONFIG.streetHintWidth), 'line-opacity': CONFIG.streetHintOpacity };
         copy.minzoom = Math.max(isMajorRoad(l.id) ? CONFIG.streetsMajorZoom : CONFIG.streetsOverZoom, l.minzoom || 0);
         map.addLayer(copy, beforeId);
     }
@@ -461,6 +476,7 @@ async function setLayer(id) {
     const fc = await loadGeo(id);
     renderHexControls();
     applyAreaOrder();
+    applyLabelSize();   // Auto size follows the set's typical area
     // Thousands of hexagons: keep their outlines light.
     map.setPaintProperty('bounds-line', 'line-opacity', meta.hex ? 0.22 : 0.5);
     // Clear hover and selection by id. removeFeatureState({ source }) here was applied after the
@@ -806,7 +822,7 @@ function labelFieldOptions() {
 function activeLabelFields() {
     const avail = new Map(labelFieldOptions().map(o => [o.id, o]));
     let ids;
-    if (S.labels) ids = S.labels.filter(id => avail.has(id));
+    if (S.labels) ids = S.labels.filter(id => avail.has(id) && !(id === 'id' && S.layers.get(S.layerId).hex));
     else {
         const meta = S.layers.get(S.layerId);
         ids = [...(meta.hex ? [] : ['id']), ...(S.src && S.join ? [S.metric] : []), ...(meta.labelExtras || []).filter(x => x.default).map(x => 'x:' + x.id)];
@@ -833,11 +849,11 @@ function labelText(field, f) {
 // Zoom thresholds at which the label changes: extra lines appear, then prefixes.
 function labelSteps(nLines) {
     const z = new Set();
-    for (let i = 2; i < nLines; i++) z.add(S.homeZoom + CONFIG.revealAfter + (i - 2) * CONFIG.revealStep);
+    if (!S.revealAll) for (let i = 2; i < nLines; i++) z.add(S.homeZoom + CONFIG.revealAfter + (i - 2) * CONFIG.revealStep);
     if (S.prefix) z.add(S.prefixZoom);
     return [...z].sort((a, b) => a - b);
 }
-const visibleLines = (n, zoom) => n <= 2 ? n : 2 + [...Array(n - 2).keys()].filter(i => zoom >= S.homeZoom + CONFIG.revealAfter + i * CONFIG.revealStep - 1e-6).length;
+const visibleLines = (n, zoom) => n <= 2 || S.revealAll ? n : 2 + [...Array(n - 2).keys()].filter(i => zoom >= S.homeZoom + CONFIG.revealAfter + i * CONFIG.revealStep - 1e-6).length;
 
 function updateLabels() {
     const fc = S.geo.get(S.layerId);
@@ -850,7 +866,8 @@ function updateLabels() {
     const rank = new Map(ranked.map((f, i) => [f.id, i]));
     const features = fc.features.filter(f => !isEmptyArea(f.id)).map(f => {
         const texts = fields.map(fl => labelText(fl, f));
-        const props = { _rank: rank.get(f.id), ...labelColors(f.id) };
+        const a = anchors.get(f.id).area * 111 * 88;
+        const props = { _rank: rank.get(f.id), _ts: Math.max(0.85, Math.min(1.2, Math.sqrt(a / (S._medianArea || a)) ** 0.5)), ...labelColors(f.id) };
         zooms.forEach((z, k) => {
             const n = visibleLines(fields.length, z), pre = S.prefix && z >= S.prefixZoom - 1e-6;
             const lines = fields.slice(0, n).map((fl, i) => {
@@ -903,7 +920,7 @@ function renderLabelControls() {
         : S.allChips ? `<button type="button" class="chip more" data-more="0">fewer</button>` : '');
     const n = active.length;
     const hints = [];
-    for (let i = 2; i < n; i++) hints.push(`line ${i + 1} from zoom ${S.homeZoom + CONFIG.revealAfter + (i - 2) * CONFIG.revealStep}`);
+    if (!S.revealAll) for (let i = 2; i < n; i++) hints.push(`line ${i + 1} from zoom ${S.homeZoom + CONFIG.revealAfter + (i - 2) * CONFIG.revealStep}`);
     if (hints.length) hints[0] = hints[0][0].toUpperCase() + hints[0].slice(1);
     $('labels-n').textContent = activeLabelFields().map(f => f.label).join(', ') || 'none';
     $('label-hint').textContent = hints.length ? hints.join(', ') + '.' : '';
@@ -917,6 +934,7 @@ function renderLabelControls() {
     $('areas-check').checked = S.showAreas;
     renderPaletteSeg();
     $('size-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.size === S.labelSize));
+    $('reveal-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', (b.dataset.reveal === 'all') === S.revealAll));
     renderFormatFeatures();
     updateZoomReadout();
 }
@@ -1325,10 +1343,24 @@ function applyLabelColor() {
     updateLabels();
 }
 
+// Auto: bigger labels for bigger areas. The set's typical area picks the base size (districts
+// ~14px, ZIPs ~13, neighborhoods ~11.5, tracts ~11, fine hexagons 10); each area's own size nudges
+// its label (0.85×–1.2×, property _ts), and labels grow a little as you zoom in.
+function autoLabelBase() {
+    const anchors = S.anchors.get(S.layerId);
+    if (!anchors?.size) return 12;
+    const km2 = [...anchors.values()].map(a => a.area * 111 * 88).sort((a, b) => a - b);   // bbox area, roughly km²
+    S._medianArea = km2[km2.length >> 1];
+    return Math.max(10, Math.min(15, 11.3 + 2.2 * Math.log10(S._medianArea)));
+}
 function applyLabelSize() {
-    const z = CONFIG.labelSizes[S.labelSize] || CONFIG.labelSizes.small;
-    map.setLayoutProperty('area-labels', 'text-size', z.areas);
-    map.setLayoutProperty('rows-labels', 'text-size', z.rows);
+    const fixed = CONFIG.labelSizes[S.labelSize];
+    const auto = autoLabelBase(), base = fixed ? fixed.areas : auto, hz = S.homeZoom;
+    const per = fixed ? 1 : ['coalesce', ['get', '_ts'], 1];
+    map.setLayoutProperty('area-labels', 'text-size',
+        ['interpolate', ['linear'], ['zoom'], hz, ['*', base, per], hz + 4, ['*', base * 1.25, per]]);
+    map.setLayoutProperty('rows-labels', 'text-size', fixed ? fixed.rows : 11);
+    $('size-seg')?.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.size === S.labelSize));
 }
 
 function rowTitle(i) {
@@ -1345,6 +1377,18 @@ function showRowTip(point, i) {
     tip.style.left = point.x + 'px'; tip.style.top = point.y + 'px';
     tip.hidden = false;
 }
+// Hovering a row in an expanded area shows its fields in a card at the map's left edge, level with
+// the row, whether or not the row has a location (rows matched by a column have none).
+function showRowCard(item) {
+    const card = $('rowcard');
+    if (!item) { card.hidden = true; card.dataset.row = ''; return; }
+    const i = +item.dataset.row;
+    if (card.dataset.row !== String(i)) { card.innerHTML = rowPopupHTML(i); card.dataset.row = i; }
+    card.hidden = false;
+    const wrap = card.parentElement.getBoundingClientRect(), r = item.getBoundingClientRect();
+    card.style.top = Math.max(8, Math.min(r.top - wrap.top - 8, wrap.height - card.offsetHeight - 8)) + 'px';
+}
+
 function rowPopupHTML(i) {
     const r = S.src.rows[i], a = areaName(S.rowArea[i]);
     const fields = S.src.headers.filter(h => !h.startsWith('_') && JoinKit.cellText(r[h]) !== '').slice(0, 30);
@@ -1405,7 +1449,8 @@ async function useSource(src, { keep = false } = {}) {
             if (st.hex) S.hex = { ...S.hex, ...st.hex };
             if (typeof st.hideEmpty === 'boolean') S.hideEmpty = st.hideEmpty;
             if (['auto', 'over', 'under'].includes(st.areaOrder)) { S.areaOrder = st.areaOrder; applyAreaOrder(); }
-            if (st.labelSize && CONFIG.labelSizes[st.labelSize]) { S.labelSize = st.labelSize; applyLabelSize(); }
+            if (st.labelSize && (st.labelSize === 'auto' || CONFIG.labelSizes[st.labelSize])) { S.labelSize = st.labelSize; applyLabelSize(); }
+            if (typeof st.revealAll === 'boolean') S.revealAll = st.revealAll;
             if (st.labelColor && (st.labelColor === 'auto' || CONFIG.labelColors[st.labelColor])) { S.labelColor = st.labelColor; applyLabelColor(); }
             if (st.labels) { S.labels = st.labels.fields ?? null; S.prefix = st.labels.prefix ?? S.prefix; S.prefixZoom = st.labels.prefixZoom ?? S.prefixZoom; }
             if (st.layerId && S.layers.has(st.layerId) && st.layerId !== S.layerId) { await setLayer(st.layerId); return; }
@@ -1465,7 +1510,7 @@ function renderAirtable() {
 }
 
 function saveSnapshot() {
-    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, labelColor: S.labelColor, pointSize: S.pointSize, hex: S.hex, areaOrder: S.areaOrder, hideEmpty: S.hideEmpty,
+    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, revealAll: S.revealAll, labelColor: S.labelColor, pointSize: S.pointSize, hex: S.hex, areaOrder: S.areaOrder, hideEmpty: S.hideEmpty,
         labels: { fields: S.labels, prefix: S.prefix, prefixZoom: S.prefixZoom } });
     const blob = new Blob([JSON.stringify(snap)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -1588,9 +1633,14 @@ function wireUI() {
         S.rowStyle.labels = l.includes(c) ? l.filter(x => x !== c) : [...l, c];
         updateRowLayer(); renderFormatFeatures();
     };
+    $('reveal-seg').onclick = e => {
+        const b = e.target.closest('button'); if (!b) return;
+        S.revealAll = b.dataset.reveal === 'all'; store.set('revealAll', S.revealAll);
+        renderLabelControls(); updateLabels();
+    };
     $('size-seg').onclick = e => {
         const b = e.target.closest('button'); if (!b) return;
-        S.labelSize = b.dataset.size; store.set('labelSize', S.labelSize);
+        S.labelSize = b.dataset.size; store.set('labelSize2', S.labelSize);
         applyLabelSize(); renderLabelControls();
     };
     // Remember which panel cards are open.
@@ -1629,8 +1679,9 @@ function wireUI() {
         // Only a row in an expanded area is enlarged on the map; hovering the area just outlines it.
         const item = e.target.closest('.items li[data-row]');
         hlRows(item && item.dataset.row !== '' ? { row: +item.dataset.row } : null);
+        showRowCard(item && item.dataset.row !== '' ? item : null);
     });
-    list.addEventListener('mouseleave', () => { setHover(null); hlRows(null); });
+    list.addEventListener('mouseleave', () => { setHover(null); hlRows(null); showRowCard(null); });
 
     let depth = 0;
     const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
@@ -1648,6 +1699,26 @@ function wireUI() {
     });
 }
 
-window.Joiner = { version: _BUILD_VERSION, state: S, loadFile, ckmeans, get map() { return map; } };   // for debugging in the console
+// Console tool for trying label styles: Joiner.labelStyle({ width: 2.5, blur: 0.5, halo: '#fff', text: '#000' }).
+// Applies to area labels (and row labels with rows: true) until the next Color or Size click, or
+// Joiner.labelStyle('reset'). Returns the settings in effect.
+function labelStyle(o = {}) {
+    if (o === 'reset') { applyLabelColor(); applyLabelSize(); return 'Labels back to the panel settings.'; }
+    const ids = ['area-labels', ...(o.rows ? ['rows-labels'] : [])];
+    const P = { text: 'text-color', halo: 'text-halo-color', width: 'text-halo-width', blur: 'text-halo-blur', opacity: 'text-opacity' };
+    for (const id of ids) {
+        for (const [k, prop] of Object.entries(P)) if (o[k] != null) map.setPaintProperty(id, prop, o[k]);
+        if (o.size != null) map.setLayoutProperty(id, 'text-size', o.size);
+        if (o.font) map.setLayoutProperty(id, 'text-font', [o.font]);
+        if (o.spacing != null) map.setLayoutProperty(id, 'text-letter-spacing', o.spacing);
+    }
+    // The first line of an area label is set in bold inside text-field; o.font changes the other lines.
+    const g = (prop, lay) => JSON.stringify(lay ? map.getLayoutProperty('area-labels', prop) : map.getPaintProperty('area-labels', prop));
+    return { text: g('text-color'), halo: g('text-halo-color'), width: g('text-halo-width'), blur: g('text-halo-blur'), size: g('text-size', 1), font: g('text-font', 1),
+        fonts: ['Noto Sans Regular', 'Noto Sans Medium', 'Noto Sans Italic'],
+        note: 'Halos stop growing past about a quarter of the text size (MapLibre’s glyph buffer).' };
+}
+
+window.Joiner = { version: _BUILD_VERSION, state: S, loadFile, ckmeans, labelStyle, get map() { return map; } };   // for debugging in the console
 boot().catch(e => { console.error(e); alert('Joiner failed to start: ' + e.message); });
 })();

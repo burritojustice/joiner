@@ -264,3 +264,8 @@ details.sub[open] > summary .n { display: none; }
 .at-skipped .check { margin-top: 2px; font-size: 13px; }
 .at-skipped .why { color: var(--ink-soft); font-size: 12px; }
 #at-info { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 8px; }
+
+/* v14: row card beside the list */
+.rowcard { position: absolute; left: 8px; width: 300px; max-height: 60vh; overflow: auto; z-index: 5; pointer-events: none;
+  box-shadow: 0 6px 24px rgba(30,35,64,.22); border-radius: 12px; padding: 12px 14px; }
+.rowcard[hidden] { display: none; }
