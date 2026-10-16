@@ -97,7 +97,13 @@
         <div class="field" id="at-token-row">
           <label for="at-token">Personal access token</label>
           <input id="at-token" type="password" spellcheck="false" placeholder="pat…">
-          <p class="hint">Kept in this tab until it closes, and sent only to Airtable. <a href="https://airtable.com/create/tokens" target="_blank" rel="noopener">Make a token</a> with <code>data.records:read</code> and <code>schema.bases:read</code> for the bases you want to map.</p>
+          <a class="at-make" href="https://airtable.com/create/tokens" target="_blank" rel="noopener">Make a token at airtable.com/create/tokens ↗</a>
+          <ol class="at-steps">
+            <li>Click <b>Create token</b> and give it a name, like “Joiner”.</li>
+            <li>Add the scopes <code>data.records:read</code> and <code>schema.bases:read</code>.</li>
+            <li>Under <b>Access</b>, add the bases you want to map, then copy the token and paste it here.</li>
+          </ol>
+          <p class="at-safe">Treat a token like a password: anyone who has it can read those bases. Keep it out of emails, chats and shared docs. If one gets out, delete it on that same page and make a new one. Joiner keeps it only in this tab until it closes, and sends it only to Airtable.</p>
         </div>
         <p class="hint" id="at-remembered" hidden>Token remembered for this tab. <button class="linkish" id="at-forget" type="button">Forget it</button></p>
         <button class="btn" type="submit" id="at-load">Load from Airtable</button>

@@ -2,6 +2,12 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v16
+- **Blue–red palette** (Area colors): a diverging ramp, blue for the lowest values and red for the highest, with a warm gray middle so it doesn't read as "no value". Rows colored by a number use a purple ramp with it.
+- **The selected area is green**, on the map (a green outline on a white casing) and in the list, so it stands out against Blues, Yellow–red and Blue–red alike.
+- **Getting a token is spelled out** in the Airtable panel: a link to airtable.com/create/tokens, the three steps, and a gentle note to treat a token like a password.
+- **The Value / A–Z switch keeps its shape** when the list title wraps to two or more lines.
+
 ## v15
 - **Table:** a **Table** button next to Areas opens every row in a drawer below the map. Drag its top edge to resize it.
   - Click a column to sort; the row's name column comes first, after the area it's in.

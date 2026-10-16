@@ -9,6 +9,8 @@
   --sun: #FFC53D;
   --grape: #6D4AF5;
   --grape-wash: #EEE9FF;
+  --pick: #00A862;          /* selected area, matches CONFIG.highlight */
+  --pick-wash: #E2F5EA;
   --nodata: #F0EFEC;
   --radius: 14px;
   --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
@@ -97,10 +99,11 @@ button, input, select { font: inherit; color: inherit; }
 .unmatched li span:last-child { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 
 .list-card { flex: 1 0 280px; min-height: 280px; display: flex; flex-direction: column; margin: 12px 12px 12px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
-.list-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px 6px; }
-.list-head h3 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 17px; }
-.seg { display: inline-flex; border: 1.5px solid var(--ink); border-radius: 999px; overflow: hidden; }
-.seg button { border: 0; background: none; font-size: 12.5px; font-weight: 600; padding: 3px 10px; cursor: pointer; }
+.list-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 10px 14px 6px; }
+.list-head h3 { margin: 0; min-width: 0; font-family: var(--display); font-weight: 800; font-size: 17px; line-height: 1.25; overflow-wrap: anywhere; }
+.list-head .seg { margin-top: 1px; }
+.seg { display: inline-flex; flex: none; align-self: flex-start; border: 1.5px solid var(--ink); border-radius: 999px; overflow: hidden; }   /* never squished or stretched by a wrapping neighbor */
+.seg button { border: 0; background: none; font-size: 12.5px; font-weight: 600; padding: 3px 10px; cursor: pointer; white-space: nowrap; }
 .seg button + button { border-left: 1.5px solid var(--ink); }
 .seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
 .area-list { list-style: none; margin: 0; padding: 0 6px 8px; overflow: auto; flex: 1; }
@@ -109,9 +112,9 @@ button, input, select { font: inherit; color: inherit; }
   padding: 5px 8px; border-radius: 8px; cursor: pointer;
 }
 .area-list li:hover, .area-list li.hover { background: var(--paper); }
-.area-list li.selected { background: var(--grape-wash); box-shadow: inset 3px 0 0 var(--grape); }
+.area-list li.selected { background: var(--pick-wash); box-shadow: inset 4px 0 0 var(--pick); }
 .area-list .caret { display: inline-block; width: 1em; color: var(--ink-soft); font-size: 11px; }
-.area-list li.open { background: var(--grape-wash); }
+.area-list li.open { background: var(--pick-wash); }
 .area-list .items { grid-column: 1 / -1; list-style: none; margin: 4px 0 2px; padding: 4px 0 2px 14px; border-left: 2px solid var(--line); max-height: 320px; overflow: auto; }
 .area-list .items li { display: flex; justify-content: space-between; gap: 10px; padding: 2px 6px; border-radius: 6px; font-size: 13px; cursor: default; }
 .area-list .items li.has-loc { cursor: pointer; }
@@ -292,3 +295,9 @@ table.grid th.area, table.grid td.area { position: sticky; left: 0; background: 
 table.grid th.area { background: var(--paper); z-index: 3; }
 table.grid tbody tr { cursor: pointer; }
 table.grid tbody tr:hover td, table.grid tbody tr.hl td { background: #FFF4D1; }
+
+/* v16: token help */
+.at-steps { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--ink-soft); }
+.at-steps li { margin: 2px 0; }
+.at-make { display: inline-block; margin: 6px 0 2px; font-size: 13px; font-weight: 700; color: var(--grape); }
+.at-safe { margin: 6px 0 0; padding: 6px 9px; border-radius: 8px; background: #FFF6DB; font-size: 12.5px; line-height: 1.4; }
