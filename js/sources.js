@@ -131,8 +131,12 @@ function detectGeometry(src) {
 async function readFile(file) {
     const text = await file.text();
     const isJSON = /\.(geo)?json$/i.test(file.name) || /^\s*[\[{]/.test(text);
-    const src = isJSON ? parseJSON(text, file.name) : parseCSV(text, file.name);
-    if (!src.rows.length) throw new Error(`${file.name}: no rows`);
+    return finishSource(isJSON ? parseJSON(text, file.name) : parseCSV(text, file.name));
+}
+
+// Shared by files and Airtable: find geometry, stamp the load time.
+function finishSource(src) {
+    if (!src.rows.length) throw new Error(`${src.name}: no rows`);
     detectGeometry(src);
     if (src.geoms && !src.geoms.some(Boolean)) { src.geoms = null; src.geomFrom = null; }
     src.loadedAt = new Date().toISOString();
@@ -149,5 +153,5 @@ function makeSnapshot(src, settings) {
     };
 }
 
-window.JoinerSources = { readFile, makeSnapshot, parseCSV, parseJSON, parseWKT, detectGeometry };
+window.JoinerSources = { readFile, finishSource, makeSnapshot, parseCSV, parseJSON, parseWKT, detectGeometry };
 })();

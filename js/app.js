@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v12';
+const _BUILD_VERSION = 'v13';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -154,6 +154,14 @@ async function boot() {
     map.on('zoom', updateZoomReadout);
     map.on('zoomend', () => { if (isHex(S.layerId) && S.hex.auto && hexResNow() !== S.hexRes) setLayer(S.layerId); });
     await setLayer(first);
+    renderAirtable();
+    const atLink = AT() && AT().parseLink(new URLSearchParams(location.search).get('airtable'));
+    if (atLink) {
+        $('at-url').value = AT().linkFor(atLink);
+        $('at-card').open = true;
+        if (AT().token.get()) loadAirtable(atLink);
+        else { atStatus('Paste your token to open this Airtable view.'); $('at-token').focus(); }
+    }
 }
 
 const unionBbox = bbs => bbs.reduce((u, b) => [Math.min(u[0], b[0]), Math.min(u[1], b[1]), Math.max(u[2], b[2]), Math.max(u[3], b[3])],
@@ -1371,12 +1379,22 @@ function bbox(geom) {
 // ═════════════════════════════════════════════════════════════════════════
 async function loadFile(file) {
     try {
-        const src = await JoinerSources.readFile(file);
+        await useSource(await JoinerSources.readFile(file));
+    } catch (e) {
+        alert(e.message);
+        console.error(e);
+    }
+}
+
+// Show a loaded source. keep: the same table reloaded (e.g. with a field added back), so the
+// match, statistic and formatting choices stay.
+async function useSource(src, { keep = false } = {}) {
         src.points = src.geoms ? src.geoms.map(repPoint) : null;
         S.src = src;
         S.areaOf = new Map();
-        S.rowStyle = { colorBy: '', labels: [], sizeBy: '', sizeLog: false }; S.expanded = null;
-        S.keyCols = {}; S.colKeys = {}; S.metric = 'count';
+        S.expanded = null;
+        if (!keep) { S.rowStyle = { colorBy: '', labels: [], sizeBy: '', sizeLog: false }; S.keyCols = {}; S.colKeys = {}; S.metric = 'count'; }
+        renderAirtable();
         const st = src.settings;
         if (st) {
             Object.assign(S.keyCols, st.keyCols || {});
@@ -1394,10 +1412,56 @@ async function loadFile(file) {
         }
         if (isHex(S.layerId)) { await setLayer(S.layerId); return; }   // the grid gains the file's cells
         recompute();
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// Airtable
+// ═════════════════════════════════════════════════════════════════════════
+// A view link in ?airtable= (shareable: it carries no token) opens that view; the token is asked
+// for once per tab and kept in sessionStorage.
+const AT = () => window.JoinerAirtable;
+let atBusy = false;
+function atStatus(msg, kind = '') { const el = $('at-status'); el.textContent = msg; el.className = 'at-status ' + kind; }
+
+async function loadAirtable(link, { include = [], keep = false } = {}) {
+    if (atBusy) return;
+    const tok = $('at-token').value.trim() || AT().token.get();
+    if (!link) { atStatus('Paste a link to an Airtable view (or table).', 'err'); return; }
+    if (!tok) { atStatus('Paste your personal access token.', 'err'); $('at-token-row').hidden = false; $('at-token').focus(); return; }
+    atBusy = true; $('at-load').disabled = true;
+    atStatus('Loading from Airtable…');
+    try {
+        const first = S.src?.kind !== 'airtable';   // collapse the card after a first load, not when switching or reloading
+        const src = JoinerSources.finishSource(await AT().load(link, tok, { include, onProgress: n => atStatus(`Loading from Airtable… ${n.toLocaleString()} rows`) }));
+        AT().token.set(tok); $('at-token').value = '';
+        const q = new URLSearchParams(location.search); q.set('airtable', AT().linkFor(src.airtable));
+        history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash);
+        await useSource(src, { keep });
+        atStatus('');
+        if (first) $('at-card').open = false;
     } catch (e) {
-        alert(e.message);
+        atStatus(e.message, 'err');
+        if (/token/i.test(e.message)) $('at-token-row').hidden = false;
         console.error(e);
-    }
+    } finally { atBusy = false; $('at-load').disabled = false; renderAirtable(); }
+}
+
+function renderAirtable() {
+    const hasTok = !!AT()?.token.get();
+    $('at-token-row').hidden = hasTok;
+    $('at-remembered').hidden = !hasTok;
+    const at = S.src?.kind === 'airtable' && S.src.airtable;
+    $('at-info').hidden = !at;
+    if (!at) return;
+    $('at-url').value = AT().linkFor(at);
+    $('at-open').href = AT().linkFor(at);
+    $('at-table').innerHTML = at.tables.map(t => `<option value="${t.id}"${t.id === at.table ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
+    const views = at.tables.find(t => t.id === at.table)?.views || [];
+    $('at-view').innerHTML = `<option value="">All records</option>` + views.map(v => `<option value="${v.id}"${v.id === at.view ? ' selected' : ''}>${esc(v.name)}</option>`).join('');
+    $('at-skipped-n').textContent = at.skipped.length ? `${at.skipped.length} field${at.skipped.length === 1 ? '' : 's'} not loaded` : 'All fields loaded';
+    $('at-skipped').innerHTML = at.skipped.map(f => `<li><label class="check"><input type="checkbox" data-field="${esc(f.name)}"> ${esc(f.name)} <span class="why">${esc(f.why)}</span></label></li>`).join('')
+        + (at.include.length ? at.include.map(n => `<li><label class="check"><input type="checkbox" data-field="${esc(n)}" checked> ${esc(n)} <span class="why">added back</span></label></li>`).join('') : '');
+    $('at-reload').hidden = true;
 }
 
 function saveSnapshot() {
@@ -1442,6 +1506,25 @@ function wireUI() {
         recompute();
     };
     $('clear-btn').onclick = clearFile;
+    $('at-form').onsubmit = e => { e.preventDefault(); loadAirtable(AT().parseLink($('at-url').value)); };
+    $('at-forget').onclick = () => { AT().token.set(''); renderAirtable(); atStatus('Token forgotten.'); };
+    // Switching views keeps fields added back; a different table starts from the default fields.
+    const atSwitch = () => {
+        const at = S.src.airtable, same = $('at-table').value === at.table;
+        loadAirtable({ base: at.base, table: $('at-table').value, view: same ? $('at-view').value || null : null }, { include: same ? at.include : [] });
+    };
+    $('at-table').onchange = atSwitch;
+    $('at-view').onchange = atSwitch;
+    $('at-skipped').onchange = () => { $('at-reload').hidden = false; };
+    $('at-reload').onclick = () => {
+        const at = S.src.airtable;
+        const include = [...$('at-skipped').querySelectorAll('input:checked')].map(i => i.dataset.field);
+        loadAirtable({ base: at.base, table: at.table, view: at.view }, { include, keep: true });
+    };
+    $('at-copy').onclick = async () => {
+        try { await navigator.clipboard.writeText(location.href); atStatus('Map link copied. It doesn’t include your token.'); }
+        catch { atStatus('Copy this page’s address to share the map; it doesn’t include your token.'); }
+    };
     $('areas-check').onchange = e => { S.showAreas = e.target.checked; applyAreasVisible(); };
     $('order-seg').onclick = e => {
         const b = e.target.closest('button'); if (!b) return;

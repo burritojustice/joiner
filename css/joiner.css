@@ -252,3 +252,15 @@ details.sub[open] > summary .n { display: none; }
 .lcolors { display: flex; flex-wrap: wrap; gap: 4px; }
 .lcolors .chip { display: inline-flex; align-items: center; gap: 5px; }
 .lcolors .chip i { font-style: normal; font-weight: 700; font-size: 13px; padding: 0 2px; background: linear-gradient(90deg, #86b6ef 50%, #fd8d3c 50%); border-radius: 3px; }
+
+/* v13: Airtable */
+.at-card input[type=text], .at-card input[type=password] { width: 100%; box-sizing: border-box; font: inherit; font-size: 13.5px; padding: 6px 8px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--card); }
+.at-card input:focus { outline: 2px solid var(--grape); outline-offset: 0; border-color: transparent; }
+.at-card .btn { margin-top: 4px; }
+.at-status { font-size: 13px; margin: 6px 0 0; min-height: 0; }
+.at-status:empty { display: none; }
+.at-status.err { color: #b3261e; }
+.at-skipped { list-style: none; margin: 4px 0; padding: 0; max-height: 220px; overflow: auto; }
+.at-skipped .check { margin-top: 2px; font-size: 13px; }
+.at-skipped .why { color: var(--ink-soft); font-size: 12px; }
+#at-info { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 8px; }

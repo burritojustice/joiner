@@ -2,6 +2,14 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v13
+- **Load straight from Airtable.** Under **Airtable**, paste a link to a view (or a table) and a personal access token. Joiner reads the table's fields, then loads the view's rows, 100 at a time.
+- **Shareable map links:** after loading, the page address carries `?airtable=<view link>` (never the token). Opening it asks for the token, or opens right away if this tab already has it. **Copy map link** copies it.
+- **The token stays in this tab** until it closes (sessionStorage) and is sent only to api.airtable.com. **Forget it** clears it.
+- **Contact details aren't loaded:** email, phone and attachment fields, Airtable users, and fields named like email, phone or street address are never requested, so they stay out of the map and saved snapshots. Name, the primary field, is kept. Linked-record fields are skipped until links can be resolved to names. The panel lists what was skipped; tick a field and **Reload** to load it.
+- **Switch tables and views** the token can read from the menus in the Airtable panel.
+- Currency fields keep their dollars (totals and averages are money), lookups come through as lists, and latitude/longitude fields place rows on the map.
+
 ## v12
 - **Numbers formatted as in Selecter.** Map labels abbreviate from 1,000 (1K, 1M, 1B, 1T), with one decimal until the abbreviated number reaches 100: `$79.4K`, `$104K`, `1.2M`. Unabbreviated values get two decimals below 1, one below 100, none above.
 - **No cents on dollar amounts** anywhere: totals and averages, legends, row popups and row labels (Airtable's `$5,000.00` shows as `$5,000`), and the size and color legends for currency columns.

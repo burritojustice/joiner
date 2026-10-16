@@ -11,7 +11,10 @@ Open `index.html` (on GitHub Pages, or any local web server — `python3 -m http
 - a **CSV** exported from Airtable or a spreadsheet;
 - **Airtable JSON** — the `records` response from the Airtable API (one page or an array of pages);
 - **GeoJSON**, or a CSV with WKT or latitude/longitude columns — each row is drawn on the map, and the **Location** checkbox under **Match rows by** places rows in the area that contains them;
-- a **Joiner snapshot** saved from this page.
+- a **Joiner snapshot** saved from this page;
+- an **Airtable view**: under **Airtable**, paste the view's link and a [personal access token](https://airtable.com/create/tokens) with `data.records:read` and `schema.bases:read` for the base.
+
+**Airtable.** The token is kept in the browser tab until it closes and sent only to Airtable; it's never put in the page address. After loading, the address ends in `?airtable=<view link>`, so the map can be shared: whoever opens it is asked for their own token. Joiner doesn't request contact fields (email, phone, street address, attachments, Airtable users), so they never reach the browser or a snapshot; the panel lists them, and any can be loaded on purpose. Choosing a view filters and sorts the rows, but doesn't hide fields: Airtable's API returns a view's hidden fields too, which is why Joiner chooses the fields itself.
 
 Joiner guesses which column to match on for each tab by trying every column and counting how many rows land on an area; the **Match rows by** menu shows the counts and lets you pick another. Each tab remembers its own choice. **Color by** switches between the number of rows and the total or average of any numeric column. The panel shows how many rows were placed and lists the values that matched no area, with how often each appears — those are what the crosswalk will fix.
 
