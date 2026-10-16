@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v15';
+const _BUILD_VERSION = 'v16';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -15,6 +15,8 @@ const CONFIG = {
     palettes: {
         blues:  { label: 'Blues', ramp: ['#86b6ef', '#5598e7', '#2a78d6', '#1c5cab', '#0d366b'], rows: '#E8590C' },
         ylorrd: { label: 'Yellow–red', ramp: ['#feb24c', '#fd8d3c', '#fc4e2a', '#e31a1c', '#800026'], rows: '#1c5cab' },
+        // Diverging, low → high: blue, a warm grey middle (darker than "no value"), red.
+        rdbu:   { label: 'Blue–red', ramp: ['#2166ac', '#67a9cf', '#d6d0c8', '#ef8a62', '#b2182b'], rows: '#6a3d9a' },
     },
     nodata: '#F0EFEC',         // 0 / no value in the list and legend; on the map those areas are left clear
     // Area and row label colors: text, halo, halo width. Auto picks black or white per area.
@@ -32,7 +34,7 @@ const CONFIG = {
     pointRadius: [3, 4.5, 7.5],
     pointSizes: { tiny: 0.6, small: 1, medium: 1.45, big: 2, huge: 2.8 },
     linesFromZoom: 12,         // lines from the file draw from here in; zoomed out, a dot at each line's midpoint
-    highlight: '#6D4AF5',
+    highlight: '#00A862',     // the selected area: green, apart from the blue, yellow–red and blue–red ramps
     hexAutoRes: z => Math.max(5, Math.min(10, Math.round(z * 0.75 - 0.5))),   // H3 resolution for a map zoom
     hexRange: [5, 10],
     // Streets draw above the areas: major roads and highways from streetsMajorZoom, every street
@@ -272,9 +274,13 @@ function addMapLayers() {
     map.addLayer({ id: 'bounds-glow', type: 'line', source: 'bounds', paint: { 'line-color': '#ffffff', 'line-width': 3.5, 'line-blur': 2, 'line-opacity': 0.85 } }, before);
     map.addLayer({ id: 'bounds-line', type: 'line', source: 'bounds', paint: { 'line-color': '#1E2340', 'line-opacity': 0.5,
         'line-width': ['interpolate', ['linear'], ['zoom'], 11, 0.8, 14, 1.4, 16, 2] } }, before);
+    // The selected area: a green line on a white casing, so it reads on dark blue or dark red.
+    map.addLayer({ id: 'bounds-hl-case', type: 'line', source: 'bounds', paint: {
+        'line-color': '#ffffff', 'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 7, 0],
+    } });
     map.addLayer({ id: 'bounds-hl', type: 'line', source: 'bounds', paint: {
         'line-color': ['case', ['boolean', ['feature-state', 'selected'], false], CONFIG.highlight, '#1E2340'],
-        'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 3.5, ['boolean', ['feature-state', 'hover'], false], 2.5, 0],
+        'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 4, ['boolean', ['feature-state', 'hover'], false], 2.5, 0],
     } });
     // Rows from the loaded file that carry geometry: polygons, lines, points.
     map.addSource('rows', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -367,9 +373,13 @@ function luminance(hex) {
 const glowFor = hex => luminance(hex) > 0.4 ? 'rgba(30,35,64,0.6)' : '#ffffff';
 
 // The ramp used for rows colored by a number: the palette the areas aren't using.
-const rowRamp = () => (S.palette === 'blues' ? CONFIG.palettes.ylorrd : CONFIG.palettes.blues).ramp;
+const ROW_RAMPS = { blues: 'ylorrd', ylorrd: 'blues', rdbu: 'purples' };
+const PURPLES = { label: 'purple', ramp: ['#cbc9e2', '#9e9ac8', '#756bb1', '#54278f', '#3f007d'] };
+const rowRampPal = () => ROW_RAMPS[S.palette] === 'purples' ? PURPLES : CONFIG.palettes[ROW_RAMPS[S.palette] || 'blues'];
+const rowRamp = () => rowRampPal().ramp;
 // Categorical colors for rows, minus hues that would blend into the area palette.
-const rowCategorical = () => CONFIG.categorical.filter(c => S.palette === 'blues' ? c !== '#2a78d6' : !['#eb6834', '#eda100', '#e34948'].includes(c));
+const ROW_CAT_SKIP = { blues: ['#2a78d6'], ylorrd: ['#eb6834', '#eda100', '#e34948'], rdbu: ['#2a78d6', '#eb6834', '#e34948'] };
+const rowCategorical = () => CONFIG.categorical.filter(c => !(ROW_CAT_SKIP[S.palette] || []).includes(c));
 
 function applyPalette() {
     const p = pal();
@@ -956,7 +966,7 @@ function renderFormatFeatures() {
     $('row-color').innerHTML = `<option value="">One color</option>` + cols.map(c => `<option value="${esc(c)}"${c === S.rowStyle.colorBy ? ' selected' : ''}>${esc(c)}</option>`).join('');
     const rc = S.rowClasses;
     $('row-color-hint').textContent = !rc ? 'Solid when placed in an area, hollow when not.'
-        : rc.type === 'numeric' ? `A number: ${rc.colors.length} classes by natural breaks, on the ${S.palette === 'blues' ? 'yellow–red' : 'blue'} ramp so rows stand out from the areas.`
+        : rc.type === 'numeric' ? `A number: ${rc.colors.length} classes by natural breaks, on the ${rowRampPal().label.toLowerCase()} ramp so rows stand out from the areas.`
         : `${rc.cats.length} most common values${rc.otherN ? ', the rest as Other' : ''}.` + (rc.cats.length > 3 ? ' More than 3 colors can be hard to tell apart; hover names the value.' : '');
     const nums = JoinKit.classifyColumns(S.src.rows, cols).numericCols.filter(c => !isIdColumn(c) && !isCoordColumn(c));
     $('row-size').innerHTML = `<option value="">Same size</option>` + nums.map(c => `<option value="${esc(c)}"${c === S.rowStyle.sizeBy ? ' selected' : ''}>${esc(c)}</option>`).join('');
