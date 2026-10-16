@@ -2,6 +2,11 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v12
+- **Numbers formatted as in Selecter.** Map labels abbreviate from 1,000 (1K, 1M, 1B, 1T), with one decimal until the abbreviated number reaches 100: `$79.4K`, `$104K`, `1.2M`. Unabbreviated values get two decimals below 1, one below 100, none above.
+- **No cents on dollar amounts** anywhere: totals and averages, legends, row popups and row labels (Airtable's `$5,000.00` shows as `$5,000`), and the size and color legends for currency columns.
+- **Hide N areas without data**, under the match summary (as in Selecter): areas no row was placed in are left off the map, the labels and the list. Remembered and saved in snapshots.
+
 ## v11
 - **Fixed: areas with rows left uncolored after switching neighborhood sets.** Clearing the old set's map state raced with the new set's colors and wiped some of them; toggling Location redrew them. Up to 20 of the 41 analysis neighborhoods were affected in testing; now none are.
 - **Areas with no value are clear** instead of filled, so the basemap shows through. The legend shows them as an empty box.
