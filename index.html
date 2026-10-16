@@ -54,6 +54,38 @@
       </details>
     </section>
 
+    <section class="card empty" id="empty-card">
+      <h2>Map your data</h2>
+      <p>Drop a CSV or JSON file anywhere on the page, or <button class="linkish" id="empty-load" type="button">choose a file</button>.</p>
+      <ul>
+        <li><b>CSV</b> exported from Airtable or a spreadsheet</li>
+        <li><b>Airtable</b> — paste a view link under <b>Airtable</b> below, or load the <code>records</code> JSON from the API</li>
+        <li><b>GeoJSON</b>, or a CSV with WKT or latitude/longitude columns — rows are drawn on the map and can be placed by location</li>
+        <li><b>Joiner snapshot</b> saved from this page</li>
+      </ul>
+      <p class="hint">Rows are matched to the boundaries chosen above by district, ZIP, neighborhood or census tract. Nothing leaves your browser.</p>
+    </section>
+
+
+    <section class="card hex-card" id="hex-card" hidden>
+      <div class="basemap-opts tight">
+        <span>Resolution</span>
+        <div class="seg" id="hex-seg" role="group" aria-label="H3 resolution"></div>
+      </div>
+      <p class="hint" id="hex-hint"></p>
+    </section>
+
+    <section class="list-card">
+      <div class="list-head">
+        <h3 id="list-title">Areas</h3>
+        <div class="seg" id="sort-seg" role="group" aria-label="Sort">
+          <button type="button" data-sort="value" aria-pressed="true">Value</button>
+          <button type="button" data-sort="name" aria-pressed="false">A–Z</button>
+        </div>
+      </div>
+      <ol class="area-list" id="area-list"></ol>
+    </section>
+
     <details class="card at-card" id="at-card">
       <summary>Airtable</summary>
       <form id="at-form" autocomplete="off">
@@ -82,38 +114,6 @@
         </details>
       </div>
     </details>
-
-    <section class="card empty" id="empty-card">
-      <h2>Map your data</h2>
-      <p>Drop a CSV or JSON file anywhere on the page, or <button class="linkish" id="empty-load" type="button">choose a file</button>.</p>
-      <ul>
-        <li><b>CSV</b> exported from Airtable or a spreadsheet</li>
-        <li><b>Airtable</b> — paste a view link under <b>Airtable</b> above, or load the <code>records</code> JSON from the API</li>
-        <li><b>GeoJSON</b>, or a CSV with WKT or latitude/longitude columns — rows are drawn on the map and can be placed by location</li>
-        <li><b>Joiner snapshot</b> saved from this page</li>
-      </ul>
-      <p class="hint">Rows are matched to the boundaries chosen above by district, ZIP, neighborhood or census tract. Nothing leaves your browser.</p>
-    </section>
-
-
-    <section class="card hex-card" id="hex-card" hidden>
-      <div class="basemap-opts tight">
-        <span>Resolution</span>
-        <div class="seg" id="hex-seg" role="group" aria-label="H3 resolution"></div>
-      </div>
-      <p class="hint" id="hex-hint"></p>
-    </section>
-
-    <section class="list-card">
-      <div class="list-head">
-        <h3 id="list-title">Areas</h3>
-        <div class="seg" id="sort-seg" role="group" aria-label="Sort">
-          <button type="button" data-sort="value" aria-pressed="true">Value</button>
-          <button type="button" data-sort="name" aria-pressed="false">A–Z</button>
-        </div>
-      </div>
-      <ol class="area-list" id="area-list"></ol>
-    </section>
 
     <details class="card fmt-card" id="fmt-card" open hidden>
       <summary>Format features</summary>
@@ -155,7 +155,13 @@
       <div class="basemap-opts tight">
         <span>Size</span>
         <div class="seg" id="size-seg" role="group" aria-label="Label size">
-          <button type="button" data-size="small">Small</button><button type="button" data-size="medium">Medium</button><button type="button" data-size="large">Large</button>
+          <button type="button" data-size="auto" title="By the size of the areas: bigger for districts, smaller for neighborhoods and tracts">Auto</button><button type="button" data-size="small">Small</button><button type="button" data-size="medium">Medium</button><button type="button" data-size="large">Large</button>
+        </div>
+      </div>
+      <div class="basemap-opts tight">
+        <span>Lines</span>
+        <div class="seg" id="reveal-seg" role="group" aria-label="When label lines appear">
+          <button type="button" data-reveal="zoom" title="Lines after the first two appear as you zoom in">By zoom</button><button type="button" data-reveal="all" title="Show every line at once">All at once</button>
         </div>
       </div>
       <div class="basemap-opts tight">
@@ -186,6 +192,7 @@
     <div id="map"></div>
     <div class="legend" id="legend" hidden></div>
     <div class="tip" id="tip" hidden></div>
+    <div class="rowcard maplibregl-popup-content" id="rowcard" hidden></div>
     <div class="drop" id="drop" hidden><div>Drop to load</div></div>
   </main>
 </div>

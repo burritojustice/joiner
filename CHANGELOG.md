@@ -2,6 +2,15 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v14
+- **Hover a row in an expanded area to see its fields** in a card beside the list, whether or not the row has a location (rows matched by a column have none).
+- **The Airtable panel is below the area list.**
+- **Streets over the areas are a hint of the network:** no casings, half the basemap's width, slightly transparent. Areas left clear look as before.
+- **Label size Auto** (the new default): bigger for bigger areas. The set's typical area sets the base (districts about 13.5px, ZIPs 12.5, analysis neighborhoods 12, SF Find 11, tracts 10.5, fine hexagons 10). Each area's own size nudges its label, and labels grow a little as you zoom in. Small, Medium and Large still fix the size.
+- **Label lines:** *By zoom* (as before) or *All at once*, for when several short values (percentages) should show together. Lines appear one zoom level sooner: the third at the opening zoom, the fourth one level in.
+- **Hexbins never show the cell ID**, only the values.
+- **Console:** `Joiner.labelStyle({ width, blur, halo, text, size, font, spacing, rows })` tries label styles; `Joiner.labelStyle('reset')` goes back to the panel's settings.
+
 ## v13
 - **Load straight from Airtable.** Under **Airtable**, paste a link to a view (or a table) and a personal access token. Joiner reads the table's fields, then loads the view's rows, 100 at a time.
 - **Shareable map links:** after loading, the page address carries `?airtable=<view link>` (never the token). Opening it asks for the token, or opens right away if this tab already has it. **Copy map link** copies it.
