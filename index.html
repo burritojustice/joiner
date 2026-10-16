@@ -21,6 +21,7 @@
     <nav class="tabs" id="tabs" aria-label="Boundaries"></nav>
     <div class="bar-toggles" role="group" aria-label="Show on the map">
       <button type="button" class="tog" id="areas-toggle" aria-pressed="true"><i aria-hidden="true"></i>Areas</button>
+      <button type="button" class="tog" id="table-toggle" aria-pressed="false" hidden title="Show every row in a table below the map"><i aria-hidden="true"></i>Table</button>
       <button type="button" class="tog" id="features-toggle" aria-pressed="true" hidden><i aria-hidden="true"></i>Features</button>
     </div>
     <div class="bar-actions">
@@ -179,7 +180,7 @@
       <div class="basemap-opts">
         <span>Basemap</span>
         <label class="check"><input type="checkbox" id="roads-check"> Roads</label>
-        <label class="check"><input type="checkbox" id="hoods-check"> Neighborhood labels</label>
+        <label class="check" title="The basemap's place names: city, neighborhoods, islands. Off while areas are shown."><input type="checkbox" id="hoods-check"> Places</label>
       </div>
       <div class="basemap-opts">
         <span>Colors</span>
@@ -193,6 +194,17 @@
     <div class="legend" id="legend" hidden></div>
     <div class="tip" id="tip" hidden></div>
     <div class="rowcard maplibregl-popup-content" id="rowcard" hidden></div>
+    <section class="table-drawer" id="table-drawer" hidden aria-label="Rows">
+      <div class="table-grip" id="table-grip" title="Drag to resize"></div>
+      <div class="table-head">
+        <b>Rows</b> <span class="hint" id="table-count"></span>
+        <div class="seg" id="table-filter" role="group" aria-label="Which rows">
+          <button type="button" data-filter="all">All</button><button type="button" data-filter="area">Selected area</button><button type="button" data-filter="view">In view</button>
+        </div>
+        <button class="chip-x" id="table-close" type="button" title="Close the table" aria-label="Close the table">✕</button>
+      </div>
+      <div class="table-scroll"><table class="grid" id="table-grid"></table></div>
+    </section>
     <div class="drop" id="drop" hidden><div>Drop to load</div></div>
   </main>
 </div>

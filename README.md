@@ -32,6 +32,8 @@ Nothing is uploaded: files are read in the browser. Join logic is [JoinKit](http
 
 **Rows and areas.** Hover an area in the list to highlight its rows on the map. **Size points by** a number (with a log option) and pick a point size from Tiny to Huge. Lines show as dots at their midpoints until zoom 12. **Show → Areas** hides the polygons to see just the rows; **✕** beside the file name removes the file. Placing rows by location uses JoinKit's indexed point-in-polygon, which handles a million points in about a quarter of a second.
 
+**Table.** **Table** (next to Areas) shows every row below the map: sort by any column, and show all rows, the selected area's or those in view. Hovering a row highlights it on the map and the reverse; clicking a row goes to it.
+
 **Basemap rules** (apply to every map): major streets draw above the areas from zoom 13 and every street from 14, named from zoom 14 (or put the areas under the basemap with **Show → Under roads**, the default for hexagons), highway shields and one-way arrows are hidden, and the creek fix from Block Party and Selecter hides streams and "Creek"/"Arroyo" waterways, which Protomaps tags as rivers even where they're culverted.
 
 Every tab opens at the same view of the city, so switching boundary sets doesn't move the map.

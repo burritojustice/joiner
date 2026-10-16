@@ -269,3 +269,26 @@ details.sub[open] > summary .n { display: none; }
 .rowcard { position: absolute; left: 8px; width: 300px; max-height: 60vh; overflow: auto; z-index: 5; pointer-events: none;
   box-shadow: 0 6px 24px rgba(30,35,64,.22); border-radius: 12px; padding: 12px 14px; }
 .rowcard[hidden] { display: none; }
+
+/* v15: table drawer */
+.map-wrap { --drawer: 0px; }
+#map { bottom: var(--drawer); }
+.legend, .tip { }
+.table-drawer { position: absolute; left: 0; right: 0; bottom: 0; height: var(--drawer); background: var(--card); border-top: 1.5px solid var(--line);
+  display: flex; flex-direction: column; z-index: 4; box-shadow: 0 -4px 16px rgba(30,35,64,.08); }
+.table-drawer[hidden] { display: none; }
+.table-grip { height: 7px; cursor: ns-resize; flex-shrink: 0; margin-top: -4px; }
+.table-grip:hover { background: var(--grape-wash); }
+.table-head { display: flex; align-items: center; gap: 10px; padding: 2px 12px 6px; font-size: 13.5px; flex-shrink: 0; }
+.table-head .hint { margin: 0; flex: 1; }
+.table-head .seg button { padding: 3px 9px; }
+.table-scroll { overflow: auto; flex: 1; min-height: 0; }
+table.grid { border-collapse: separate; border-spacing: 0; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+table.grid th { position: sticky; top: 0; background: var(--paper); text-align: left; font-weight: 700; padding: 5px 10px; white-space: nowrap;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; cursor: pointer; border-bottom: 1px solid var(--line); z-index: 1; }
+table.grid th.asc::after { content: ' ▲'; font-size: 9px; } table.grid th.desc::after { content: ' ▼'; font-size: 9px; }
+table.grid td { padding: 4px 10px; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid var(--line); }
+table.grid th.area, table.grid td.area { position: sticky; left: 0; background: var(--card); font-weight: 600; z-index: 2; }
+table.grid th.area { background: var(--paper); z-index: 3; }
+table.grid tbody tr { cursor: pointer; }
+table.grid tbody tr:hover td, table.grid tbody tr.hl td { background: #FFF4D1; }
