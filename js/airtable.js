@@ -80,14 +80,16 @@ function cellValue(f, v) {
 // Load a base/table/view into a Joiner source: { name, kind: 'airtable', headers, rows, airtable }.
 async function load(link, tok, { include = [], onProgress } = {}) {
     if (!tok) throw new AirtableError('Paste a personal access token to load from Airtable.');
+    onProgress?.({ step: 'schema' });
     const { tables } = await call(`/meta/bases/${link.base}/tables`, tok);
     const table = link.table ? tables.find(t => t.id === link.table) : tables[0];
     if (!table) throw new AirtableError('That table isn’t in the base (or the token can’t see it).');
     const view = link.view ? (table.views || []).find(v => v.id === link.view) : null;
     if (link.view && !view) throw new AirtableError('That view isn’t in the table.');
     const { fetch: fields, skipped } = planFields(table, include);
+    onProgress?.({ step: 'fields', table: table.name.trim(), view: view?.name || null, fields: fields.length, skipped: skipped.length });
     const rows = [];
-    let offset;
+    let offset, pageNo = 0;
     do {
         const page = await call(`/${link.base}/${table.id}/listRecords`, tok, { method: 'POST', body: {
             pageSize: 100, fields: fields.map(f => f.name), ...(view ? { view: view.id } : {}), ...(offset ? { offset } : {}) } });
@@ -97,7 +99,7 @@ async function load(link, tok, { include = [], onProgress } = {}) {
             rows.push(row);
         }
         offset = page.offset;
-        onProgress?.(rows.length);
+        onProgress?.({ step: 'records', rows: rows.length, page: ++pageNo, more: !!offset, table: table.name.trim() });
         if (offset) await sleep(PAGE_GAP_MS);
     } while (offset);
     const name = `${table.name.trim()}${view ? ' · ' + view.name : ''}`;
@@ -109,5 +111,21 @@ async function load(link, tok, { include = [], onProgress } = {}) {
     };
 }
 
-window.JoinerAirtable = { parseLink, linkFor, load, token, planFields, AirtableError };
+// The bases this token can read, and a base's tables (both need schema.bases:read).
+async function listBases(tok) {
+    const bases = [];
+    let offset;
+    do {
+        const page = await call('/meta/bases' + (offset ? `?offset=${encodeURIComponent(offset)}` : ''), tok);
+        bases.push(...(page.bases || []).map(b => ({ id: b.id, name: b.name.trim(), level: b.permissionLevel })));
+        offset = page.offset;
+    } while (offset);
+    return bases;
+}
+async function listTables(base, tok) {
+    const { tables } = await call(`/meta/bases/${base}/tables`, tok);
+    return tables.map(t => ({ id: t.id, name: t.name.trim(), fields: t.fields.length, views: (t.views || []).map(v => ({ id: v.id, name: v.name })) }));
+}
+
+window.JoinerAirtable = { parseLink, linkFor, load, listBases, listTables, token, planFields, AirtableError };
 })();

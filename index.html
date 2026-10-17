@@ -105,7 +105,8 @@
           </ol>
           <p class="at-safe">Treat a token like a password: anyone who has it can read those bases. Keep it out of emails, chats and shared docs. If one gets out, delete it on that same page and make a new one. Joiner keeps it only in this tab until it closes, and sends it only to Airtable.</p>
         </div>
-        <p class="hint" id="at-remembered" hidden>Token remembered for this tab. <button class="linkish" id="at-forget" type="button">Forget it</button></p>
+        <p class="hint" id="at-remembered" hidden>Token remembered for this tab. <button class="linkish" id="at-forget" type="button">Forget it</button> · <button class="linkish" id="at-browse-btn" type="button">Show other tables</button></p>
+        <div class="at-browse" id="at-browse" hidden></div>
         <button class="btn" type="submit" id="at-load">Load from Airtable</button>
         <p class="at-status" id="at-status" role="status"></p>
       </form>
@@ -207,11 +208,19 @@
         <div class="seg" id="table-filter" role="group" aria-label="Which rows">
           <button type="button" data-filter="all">All</button><button type="button" data-filter="area">Selected area</button><button type="button" data-filter="view">In view</button>
         </div>
+        <div class="seg" id="dock-seg" role="group" aria-label="Where the table goes">
+          <button type="button" data-dock="bottom" title="Below the map">Bottom</button><button type="button" data-dock="side" title="Beside the map">Side</button>
+        </div>
         <button class="chip-x" id="table-close" type="button" title="Close the table" aria-label="Close the table">✕</button>
       </div>
       <div class="table-scroll"><table class="grid" id="table-grid"></table></div>
     </section>
     <div class="drop" id="drop" hidden><div>Drop to load</div></div>
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+      <i class="spin" aria-hidden="true"></i>
+      <div class="toast-body"><div class="toast-msg"></div><div class="toast-sub"></div><div class="toast-actions" hidden></div></div>
+      <button type="button" class="toast-x" aria-label="Dismiss">✕</button>
+    </div>
   </main>
 </div>
 

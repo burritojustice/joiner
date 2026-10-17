@@ -2,6 +2,15 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v17
+- **Loading from Airtable shows what's happening** in a toast over the map: connecting, which table and how many fields (and contact fields left out), records read so far page by page with the time, looking for locations, placing rows, and a summary when it's done. Errors show there too.
+- **Show other tables** (Airtable panel, next to the remembered token) lists the bases this token can open and, when you open a base, its tables. Click a table to load it.
+- **Matching by a column picks the area set from its name.** Choosing a ZIP column switches to ZIP Codes, a district column to Supervisor Districts, a tract or GEOID column to Census Tracts, and a toast says so, with Undo. A neighborhood column asks which neighborhood set (unless one is showing, or the name says, like "analysis neighborhood").
+- **The table goes below or beside the map** (Bottom / Side in its header); drag its inner edge to resize. Below the map it opens about three rows tall. The area and name columns stay put while scrolling sideways, and every column sorts, the area column included.
+- **Blue–yellow–red** replaces Blue–red: ColorBrewer's RdYlBu, blue for low and red for high. Maps saved with Blue–red open in it.
+- **Street names on the basemap are navy with a pale yellow glow**, readable on every palette and on the bare basemap.
+- **Label colors come in pairs:** Black / white, Navy / yellow, Navy / light blue, White / deep red. Click a pair to use it; click it again (⇄) to swap text and glow, which adds Yellow on navy, Light blue on navy and Deep red on white.
+
 ## v16
 - **Blue–red palette** (Area colors): a diverging ramp, blue for the lowest values and red for the highest, with a warm gray middle so it doesn't read as "no value". Rows colored by a number use a purple ramp with it.
 - **The selected area is green**, on the map (a green outline on a white casing) and in the list, so it stands out against Blues, Yellow–red and Blue–red alike.
