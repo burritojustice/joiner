@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v16';
+const _BUILD_VERSION = 'v17';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -15,18 +15,26 @@ const CONFIG = {
     palettes: {
         blues:  { label: 'Blues', ramp: ['#86b6ef', '#5598e7', '#2a78d6', '#1c5cab', '#0d366b'], rows: '#E8590C' },
         ylorrd: { label: 'Yellow–red', ramp: ['#feb24c', '#fd8d3c', '#fc4e2a', '#e31a1c', '#800026'], rows: '#1c5cab' },
-        // Diverging, low → high: blue, a warm grey middle (darker than "no value"), red.
-        rdbu:   { label: 'Blue–red', ramp: ['#2166ac', '#67a9cf', '#d6d0c8', '#ef8a62', '#b2182b'], rows: '#6a3d9a' },
+        // Diverging, low → high: ColorBrewer RdYlBu (5 classes), reversed so blue is low and red high.
+        rdylbu: { label: 'Blue–yellow–red', ramp: ['#2c7bb6', '#abd9e9', '#ffffbf', '#fdae61', '#d7191c'], rows: '#6a3d9a' },
     },
     nodata: '#F0EFEC',         // 0 / no value in the list and legend; on the map those areas are left clear
     // Area and row label colors: text, halo, halo width. Auto picks black or white per area.
+    // Area and row label colors: text, halo, halo width. Auto picks black or white per area.
+    // Grouped in pairs that swap text and glow (click a chosen pair again to swap).
     labelColors: {
-        black:        { label: 'Black',            text: '#1E2340', halo: 'rgba(255,255,255,0.92)', width: 2.5 },
-        white:        { label: 'White',            text: '#ffffff', halo: 'rgba(10,22,56,0.6)', width: 1.2 },
-        'navy-yellow':{ label: 'Navy on yellow',   text: '#0D1B3E', halo: '#FFE27A', width: 1.6, hint: 'for Blues' },
-        'navy-blue':  { label: 'Navy on light blue', text: '#0D1B3E', halo: '#CFE8FF', width: 1.6, hint: 'for Yellow–red' },
-        'white-red':  { label: 'White on deep red', text: '#ffffff', halo: '#6B0020', width: 1.4, hint: 'for Yellow–red' },
+        black:         { label: 'Black',              text: '#1E2340', halo: 'rgba(255,255,255,0.92)', width: 2.5, pair: 'bw' },
+        white:         { label: 'White',              text: '#ffffff', halo: 'rgba(10,22,56,0.6)', width: 1.2, pair: 'bw' },
+        'navy-yellow': { label: 'Navy on yellow',     text: '#0D1B3E', halo: '#FFE27A', width: 1.6, pair: 'ny' },
+        'yellow-navy': { label: 'Yellow on navy',     text: '#FFE27A', halo: '#0D1B3E', width: 1.4, pair: 'ny' },
+        'navy-blue':   { label: 'Navy on light blue', text: '#0D1B3E', halo: '#CFE8FF', width: 1.6, pair: 'nb' },
+        'blue-navy':   { label: 'Light blue on navy', text: '#CFE8FF', halo: '#0D1B3E', width: 1.4, pair: 'nb' },
+        'white-red':   { label: 'White on deep red',  text: '#ffffff', halo: '#6B0020', width: 1.4, pair: 'wr' },
+        'red-white':   { label: 'Deep red on white',  text: '#6B0020', halo: 'rgba(255,255,255,0.95)', width: 2.2, pair: 'wr' },
     },
+    labelPairs: { bw: 'Black / white', ny: 'Navy / yellow', nb: 'Navy / light blue', wr: 'White / deep red' },
+    // Basemap street names: one style that reads on every palette and on the bare basemap.
+    streetLabels: { text: '#0D1B3E', halo: '#FFF1B8', width: 1.5 },
     popupRows: 8,
     fonts: { bold: ['Noto Sans Medium'], regular: ['Noto Sans Regular'] },
     labelSizes: { small: { areas: 12, rows: 11 }, medium: { areas: 14, rows: 12.5 }, large: { areas: 16, rows: 14 } },
@@ -56,6 +64,8 @@ const CONFIG = {
 
 const $ = id => document.getElementById(id);
 const pal = () => CONFIG.palettes[S.palette] || CONFIG.palettes.blues;
+// v16's Blue–red ('rdbu') became Blue–yellow–red in v17.
+const palKey = k => { k = k === 'rdbu' ? 'rdylbu' : k; return CONFIG.palettes[k] ? k : 'blues'; };
 const ramp = () => pal().ramp;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const store = {
@@ -128,7 +138,7 @@ async function boot() {
     const first = S.layers.has(fromHash) ? fromHash : (S.manifest.layers.find(l => l.default) || S.manifest.layers[0]).id;
     S.tabChoice[S.layers.get(first).tab] = first;
     S.basemap = { ...S.basemap, ...store.get('basemap', {}) };
-    S.palette = CONFIG.palettes[store.get('palette', 'blues')] ? store.get('palette', 'blues') : 'blues';
+    S.palette = palKey(store.get('palette', 'blues'));
     S.labelColor = store.get('labelColor', 'auto'); if (S.labelColor !== 'auto' && !CONFIG.labelColors[S.labelColor]) S.labelColor = 'auto';
     { const ls = store.get('labelSize2', 'auto'); S.labelSize = ls === 'auto' || CONFIG.labelSizes[ls] ? ls : 'auto'; }
     S.revealAll = !!store.get('revealAll', false);
@@ -191,7 +201,13 @@ function tidyBasemap() {
     for (const l of styleLayers()) {
         if (l.id === 'roads_shields' || l.id === 'roads_oneway') map.setLayoutProperty(l.id, 'visibility', 'none');
         if (l.id === 'roads_labels_major') map.setFilter(l.id, ['==', ['get', 'kind'], 'major_road']);
-        if (l.id === 'roads_labels_major' || l.id === 'roads_labels_minor') map.setLayerZoomRange(l.id, CONFIG.streetNamesZoom, 24);
+        if (l.id === 'roads_labels_major' || l.id === 'roads_labels_minor') {
+            map.setLayerZoomRange(l.id, CONFIG.streetNamesZoom, 24);
+            const z = CONFIG.streetLabels;
+            map.setPaintProperty(l.id, 'text-color', z.text);
+            map.setPaintProperty(l.id, 'text-halo-color', z.halo);
+            map.setPaintProperty(l.id, 'text-halo-width', z.width);
+        }
     }
     fixCreeks();
 }
@@ -373,12 +389,12 @@ function luminance(hex) {
 const glowFor = hex => luminance(hex) > 0.4 ? 'rgba(30,35,64,0.6)' : '#ffffff';
 
 // The ramp used for rows colored by a number: the palette the areas aren't using.
-const ROW_RAMPS = { blues: 'ylorrd', ylorrd: 'blues', rdbu: 'purples' };
+const ROW_RAMPS = { blues: 'ylorrd', ylorrd: 'blues', rdylbu: 'purples' };
 const PURPLES = { label: 'purple', ramp: ['#cbc9e2', '#9e9ac8', '#756bb1', '#54278f', '#3f007d'] };
 const rowRampPal = () => ROW_RAMPS[S.palette] === 'purples' ? PURPLES : CONFIG.palettes[ROW_RAMPS[S.palette] || 'blues'];
 const rowRamp = () => rowRampPal().ramp;
 // Categorical colors for rows, minus hues that would blend into the area palette.
-const ROW_CAT_SKIP = { blues: ['#2a78d6'], ylorrd: ['#eb6834', '#eda100', '#e34948'], rdbu: ['#2a78d6', '#eb6834', '#e34948'] };
+const ROW_CAT_SKIP = { blues: ['#2a78d6'], ylorrd: ['#eb6834', '#eda100', '#e34948'], rdylbu: ['#2a78d6', '#eb6834', '#eda100', '#e34948'] };
 const rowCategorical = () => CONFIG.categorical.filter(c => !(ROW_CAT_SKIP[S.palette] || []).includes(c));
 
 function applyPalette() {
@@ -585,6 +601,45 @@ function keyCandidates(meta, fc, normalize) {
         }
         return { col, hits, filled };
     })].sort((a, b) => b.hits - a.hits || (a.col === LOCATION ? -1 : b.col === LOCATION ? 1 : a.col.localeCompare(b.col)));
+}
+
+// Which area set a column's name points to: ZIP, district, tract, or one of the neighborhood sets.
+// Returns a layer id, 'neighborhood' when the set is ambiguous, or null.
+function layerForColumn(col) {
+    const c = String(col).toLowerCase();
+    if (/\bzip|postal/.test(c)) return 'zip_codes';
+    if (/census|tract|geoid/.test(c)) return 'census_tracts';
+    if (/supervisor|\bdistrict|\bsup\b|\bbos\b/.test(c)) return 'supervisor_districts';
+    if (/neighbo|nhood|\bhood\b/.test(c)) {
+        if (/analysis/.test(c)) return 'analysis_neighborhoods';
+        if (/sf ?find|\bfind\b/.test(c)) return 'sf_find_neighborhoods';
+        if (/planning/.test(c)) return 'planning_neighborhoods';
+        if (/realtor/.test(c)) return 'realtor_neighborhoods';
+        if (/\bwof\b|who.?s on first/.test(c)) return 'wof_neighbourhoods';
+        return 'neighborhood';
+    }
+    return null;
+}
+// Matching by a column that names another kind of area: switch to that set and say so (with Undo).
+// For neighborhoods, ask which set unless one is already showing.
+async function matchByColumn(col) {
+    const want = layerForColumn(col), cur = S.layers.get(S.layerId), from = S.layerId;
+    const go = async id => {
+        S.keyCols[id] = S.colKeys[id] = col;
+        await setLayer(id);
+        const placed = (S.rowArea || []).filter(a => a != null).length;
+        toast(`Switched to ${shortLabel(S.layers.get(id))} to match “${col}”`, { sub: `${placed.toLocaleString()} of ${S.src.rows.length.toLocaleString()} rows matched`,
+            actions: [{ label: 'Undo', fn: () => setLayer(from) }], ms: 9000 });
+    };
+    if (want === 'neighborhood' && cur.tab !== 'Neighborhood') {
+        const sets = [...S.layers.values()].filter(l => l.tab === 'Neighborhood' && !l.hex);
+        toast(`“${col}” looks like neighborhood names. Which neighborhood set?`, { sub: 'Pick the one the names come from. You can switch later from the Neighborhood tab.',
+            actions: [...sets.map(l => ({ label: shortLabel(l), fn: () => go(l.id) })), { label: `Stay on ${shortLabel(cur)}`, fn: () => { S.keyCols[S.layerId] = S.colKeys[S.layerId] = col; recompute(); } }] });
+        return;
+    }
+    if (want && want !== 'neighborhood' && want !== S.layerId && S.layers.has(want)) return go(want);
+    S.keyCols[S.layerId] = S.colKeys[S.layerId] = col;
+    recompute();
 }
 
 function recompute() {
@@ -1164,7 +1219,19 @@ function setHover(id) {
 // Hovering a row highlights it on the map (or its area); hovering a feature on the map highlights
 // its row here; clicking a row goes to it.
 const TABLE_MAX = 1000;
-const T = { open: false, filter: 'all', sort: null, dir: 1, height: 280, shown: [] };
+// Below the map (height defaults to about three rows) or beside it (width). The area and name
+// columns stay put while scrolling sideways.
+const T = { open: false, filter: 'all', sort: null, dir: 1, dock: 'bottom', height: 160, width: 460, shown: [] };
+const AREA_SORT = '__area';
+const saveTablePrefs = () => store.set('tableDock', { open: T.open, dock: T.dock, height: T.height, width: T.width });
+function applyTableDock() {
+    const wrap = document.querySelector('.map-wrap'), side = T.dock === 'side';
+    wrap.classList.toggle('side-dock', side && T.open);
+    wrap.style.setProperty('--drawer', T.open && !side ? T.height + 'px' : '0px');
+    wrap.style.setProperty('--drawer-w', T.open && side ? T.width + 'px' : '0px');
+    $('dock-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.dock === T.dock));
+    map.resize();
+}
 function tableCols() {
     // Every column but internal ones and raw geometry text (WKT); latitude/longitude stay.
     // The row's name column comes first.
@@ -1176,9 +1243,8 @@ function setTableOpen(on) {
     T.open = on && !!S.src;
     $('table-drawer').hidden = !T.open;
     $('table-toggle').setAttribute('aria-pressed', T.open);
-    document.querySelector('.map-wrap').style.setProperty('--drawer', T.open ? T.height + 'px' : '0px');
-    store.set('table', { open: on, height: T.height });
-    map.resize();
+    applyTableDock();
+    saveTablePrefs();
     if (T.open) renderTable();
 }
 function tableRowIdx() {
@@ -1190,8 +1256,9 @@ function tableRowIdx() {
         idx = idx.filter(i => { const p = S.src.points?.[i]; return p && b.contains(p); });
     }
     if (T.sort) {
-        const c = T.sort, num = JoinKit.classifyColumns(S.src.rows, [c]).numericCols.length > 0;
-        const key = i => { const v = S.src.rows[i][c]; return num ? JoinKit.parseNum(v) : JoinKit.cellText(v).toLowerCase(); };
+        const c = T.sort, num = c !== AREA_SORT && JoinKit.classifyColumns(S.src.rows, [c]).numericCols.length > 0;
+        const key = c === AREA_SORT ? i => (S.rowArea[i] != null ? areaName(S.rowArea[i]) || '' : '').toLowerCase()
+            : i => { const v = S.src.rows[i][c]; return num ? JoinKit.parseNum(v) : JoinKit.cellText(v).toLowerCase(); };
         idx.sort((a, b) => { const x = key(a), y = key(b); return (x === null || x === '') - (y === null || y === '') || (x < y ? -T.dir : x > y ? T.dir : 0); });
     }
     return idx;
@@ -1204,9 +1271,15 @@ function renderTable() {
         + (T.filter === 'area' ? (S.selectedId == null ? ' · click an area to show its rows' : ` in ${areaName(S.selectedId)}`) : T.filter === 'view' ? ' in view' : '')
         + (idx.length > TABLE_MAX ? ` · showing the first ${TABLE_MAX.toLocaleString()}` : '');
     $('table-filter').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.filter === T.filter));
-    const head = `<tr><th class="area">${esc(shortLabel(S.layers.get(S.layerId)))}</th>${cols.map(c => `<th data-col="${esc(c)}" title="${esc(c)}" class="${T.sort === c ? (T.dir > 0 ? 'asc' : 'desc') : ''}">${esc(c)}</th>`).join('')}</tr>`;
-    const body = shown.map(i => `<tr data-row="${i}" class="${S.src.points?.[i] ? 'has-loc' : ''}"><td class="area">${esc(area(i))}</td>${cols.map(c => { const t = cellShow(S.src.rows[i][c]); return `<td title="${esc(t.length > 40 ? t : '')}">${esc(t)}</td>`; }).join('')}</tr>`).join('');
-    $('table-grid').innerHTML = `<thead>${head}</thead><tbody>${body}</tbody>`;
+    // Every header sorts, the area column included; the name column (first) is pinned beside the area.
+    const sortCls = c => T.sort === c ? (T.dir > 0 ? 'asc' : 'desc') : '';
+    const pin = (c, j) => j === 0 && c === rowLabelCol() ? ' name' : '';
+    const areaLabel = shortLabel(S.layers.get(S.layerId));
+    const head = `<tr><th class="area ${sortCls(AREA_SORT)}" data-col="${AREA_SORT}" title="Sort by ${esc(areaLabel)}">${esc(areaLabel)}</th>${cols.map((c, j) => `<th data-col="${esc(c)}" title="Sort by ${esc(c)}" class="${sortCls(c)}${pin(c, j)}">${esc(c)}</th>`).join('')}</tr>`;
+    const body = shown.map(i => `<tr data-row="${i}" class="${S.src.points?.[i] ? 'has-loc' : ''}"><td class="area">${esc(area(i))}</td>${cols.map((c, j) => { const t = cellShow(S.src.rows[i][c]); return `<td class="${pin(c, j).trim()}" title="${esc(t.length > 40 ? t : '')}">${esc(t)}</td>`; }).join('')}</tr>`).join('');
+    const grid = $('table-grid');
+    grid.innerHTML = `<thead>${head}</thead><tbody>${body}</tbody>`;
+    grid.style.setProperty('--area-w', (grid.querySelector('th.area')?.offsetWidth || 0) + 'px');
 }
 // A feature hovered on the map: highlight and reveal its row.
 let tableHoverRow = null;
@@ -1428,8 +1501,15 @@ function applyLabelColor() {
     map.setPaintProperty('rows-labels', 'text-halo-width', z.width);
     // Each choice shows a sample of its text and glow; "Auto" is black or white per area.
     const sample = c => `<i style="color:${c.text};text-shadow:${[...Array(8)].map((_, k) => { const t = k * Math.PI / 4; return `${(Math.cos(t) * 1.3).toFixed(1)}px ${(Math.sin(t) * 1.3).toFixed(1)}px 0.5px ${c.halo}`; }).join(',')}">Aa</i>`;
-    $('lcolor-seg').innerHTML = [['auto', { label: 'Auto', text: '#1E2340', halo: '#fff', hint: 'black or white per area' }], ...Object.entries(CONFIG.labelColors)]
-        .map(([k, c]) => `<button type="button" class="chip" data-lcolor="${k}" aria-pressed="${k === S.labelColor}" title="${esc(c.label + (c.hint ? ' — ' + c.hint : ''))}">${sample(c)}${esc(c.label)}</button>`).join('');
+    // One chip per pair, showing the side in use (or the first); clicking the chosen pair swaps it.
+    const cur = CONFIG.labelColors[S.labelColor];
+    const chips = Object.entries(CONFIG.labelPairs).map(([p, name]) => {
+        const keys = Object.keys(CONFIG.labelColors).filter(k => CONFIG.labelColors[k].pair === p);
+        const on = cur?.pair === p, k = on ? S.labelColor : (S.lastPair?.[p] || keys[0]), c = CONFIG.labelColors[k];
+        const other = CONFIG.labelColors[keys.find(x => x !== k)];
+        return `<button type="button" class="chip pair" data-lcolor="${k}" data-pair="${p}" aria-pressed="${on}" title="${esc(c.label)}${on ? ` — click again for ${esc(other.label.toLowerCase())}` : ''}">${sample(c)}${esc(c.label)}${on ? '<span class="swap" aria-hidden="true">⇄</span>' : ''}</button>`;
+    });
+    $('lcolor-seg').innerHTML = `<button type="button" class="chip" data-lcolor="auto" aria-pressed="${S.labelColor === 'auto'}" title="Black or white per area">${sample({ text: '#1E2340', halo: '#fff' })}Auto</button>` + chips.join('');
     updateLabels();
 }
 
@@ -1533,7 +1613,7 @@ async function useSource(src, { keep = false } = {}) {
         if (st) {
             Object.assign(S.keyCols, st.keyCols || {});
             if (st.metric) S.metric = st.metric;
-            if (st.palette && CONFIG.palettes[st.palette]) { S.palette = st.palette; applyPalette(); }
+            if (st.palette && CONFIG.palettes[palKey(st.palette)]) { S.palette = palKey(st.palette); applyPalette(); }
             if (st.rowStyle) S.rowStyle = { colorBy: st.rowStyle.colorBy || '', labels: st.rowStyle.labels || [], sizeBy: st.rowStyle.sizeBy || '', sizeLog: !!st.rowStyle.sizeLog };
             if (st.pointSize && CONFIG.pointSizes[st.pointSize]) S.pointSize = st.pointSize;
             if (st.hex) S.hex = { ...S.hex, ...st.hex };
@@ -1552,6 +1632,26 @@ async function useSource(src, { keep = false } = {}) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════
+// Toast: what's happening (loading steps), what changed (area set switched), or a question.
+// ═════════════════════════════════════════════════════════════════════════
+let toastTimer = null;
+function toast(msg, { sub = '', busy = false, actions = [], ms = 0 } = {}) {
+    const el = $('toast');
+    clearTimeout(toastTimer);
+    if (!msg) { el.hidden = true; return; }
+    el.classList.toggle('busy', busy);
+    el.querySelector('.toast-msg').textContent = msg;
+    const subEl = el.querySelector('.toast-sub'); subEl.textContent = sub; subEl.hidden = !sub;
+    const act = el.querySelector('.toast-actions');
+    act.innerHTML = actions.map((a, i) => `<button type="button" class="${a.primary ? 'btn' : 'btn ghost'}" data-i="${i}">${esc(a.label)}</button>`).join('');
+    act.hidden = !actions.length;
+    act.onclick = e => { const b = e.target.closest('button'); if (!b) return; const a = actions[+b.dataset.i]; toast(''); a.fn?.(); };
+    el.hidden = false;
+    if (ms) toastTimer = setTimeout(() => { el.hidden = true; }, ms);
+}
+const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));   // let the toast paint before heavy work
+
+// ═════════════════════════════════════════════════════════════════════════
 // Airtable
 // ═════════════════════════════════════════════════════════════════════════
 // A view link in ?airtable= (shareable: it carries no token) opens that view; the token is asked
@@ -1567,20 +1667,66 @@ async function loadAirtable(link, { include = [], keep = false } = {}) {
     if (!tok) { atStatus('Paste your personal access token.', 'err'); $('at-token-row').hidden = false; $('at-token').focus(); return; }
     atBusy = true; $('at-load').disabled = true;
     atStatus('Loading from Airtable…');
+    const t0 = performance.now(), secs = () => ((performance.now() - t0) / 1000).toFixed(1) + 's';
+    let label = 'the table';
+    // Each step of the load, in the toast and the panel.
+    const step = (msg, sub) => { toast(msg, { sub, busy: true }); atStatus(msg); };
+    const onProgress = p => {
+        if (p.step === 'schema') step('Connecting to Airtable…', 'Reading the base’s tables and fields');
+        else if (p.step === 'fields') { label = `“${p.table}”${p.view ? ' · ' + p.view : ''}`; step(`Reading ${label}…`, `${p.fields} field${p.fields === 1 ? '' : 's'}` + (p.skipped ? `, ${p.skipped} contact field${p.skipped === 1 ? '' : 's'} left out` : '')); }
+        else if (p.step === 'records') step(`Reading ${label}…`, `${p.rows.toLocaleString()} records so far (page ${p.page}${p.more ? ', more to come' : ''}) · ${secs()}`);
+    };
     try {
         const first = S.src?.kind !== 'airtable';   // collapse the card after a first load, not when switching or reloading
-        const src = JoinerSources.finishSource(await AT().load(link, tok, { include, onProgress: n => atStatus(`Loading from Airtable… ${n.toLocaleString()} rows`) }));
+        const raw = await AT().load(link, tok, { include, onProgress });
+        step(`Looking for locations in ${raw.rows.length.toLocaleString()} records…`, 'Coordinates, WKT or GeoJSON columns');
+        await nextFrame();
+        const src = JoinerSources.finishSource(raw);
         AT().token.set(tok); $('at-token').value = '';
         const q = new URLSearchParams(location.search); q.set('airtable', AT().linkFor(src.airtable));
         history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash);
+        step(`Placing ${src.rows.length.toLocaleString()} rows in ${shortLabel(S.layers.get(S.layerId))}…`, src.geomFrom ? `Using the ${src.geomFrom}` : 'Matching by column');
+        await nextFrame();
         await useSource(src, { keep });
         atStatus('');
+        const placed = (S.rowArea || []).filter(a => a != null).length;
+        toast(`Loaded ${src.rows.length.toLocaleString()} rows from ${label}`, { sub: `${placed.toLocaleString()} placed in ${shortLabel(S.layers.get(S.layerId))} · ${secs()}`, ms: 4500 });
         if (first) $('at-card').open = false;
     } catch (e) {
         atStatus(e.message, 'err');
+        toast('Couldn’t load from Airtable', { sub: e.message, ms: 9000 });
         if (/token/i.test(e.message)) $('at-token-row').hidden = false;
         console.error(e);
     } finally { atBusy = false; $('at-load').disabled = false; renderAirtable(); }
+}
+
+// Other bases and tables this token can read: bases listed at once, a base's tables when it's opened.
+async function browseAirtable() {
+    const box = $('at-browse'), tok = AT().token.get();
+    if (!box.hidden) { box.hidden = true; $('at-browse-btn').textContent = 'Show other tables'; return; }
+    box.hidden = false; $('at-browse-btn').textContent = 'Hide other tables';
+    box.innerHTML = '<p class="hint">Reading the bases this token can open…</p>';
+    try {
+        const bases = await AT().listBases(tok);
+        const cur = S.src?.airtable?.base;
+        box.innerHTML = bases.length ? bases.map(b => `<details class="at-base" data-base="${b.id}"${b.id === cur ? ' open' : ''}><summary>${esc(b.name)}</summary><ul class="at-tables"><li class="hint">…</li></ul></details>`).join('')
+            : '<p class="hint">This token can’t open any bases. Add bases to it under Access on the token’s page.</p>';
+        const fill = async det => {
+            if (det.dataset.loaded) return;
+            det.dataset.loaded = '1';
+            const ul = det.querySelector('ul');
+            try {
+                const tables = await AT().listTables(det.dataset.base, tok);
+                ul.innerHTML = tables.map(t => `<li><button type="button" class="linkish" data-table="${t.id}"${S.src?.airtable?.table === t.id ? ' aria-current="true"' : ''}>${esc(t.name)}</button> <span class="why">${t.fields} fields</span></li>`).join('');
+            } catch (e) { ul.innerHTML = `<li class="hint">${esc(e.message)}</li>`; delete det.dataset.loaded; }
+        };
+        box.querySelectorAll('details.at-base').forEach(det => { det.addEventListener('toggle', () => det.open && fill(det)); if (det.open) fill(det); });
+        box.onclick = e => {
+            const b = e.target.closest('button[data-table]'); if (!b) return;
+            const base = b.closest('details').dataset.base;
+            loadAirtable({ base, table: b.dataset.table, view: null });
+        };
+    } catch (e) { box.innerHTML = `<p class="hint err">${esc(e.message)}</p>`; }
 }
 
 function renderAirtable() {
@@ -1637,14 +1783,16 @@ function wireUI() {
     $('file-input').onchange = e => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ''; };
     $('save-btn').onclick = saveSnapshot;
 
-    $('key-select').onchange = e => { if (e.target.value) { S.keyCols[S.layerId] = S.colKeys[S.layerId] = e.target.value; recompute(); } };
+    $('key-select').onchange = e => { if (e.target.value) matchByColumn(e.target.value); };
     $('loc-check').onchange = e => {
         S.keyCols[S.layerId] = e.target.checked ? LOCATION : (S.colKeys[S.layerId] || S.candidates.find(c => c.col !== LOCATION)?.col);
         recompute();
     };
     $('clear-btn').onclick = clearFile;
     $('at-form').onsubmit = e => { e.preventDefault(); loadAirtable(AT().parseLink($('at-url').value)); };
-    $('at-forget').onclick = () => { AT().token.set(''); renderAirtable(); atStatus('Token forgotten.'); };
+    $('at-forget').onclick = () => { AT().token.set(''); $('at-browse').hidden = true; renderAirtable(); atStatus('Token forgotten.'); };
+    $('at-browse-btn').onclick = browseAirtable;
+    $('toast').querySelector('.toast-x').onclick = () => toast('');
     // Switching views keeps fields added back; a different table starts from the default fields.
     const atSwitch = () => {
         const at = S.src.airtable, same = $('at-table').value === at.table;
@@ -1712,7 +1860,12 @@ function wireUI() {
     $('points-check').onchange = e => setFeaturesVisible(e.target.checked);
     $('empty-check').onchange = e => { S.hideEmpty = e.target.checked; store.set('hideEmpty', S.hideEmpty); recompute(); };
     // Table drawer
-    { const t = store.get('table', {}); if (t.height) T.height = Math.max(120, Math.min(t.height, innerHeight * 0.7)); T.wanted = !!t.open; }
+    { const t = store.get('tableDock', {});
+      if (t.height) T.height = Math.max(110, Math.min(t.height, innerHeight * 0.7));
+      if (t.width) T.width = Math.max(280, Math.min(t.width, innerWidth * 0.6));
+      if (t.dock === 'side' || t.dock === 'bottom') T.dock = t.dock;
+      T.wanted = !!(t.open ?? store.get('table', {}).open); }
+    $('dock-seg').onclick = e => { const b = e.target.closest('button'); if (!b) return; T.dock = b.dataset.dock; applyTableDock(); saveTablePrefs(); renderTable(); };
     $('table-toggle').onclick = () => setTableOpen(!T.open);
     $('table-close').onclick = () => setTableOpen(false);
     $('table-filter').onclick = e => { const b = e.target.closest('button'); if (!b) return; T.filter = b.dataset.filter; renderTable(); };
@@ -1731,19 +1884,27 @@ function wireUI() {
         hlRows({ row: i }); setHover(S.rowArea[i] ?? null);
     });
     $('table-grid').addEventListener('mouseleave', () => { hlRows(null); setHover(null); });
-    // Drag the drawer's top edge to resize it.
+    // Drag the drawer's inner edge (top below the map, left beside it) to resize it.
     $('table-grip').addEventListener('pointerdown', e => {
         e.preventDefault();
-        const y0 = e.clientY, h0 = T.height, wrap = document.querySelector('.map-wrap');
-        const move = ev => { T.height = Math.max(120, Math.min(h0 + y0 - ev.clientY, wrap.clientHeight - 120)); wrap.style.setProperty('--drawer', T.height + 'px'); map.resize(); };
-        const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); store.set('table', { open: T.open, height: T.height }); };
+        const x0 = e.clientX, y0 = e.clientY, h0 = T.height, w0 = T.width, wrap = document.querySelector('.map-wrap');
+        const move = ev => {
+            if (T.dock === 'side') T.width = Math.max(280, Math.min(w0 + x0 - ev.clientX, wrap.clientWidth - 240));
+            else T.height = Math.max(110, Math.min(h0 + y0 - ev.clientY, wrap.clientHeight - 120));
+            applyTableDock();
+        };
+        const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); saveTablePrefs(); };
         addEventListener('pointermove', move); addEventListener('pointerup', up);
     });
     $('areas-toggle').onclick = () => { S.showAreas = !S.showAreas; applyAreasVisible(); };
     $('features-toggle').onclick = () => setFeaturesVisible(!S.basemap.points);
     $('lcolor-seg').onclick = e => {
         const b = e.target.closest('button'); if (!b) return;
-        S.labelColor = b.dataset.lcolor; store.set('labelColor', S.labelColor);
+        let k = b.dataset.lcolor;
+        if (b.dataset.pair && b.getAttribute('aria-pressed') === 'true')   // the chosen pair: swap text and glow
+            k = Object.keys(CONFIG.labelColors).find(x => CONFIG.labelColors[x].pair === b.dataset.pair && x !== k);
+        if (b.dataset.pair) (S.lastPair ||= {})[b.dataset.pair] = k;
+        S.labelColor = k; store.set('labelColor', S.labelColor);
         applyLabelColor();
     };
     $('row-color').onchange = e => { S.rowStyle.colorBy = e.target.value; updateRowLayer(); renderFormatFeatures(); };

@@ -254,7 +254,8 @@ details.sub[open] > summary .n { display: none; }
 .source-chip { max-width: 170px; }
 .lcolors { display: flex; flex-wrap: wrap; gap: 4px; }
 .lcolors .chip { display: inline-flex; align-items: center; gap: 5px; }
-.lcolors .chip i { font-style: normal; font-weight: 700; font-size: 13px; padding: 0 2px; background: linear-gradient(90deg, #86b6ef 50%, #fd8d3c 50%); border-radius: 3px; }
+.lcolors .chip i { font-style: normal; font-weight: 700; font-size: 13px; padding: 0 3px; background: linear-gradient(90deg, #5598e7 33%, #feb24c 33% 66%, #d7191c 66%); border-radius: 3px; }
+.lcolors .chip .swap { font-size: 12px; color: var(--grape); margin-left: 1px; }
 
 /* v13: Airtable */
 .at-card input[type=text], .at-card input[type=password] { width: 100%; box-sizing: border-box; font: inherit; font-size: 13.5px; padding: 6px 8px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--card); }
@@ -301,3 +302,46 @@ table.grid tbody tr:hover td, table.grid tbody tr.hl td { background: #FFF4D1; }
 .at-steps li { margin: 2px 0; }
 .at-make { display: inline-block; margin: 6px 0 2px; font-size: 13px; font-weight: 700; color: var(--grape); }
 .at-safe { margin: 6px 0 0; padding: 6px 9px; border-radius: 8px; background: #FFF6DB; font-size: 12.5px; line-height: 1.4; }
+
+/* v17: toast */
+.toast { position: absolute; left: 50%; bottom: calc(var(--drawer, 0px) + 18px); transform: translateX(-50%); z-index: 6; display: flex; align-items: flex-start; gap: 10px;
+  max-width: min(460px, calc(100% - 32px)); padding: 10px 12px 10px 14px; border-radius: 12px; background: var(--ink); color: #fff; box-shadow: 0 8px 28px rgba(30,35,64,.28); font-size: 13.5px; }
+.toast[hidden] { display: none; }
+.toast-msg { font-weight: 700; line-height: 1.3; }
+.toast-sub { margin-top: 2px; font-size: 12.5px; opacity: .82; line-height: 1.35; }
+.toast-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.toast-actions .btn { padding: 4px 11px; font-size: 12.5px; }
+.toast-actions .btn.ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,.55); }
+.toast-x { border: 0; background: none; color: #fff; opacity: .6; cursor: pointer; font-size: 13px; padding: 0 0 0 4px; }
+.toast-x:hover { opacity: 1; }
+.toast .spin { display: none; width: 15px; height: 15px; margin-top: 1px; flex: none; border-radius: 50%; border: 2.5px solid rgba(255,255,255,.3); border-top-color: var(--sun); animation: spin .8s linear infinite; }
+.toast.busy .spin { display: block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.side-dock .toast { bottom: 18px; left: calc((100% - var(--drawer-w, 0px)) / 2); }
+
+/* v17: other Airtable tables */
+.at-browse { margin: 6px 0 4px; max-height: 260px; overflow: auto; border: 1.5px solid var(--line); border-radius: 8px; padding: 4px 8px; font-size: 13px; }
+.at-base summary { cursor: pointer; font-weight: 700; padding: 3px 0; }
+.at-tables { list-style: none; margin: 0 0 4px; padding: 0 0 0 14px; }
+.at-tables li { padding: 1px 0; }
+.at-tables button[aria-current] { color: var(--ink); text-decoration: none; }
+.at-tables button[aria-current]::after { content: ' (loaded)'; font-weight: 400; color: var(--ink-soft); }
+.at-browse .err { color: #b3261e; }
+.why { color: var(--ink-soft); font-size: 12px; }
+
+/* v17: table below or beside the map; area and name columns pinned */
+.map-wrap { --drawer-w: 0px; }
+#map { right: var(--drawer-w); }
+.table-head { flex-wrap: wrap; row-gap: 6px; }
+.side-dock .table-drawer { left: auto; top: 0; width: var(--drawer-w); height: auto; border-top: 0; border-left: 1.5px solid var(--line); box-shadow: -4px 0 16px rgba(30,35,64,.08); }
+.side-dock .table-grip { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; height: auto; margin: 0; cursor: ew-resize; z-index: 5; }
+.side-dock .table-head { padding-top: 8px; }
+table.grid th.name, table.grid td.name { position: sticky; left: var(--area-w, 0px); background: var(--card); z-index: 2; box-shadow: 1px 0 0 var(--line); }
+table.grid th.name { background: var(--paper); z-index: 3; }
+table.grid tbody tr:hover td.area, table.grid tbody tr:hover td.name, table.grid tbody tr.hl td.area, table.grid tbody tr.hl td.name { background: #FFF4D1; }
+
+/* v17: three palettes fit the card; the side table's count gets its own line */
+.seg.pal { max-width: 100%; }
+.seg.pal button { padding: 3px 7px; font-size: 12px; gap: 4px; }
+.seg.pal i { width: 15px; }
+.side-dock .table-head .hint { order: 9; flex-basis: 100%; }
