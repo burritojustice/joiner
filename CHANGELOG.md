@@ -2,6 +2,15 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v18
+- **Linked Airtable tables load together.** A linked-record field brings in the linked table's fields as “Link: Field” (contact fields still left out), and shows the linked records' names instead of IDs. So the 2026 geo table gets each application's budget, and the applications table gets its blocks' locations: when the linked records carry WKT, their shapes are combined (blocks and an intersection in one application become one feature). The Airtable panel lists the links, each can be turned off, and it notes when a linked record sits on several rows (its numbers count once per row).
+- **One pinned column in the table**, the row's name column to start. The pin in any header pins that column at the left instead.
+- **Label color chips keep their size:** each pair has a fixed name (Black · white, Navy · yellow, Navy · lt blue, White · red), the sample shows which side is text, and ⇄ marks the chosen pair. Smaller type.
+- **Street names have their own colors** (Basemap › Street names), with the same pairs; navy on light blue to start.
+- **Show other tables is a button** next to Load from Airtable, both smaller so they share a row, and it says “Loading…” (animated) while it reads the bases and tables.
+- **The loaded file or table's name is the title of the match card**, above Match rows by. Click it to collapse the card to one line (rows, placed, color) so the area list moves up; it remembers.
+- **Address ranges aren't stats:** address_low/high (and similar), part/parts and year are left out of Color by, including in linked fields.
+
 ## v17
 - **Loading from Airtable shows what's happening** in a toast over the map: connecting, which table and how many fields (and contact fields left out), records read so far page by page with the time, looking for locations, placing rows, and a summary when it's done. Errors show there too.
 - **Show other tables** (Airtable panel, next to the remembered token) lists the bases this token can open and, when you open a base, its tables. Click a table to load it.

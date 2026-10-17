@@ -85,6 +85,7 @@ function parseLatLonPair(s) {
 function parseObjectGeom(v) {
     if (!v || typeof v !== 'object') return null;
     if (typeof v.type === 'string' && Array.isArray(v.coordinates)) return v;
+    if (v.type === 'GeometryCollection' && Array.isArray(v.geometries)) return v;
     if (v.latitude != null && v.longitude != null) {
         const lat = num(v.latitude), lon = num(v.longitude);
         if (isFinite(lat) && isFinite(lon)) return { type: 'Point', coordinates: [lon, lat] };

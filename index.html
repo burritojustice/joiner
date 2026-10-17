@@ -35,7 +35,8 @@
   </header>
 
   <aside class="panel" id="panel">
-    <section class="card" id="join-card" hidden>
+    <details class="card join-card" id="join-card" hidden open>
+      <summary class="src-head"><span class="src-title" id="src-title"></span><span class="src-meta" id="src-meta"></span></summary>
       <div class="field" id="key-row">
         <label for="key-select">Match rows by</label>
         <label class="check loc" id="loc-row" hidden><input type="checkbox" id="loc-check"> Location (inside the area) <span class="n" id="loc-n"></span></label>
@@ -53,7 +54,7 @@
         <summary></summary>
         <ul></ul>
       </details>
-    </section>
+    </details>
 
     <section class="card empty" id="empty-card">
       <h2>Map your data</h2>
@@ -105,15 +106,25 @@
           </ol>
           <p class="at-safe">Treat a token like a password: anyone who has it can read those bases. Keep it out of emails, chats and shared docs. If one gets out, delete it on that same page and make a new one. Joiner keeps it only in this tab until it closes, and sends it only to Airtable.</p>
         </div>
-        <p class="hint" id="at-remembered" hidden>Token remembered for this tab. <button class="linkish" id="at-forget" type="button">Forget it</button> · <button class="linkish" id="at-browse-btn" type="button">Show other tables</button></p>
+        <p class="hint" id="at-remembered" hidden>Token remembered for this tab. <button class="linkish" id="at-forget" type="button">Forget it</button></p>
+        <div class="at-buttons">
+          <button class="btn small" type="submit" id="at-load">Load from Airtable</button>
+          <button class="btn small ghost" type="button" id="at-browse-btn">Show other tables</button>
+        </div>
         <div class="at-browse" id="at-browse" hidden></div>
-        <button class="btn" type="submit" id="at-load">Load from Airtable</button>
         <p class="at-status" id="at-status" role="status"></p>
       </form>
       <div id="at-info" hidden>
         <div class="field"><label for="at-table">Table</label><select id="at-table"></select></div>
         <div class="field"><label for="at-view">View</label><select id="at-view"></select></div>
         <p class="hint"><a id="at-open" target="_blank" rel="noopener">Open in Airtable</a> · <button class="linkish" id="at-copy" type="button">Copy map link</button></p>
+        <details class="sub" id="at-links-sub" hidden open>
+          <summary><span id="at-links-n"></span></summary>
+          <p class="hint">Fields from linked records come in as “Link: Field”, so one table can have both the locations and the numbers.</p>
+          <ul class="at-skipped" id="at-links"></ul>
+          <p class="hint" id="at-links-shared"></p>
+          <button class="btn ghost small" id="at-links-reload" type="button" hidden>Reload</button>
+        </details>
         <details class="sub" id="at-skipped-sub">
           <summary><span id="at-skipped-n"></span></summary>
           <p class="hint">Contact details aren’t loaded, so they stay out of the map and saved snapshots. Tick one to load it.</p>
@@ -188,6 +199,10 @@
         <span>Basemap</span>
         <label class="check"><input type="checkbox" id="roads-check"> Roads</label>
         <label class="check" title="The basemap's place names: city, neighborhoods, islands. Off while areas are shown."><input type="checkbox" id="hoods-check"> Places</label>
+      </div>
+      <div class="basemap-opts tight">
+        <span>Street names</span>
+        <div class="lcolors" id="scolor-seg" role="group" aria-label="Street name color"></div>
       </div>
       <div class="basemap-opts">
         <span>Colors</span>
