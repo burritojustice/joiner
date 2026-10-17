@@ -48,6 +48,12 @@
         <select id="metric-select"></select>
         <p class="hint" id="metric-hint"></p>
       </div>
+      <div class="field top-opts">
+        <span class="lab">Area colors</span>
+        <div class="seg pal palette-seg" role="group" aria-label="Area colors"></div>
+        <span class="lab">Area labels</span>
+        <button type="button" class="linkish labels-jump" id="labels-jump" title="Choose the label lines (in Format areas &amp; map below)"><span id="labels-top-n"></span> ↓</button>
+      </div>
       <div class="match" id="match-summary"></div>
       <label class="check" id="empty-row" hidden><input type="checkbox" id="empty-check"> Hide <span id="empty-n"></span> without data</label>
       <details class="unmatched" id="unmatched" hidden>
@@ -163,9 +169,9 @@
     </details>
 
     <details class="card labels-card" id="labels-card" open>
-      <summary>Map</summary>
+      <summary>Format areas &amp; map</summary>
       <details class="sub" id="labels-sub" open>
-        <summary>Labels <span class="n" id="labels-n"></span></summary>
+        <summary>Area labels <span class="n" id="labels-n"></span></summary>
         <div class="chips" id="label-chips" role="group" aria-label="Label lines"></div>
         <p class="hint"><span id="label-hint"></span> <button class="linkish" id="label-auto" type="button" hidden>Reset</button></p>
       </details>
@@ -205,8 +211,8 @@
         <div class="lcolors" id="scolor-seg" role="group" aria-label="Street name color"></div>
       </div>
       <div class="basemap-opts">
-        <span>Colors</span>
-        <div class="seg pal" id="palette-seg" role="group" aria-label="Area colors"></div>
+        <span>Area colors</span>
+        <div class="seg pal palette-seg" id="palette-seg" role="group" aria-label="Area colors"></div>
       </div>
     </details>
   </aside>

@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v18';
+const _BUILD_VERSION = 'v19';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -16,7 +16,8 @@ const CONFIG = {
         blues:  { label: 'Blues', ramp: ['#86b6ef', '#5598e7', '#2a78d6', '#1c5cab', '#0d366b'], rows: '#E8590C' },
         ylorrd: { label: 'Yellow–red', ramp: ['#feb24c', '#fd8d3c', '#fc4e2a', '#e31a1c', '#800026'], rows: '#1c5cab' },
         // Diverging, low → high: ColorBrewer RdYlBu (5 classes), reversed so blue is low and red high.
-        rdylbu: { label: 'Blue–yellow–red', ramp: ['#2c7bb6', '#abd9e9', '#ffffbf', '#fdae61', '#d7191c'], rows: '#6a3d9a' },
+        // With it, features are green (Greens when colored by a number) and the selected area purple.
+        rdylbu: { label: 'Blue–yellow–red', ramp: ['#2c7bb6', '#abd9e9', '#ffffbf', '#fdae61', '#d7191c'], rows: '#1a9850', pick: '#7B3294', pickWash: '#F1E6F7' },
     },
     nodata: '#F0EFEC',         // 0 / no value in the list and legend; on the map those areas are left clear
     // Area and row label colors: text, halo, halo width. Auto picks black or white per area.
@@ -296,7 +297,7 @@ function addMapLayers() {
         'line-color': '#ffffff', 'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 7, 0],
     } });
     map.addLayer({ id: 'bounds-hl', type: 'line', source: 'bounds', paint: {
-        'line-color': ['case', ['boolean', ['feature-state', 'selected'], false], CONFIG.highlight, '#1E2340'],
+        'line-color': ['case', ['boolean', ['feature-state', 'selected'], false], pal().pick || CONFIG.highlight, '#1E2340'],
         'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 4, ['boolean', ['feature-state', 'hover'], false], 2.5, 0],
     } });
     // Rows from the loaded file that carry geometry: polygons, lines, points.
@@ -390,9 +391,9 @@ function luminance(hex) {
 const glowFor = hex => luminance(hex) > 0.4 ? 'rgba(30,35,64,0.6)' : '#ffffff';
 
 // The ramp used for rows colored by a number: the palette the areas aren't using.
-const ROW_RAMPS = { blues: 'ylorrd', ylorrd: 'blues', rdylbu: 'purples' };
-const PURPLES = { label: 'purple', ramp: ['#cbc9e2', '#9e9ac8', '#756bb1', '#54278f', '#3f007d'] };
-const rowRampPal = () => ROW_RAMPS[S.palette] === 'purples' ? PURPLES : CONFIG.palettes[ROW_RAMPS[S.palette] || 'blues'];
+const ROW_RAMPS = { blues: 'ylorrd', ylorrd: 'blues', rdylbu: 'greens' };
+const GREENS = { label: 'green', ramp: ['#c7e9c0', '#a1d99b', '#74c476', '#31a354', '#006d2c'] };   // ColorBrewer Greens
+const rowRampPal = () => ROW_RAMPS[S.palette] === 'greens' ? GREENS : CONFIG.palettes[ROW_RAMPS[S.palette] || 'blues'];
 const rowRamp = () => rowRampPal().ramp;
 // Categorical colors for rows, minus hues that would blend into the area palette.
 const ROW_CAT_SKIP = { blues: ['#2a78d6'], ylorrd: ['#eb6834', '#eda100', '#e34948'], rdylbu: ['#2a78d6', '#eb6834', '#eda100', '#e34948'] };
@@ -400,6 +401,10 @@ const rowCategorical = () => CONFIG.categorical.filter(c => !(ROW_CAT_SKIP[S.pal
 
 function applyPalette() {
     const p = pal();
+    // The selected area's color: green, or purple where the palette's features are green.
+    map.setPaintProperty('bounds-hl', 'line-color', ['case', ['boolean', ['feature-state', 'selected'], false], p.pick || CONFIG.highlight, '#1E2340']);
+    document.documentElement.style.setProperty('--pick', p.pick || CONFIG.highlight);
+    document.documentElement.style.setProperty('--pick-wash', p.pickWash || '#E2F5EA');
     map.setPaintProperty('bounds-fill', 'fill-color',
         ['match', ['coalesce', ['feature-state', 'c'], -1], ...p.ramp.flatMap((c, i) => [i, c]), 'rgba(0,0,0,0)']);
     // Rows: one contrasting color, or one per class when colored by a column (property _k).
@@ -736,9 +741,11 @@ function metricOptions() {
 const ID_NAMES = /^(_airtable_id|id|fid|objectid|record ?id|row ?id|unique ?id|cnn|address|addr|street|source_?row|row|row_?(num|number|no)|index|zip|zip_?code|zipcode|postal_?code|apn|blklot|block|lot|parcel|geoid|fips|tract|phone)$|[\s_-](id|code|cnn|row|zip|address|geoid|fips|number|no)$/i;
 // Address ranges, part numbers and the like are numbers but not stats.
 const NOT_STAT = /^((address|addr|house|street)[\s_-]?(low|high|from|to|start|end|min|max|range|num|number)s?|parts?|nearby_cnns|cnns|year|latitude|longitude)$/i;
+// Columns that name a place (ZIP, district, tract…), even with extra words like "zip (matched)".
+const PLACE_WORDS = /\b(zip|zipcode|postal|district|supervisor|tract|geoid|fips|cnn|apn|blklot|parcel)\b/i;
 function isIdColumn(col) {
     const base = col.includes(': ') ? col.split(': ').pop().trim() : col.trim();   // linked fields: "Link: Field"
-    if (ID_NAMES.test(base) || NOT_STAT.test(base)) return true;
+    if (ID_NAMES.test(base) || NOT_STAT.test(base) || PLACE_WORDS.test(base)) return true;
     if (!S.src) return false;
     const memo = S.src._idCols || (S.src._idCols = new Map());
     if (!memo.has(col)) memo.set(col, looksLikeIds(S.src.rows.map(r => JoinKit.cellText(r[col]).trim()).filter(Boolean)));
@@ -1001,6 +1008,7 @@ function renderLabelControls() {
     if (!S.revealAll) for (let i = 2; i < n; i++) hints.push(`line ${i + 1} from zoom ${S.homeZoom + CONFIG.revealAfter + (i - 2) * CONFIG.revealStep}`);
     if (hints.length) hints[0] = hints[0][0].toUpperCase() + hints[0].slice(1);
     $('labels-n').textContent = activeLabelFields().map(f => f.label).join(', ') || 'none';
+    $('labels-top-n').textContent = $('labels-n').textContent;
     $('label-hint').textContent = hints.length ? hints.join(', ') + '.' : '';
     $('prefix-check').checked = S.prefix;
     $('prefix-zoom').value = S.prefixZoom;
@@ -1045,9 +1053,10 @@ function renderFormatFeatures() {
     }).join('');
 }
 
-function renderPaletteSeg() {
-    $('palette-seg').innerHTML = Object.entries(CONFIG.palettes).map(([k, p]) =>
+function renderPaletteSeg() {   // the same picker under Color by and in Format areas & map
+    const html = Object.entries(CONFIG.palettes).map(([k, p]) =>
         `<button type="button" data-palette="${k}" aria-pressed="${k === S.palette}" title="${esc(p.label)}"><i style="background:linear-gradient(90deg,${p.ramp.join(',')})"></i>${esc(p.label)}</button>`).join('');
+    document.querySelectorAll('.palette-seg').forEach(el => { el.innerHTML = html; });
 }
 function updateZoomReadout() { const el = $('zoom-now'); if (el && map) el.textContent = map.getZoom().toFixed(1); }
 
@@ -1835,6 +1844,18 @@ function wireUI() {
     $('file-input').onchange = e => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ''; };
     $('save-btn').onclick = saveSnapshot;
 
+    // Pointing at the area list for a moment folds the other cards away, so the list has the room.
+    { let t = null;
+      const card = document.querySelector('.list-card');
+      card.addEventListener('mouseenter', () => { t = setTimeout(() => {
+          document.querySelectorAll('#panel details.card[open]').forEach(d => { d.open = false; });
+      }, 450); });
+      card.addEventListener('mouseleave', () => clearTimeout(t)); }
+    $('labels-jump').onclick = () => {
+        $('labels-card').open = true; $('labels-sub').open = true;
+        $('labels-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        $('labels-card').classList.add('flash'); setTimeout(() => $('labels-card').classList.remove('flash'), 1200);
+    };
     $('join-card').open = store.get('joinOpen', true);
     $('join-card').addEventListener('toggle', () => store.set('joinOpen', $('join-card').open));
     $('key-select').onchange = e => { if (e.target.value) matchByColumn(e.target.value); };
@@ -1912,11 +1933,11 @@ function wireUI() {
     $('prefix-zoom').onchange = () => { saveLabelPrefs(); updateLabels(); };
     $('roads-check').onchange = e => { S.basemap.roads = e.target.checked; applyBasemapToggles(); };
     $('hoods-check').onchange = e => { S.basemap.places = e.target.checked; applyBasemapToggles(); };
-    $('palette-seg').onclick = e => {
+    document.querySelectorAll('.palette-seg').forEach(el => el.onclick = e => {
         const b = e.target.closest('button'); if (!b) return;
         S.palette = b.dataset.palette; store.set('palette', S.palette);
         updateRowLayer(); paint(); renderList(); renderPaletteSeg(); renderFormatFeatures(); updateLabels();
-    };
+    });
     $('points-check').onchange = e => setFeaturesVisible(e.target.checked);
     $('empty-check').onchange = e => { S.hideEmpty = e.target.checked; store.set('hideEmpty', S.hideEmpty); recompute(); };
     // Table drawer

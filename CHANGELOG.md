@@ -2,6 +2,13 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v19
+- **Blue–yellow–red pairs with green features:** rows are green, and colored by a number they use ColorBrewer Greens. The selected area is purple with this palette (green with the others), so it doesn't blend with the features.
+- **Area colors and Area labels sit under Color by**, so the map's look can be set where the data is chosen. Area colors is the same picker as below; Area labels lists the label lines and jumps down to the label picker.
+- **Names:** “Colors” is now **Area colors**, the Map card is **Format areas & map**, and its Labels are **Area labels**. The Airtable card's heading matches the other cards.
+- **Pointing at the area list folds the other cards** (after a moment), so the list gets the room. Click a card's heading to open it again.
+- **Place columns aren't stats:** ZIP, district, supervisor, tract, GEOID, CNN, parcel columns stay out of Color by even with extra words, like “zip (matched)”.
+
 ## v18
 - **Linked Airtable tables load together.** A linked-record field brings in the linked table's fields as “Link: Field” (contact fields still left out), and shows the linked records' names instead of IDs. So the 2026 geo table gets each application's budget, and the applications table gets its blocks' locations: when the linked records carry WKT, their shapes are combined (blocks and an intersection in one application become one feature). The Airtable panel lists the links, each can be turned off, and it notes when a linked record sits on several rows (its numbers count once per row).
 - **One pinned column in the table**, the row's name column to start. The pin in any header pins that column at the left instead.
