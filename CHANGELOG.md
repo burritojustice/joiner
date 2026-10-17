@@ -2,6 +2,13 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v21
+- **Streets over hexagons get the light touch too:** with the areas under the basemap (hexagons, or Under roads), its streets lose their casings and draw at half width, a little transparent, like the street copies over named areas. Hiding the areas or drawing them over restores the basemap's streets.
+- **Match rows by names the area set:** “Location (inside the ZIP Code)”, “(inside the Planning Neighborhood Group)”, “(inside the hexagon)”.
+- **Cards and popups are slightly see-through**, with a light blur behind.
+- **With the table open, row cards sit in a corner clear of it:** bottom left when the table is beside the map, bottom right when it's below, for hovering rows in the list and for clicking table rows alike.
+- **Legend ranges are abbreviated** like the map labels: $24.5K – $28.5K instead of $24,538 – $28,500.
+
 ## v20
 - **Click a row to keep its card open.** In an open area in the list, or in the table, clicking a row pins its card at the map's edge with every field, so you can move onto it, scroll it and select text. ✕, Esc, clicking the row again or clicking empty map closes it. Hovering rows still previews them. The row is marked in the list. Rows with a location also zoom to it (no popup), with features shown or not.
 - **Clicking an area opens it in the list and zooms to it** (on the map, in the list, or a table row's area), closing any other open area. Areas no longer get a popup listing their rows; the list shows them.
