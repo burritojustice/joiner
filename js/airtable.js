@@ -14,9 +14,22 @@ const PAGE_GAP_MS = 220;   // Airtable allows 5 requests a second per base
 const SKIP_TYPES = {
     email: 'email', phoneNumber: 'phone', multipleAttachments: 'attachments',
     singleCollaborator: 'Airtable user', multipleCollaborators: 'Airtable users', createdBy: 'Airtable user', lastModifiedBy: 'Airtable user',
-    button: 'button', multipleRecordLinks: 'linked records (not resolved yet)',
+    button: 'button',
 };
 const SKIP_NAMES = /(e-?mail|phone|street address|mailing address|home address|^address$|contact info)/i;
+
+// Geometry from linked records: WKT in a field named like these, combined into one GeoJSON shape.
+const GEOM_NAME = /^(wkt|geom|geometry|the_geom|shape)$/i;
+function combineWKT(list) {
+    const gs = list.map(w => window.JoinerSources?.parseWKT(w)).filter(Boolean);
+    if (!gs.length) return null;
+    if (gs.length === 1) return gs[0];
+    const fam = g => g.type.replace(/^Multi/, '');
+    const parts = g => g.type.startsWith('Multi') ? g.coordinates : [g.coordinates];
+    if (gs.every(g => fam(g) === fam(gs[0]))) return { type: 'Multi' + fam(gs[0]), coordinates: gs.flatMap(parts) };
+    return { type: 'GeometryCollection', geometries: gs };
+}
+const cellText = v => Array.isArray(v) ? v.join(', ') : v == null ? '' : typeof v === 'object' ? (v.name ?? v.text ?? '') : String(v);
 
 // An Airtable link: https://airtable.com/appXXXX/tblXXXX/viwXXXX?blocks=hide (any part may be missing but the base).
 function parseLink(s) {
@@ -57,9 +70,11 @@ async function call(path, tok, { method = 'GET', body } = {}) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // Which fields to request: everything except contact fields, plus any the user added back.
-function planFields(table, include = []) {
+// Linked-record fields are fetched (as record IDs) and resolved below.
+function planFields(table, include = [], { links = true } = {}) {
     const fetch = [], skipped = [];
     for (const f of table.fields) {
+        if (f.type === 'multipleRecordLinks') { if (links) fetch.push(f); continue; }
         const why = SKIP_TYPES[f.type] || (SKIP_NAMES.test(f.name) && f.id !== table.primaryFieldId ? 'contact info' : '');
         if (why && !include.includes(f.name)) skipped.push({ name: f.name, type: f.type, why });
         else fetch.push(f);
@@ -78,7 +93,7 @@ function cellValue(f, v) {
 }
 
 // Load a base/table/view into a Joiner source: { name, kind: 'airtable', headers, rows, airtable }.
-async function load(link, tok, { include = [], onProgress } = {}) {
+async function load(link, tok, { include = [], skipLinks = [], onProgress } = {}) {
     if (!tok) throw new AirtableError('Paste a personal access token to load from Airtable.');
     onProgress?.({ step: 'schema' });
     const { tables } = await call(`/meta/bases/${link.base}/tables`, tok);
@@ -102,12 +117,54 @@ async function load(link, tok, { include = [], onProgress } = {}) {
         onProgress?.({ step: 'records', rows: rows.length, page: ++pageNo, more: !!offset, table: table.name.trim() });
         if (offset) await sleep(PAGE_GAP_MS);
     } while (offset);
+    // Linked records: bring in the linked table's fields (minus contact fields and its own links),
+    // as "Link: Field". The link column shows the linked records' names. Several linked records
+    // in one cell: geometry (WKT) is combined into one shape; other values are listed.
+    const linkInfo = [], extra = [];
+    for (const lf of fields.filter(f => f.type === 'multipleRecordLinks')) {
+        const lt = tables.find(t => t.id === lf.options?.linkedTableId);
+        const ids = new Set(rows.flatMap(r => Array.isArray(r[lf.name]) ? r[lf.name] : []));
+        const info = { field: lf.name, tableId: lt?.id || null, table: lt?.name.trim() || '(table not readable)', resolved: false, fields: 0, shared: 0 };
+        linkInfo.push(info);
+        if (!lt || skipLinks.includes(lf.name)) continue;
+        const ltFields = planFields(lt, [], { links: false }).fetch;
+        const prim = lt.fields.find(f => f.id === lt.primaryFieldId);
+        const byId = new Map();
+        if (ids.size) {
+            let off, n = 0;
+            do {
+                const page = await call(`/${link.base}/${lt.id}/listRecords`, tok, { method: 'POST', body: { pageSize: 100, fields: ltFields.map(f => f.name), ...(off ? { offset: off } : {}) } });
+                for (const r of page.records || []) byId.set(r.id, r.fields);
+                n += (page.records || []).length; off = page.offset;
+                onProgress?.({ step: 'linked', field: lf.name, table: info.table, rows: n });
+                if (off) await sleep(PAGE_GAP_MS);
+            } while (off);
+        }
+        const used = ltFields.filter(f => f.id !== lt.primaryFieldId);
+        const count = new Map();
+        for (const r of rows) {
+            const rids = Array.isArray(r[lf.name]) ? r[lf.name] : [];
+            rids.forEach(id => count.set(id, (count.get(id) || 0) + 1));
+            const recs = rids.map(id => byId.get(id)).filter(Boolean);
+            r[lf.name] = recs.map(x => cellText(cellValue(prim, x[prim?.name]))).filter(Boolean).join(', ');
+            for (const f of used) {
+                const col = `${lf.name}: ${f.name}`;
+                const vals = recs.map(x => x[f.name]).filter(v => v != null && v !== '');
+                if (!vals.length) continue;
+                if (GEOM_NAME.test(f.name) && vals.every(v => typeof v === 'string')) { const g = combineWKT(vals); if (g) r[col] = g; continue; }
+                const out = [...new Set(vals.map(v => JSON.stringify(cellValue(f, v))))].map(v => JSON.parse(v));
+                r[col] = out.length === 1 ? out[0] : out.flat();
+            }
+        }
+        info.resolved = true; info.fields = used.length; info.shared = [...count.values()].filter(c => c > 1).length;
+        extra.push(...used.map(f => `${lf.name}: ${f.name}`).filter(c => rows.some(r => c in r)));
+    }
     const name = `${table.name.trim()}${view ? ' · ' + view.name : ''}`;
     return {
         name, kind: 'airtable', rows,
-        headers: [...fields.map(f => f.name), '_airtable_id'],
+        headers: [...fields.map(f => f.name), ...extra, '_airtable_id'],
         airtable: { base: link.base, table: table.id, view: view?.id || null, tableName: table.name.trim(), viewName: view?.name || null,
-            skipped, include, tables: tables.map(t => ({ id: t.id, name: t.name.trim(), views: (t.views || []).map(v => ({ id: v.id, name: v.name })) })) },
+            skipped, include, links: linkInfo, skipLinks, tables: tables.map(t => ({ id: t.id, name: t.name.trim(), views: (t.views || []).map(v => ({ id: v.id, name: v.name })) })) },
     };
 }
 

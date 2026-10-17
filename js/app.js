@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v17';
+const _BUILD_VERSION = 'v18';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -32,9 +32,9 @@ const CONFIG = {
         'white-red':   { label: 'White on deep red',  text: '#ffffff', halo: '#6B0020', width: 1.4, pair: 'wr' },
         'red-white':   { label: 'Deep red on white',  text: '#6B0020', halo: 'rgba(255,255,255,0.95)', width: 2.2, pair: 'wr' },
     },
-    labelPairs: { bw: 'Black / white', ny: 'Navy / yellow', nb: 'Navy / light blue', wr: 'White / deep red' },
-    // Basemap street names: one style that reads on every palette and on the bare basemap.
-    streetLabels: { text: '#0D1B3E', halo: '#FFF1B8', width: 1.5 },
+    labelPairs: { bw: 'Black · white', ny: 'Navy · yellow', nb: 'Navy · lt blue', wr: 'White · red' },
+    // Basemap street names: one of the label colors, the same on every palette (navy on light blue to start).
+    streetColor: 'navy-blue',
     popupRows: 8,
     fonts: { bold: ['Noto Sans Medium'], regular: ['Noto Sans Regular'] },
     labelSizes: { small: { areas: 12, rows: 11 }, medium: { areas: 14, rows: 12.5 }, large: { areas: 16, rows: 14 } },
@@ -139,6 +139,7 @@ async function boot() {
     S.tabChoice[S.layers.get(first).tab] = first;
     S.basemap = { ...S.basemap, ...store.get('basemap', {}) };
     S.palette = palKey(store.get('palette', 'blues'));
+    S.streetColor = store.get('streetColor', CONFIG.streetColor); if (!CONFIG.labelColors[S.streetColor]) S.streetColor = CONFIG.streetColor;
     S.labelColor = store.get('labelColor', 'auto'); if (S.labelColor !== 'auto' && !CONFIG.labelColors[S.labelColor]) S.labelColor = 'auto';
     { const ls = store.get('labelSize2', 'auto'); S.labelSize = ls === 'auto' || CONFIG.labelSizes[ls] ? ls : 'auto'; }
     S.revealAll = !!store.get('revealAll', false);
@@ -203,7 +204,7 @@ function tidyBasemap() {
         if (l.id === 'roads_labels_major') map.setFilter(l.id, ['==', ['get', 'kind'], 'major_road']);
         if (l.id === 'roads_labels_major' || l.id === 'roads_labels_minor') {
             map.setLayerZoomRange(l.id, CONFIG.streetNamesZoom, 24);
-            const z = CONFIG.streetLabels;
+            const z = CONFIG.labelColors[S.streetColor] || CONFIG.labelColors[CONFIG.streetColor];
             map.setPaintProperty(l.id, 'text-color', z.text);
             map.setPaintProperty(l.id, 'text-halo-color', z.halo);
             map.setPaintProperty(l.id, 'text-halo-width', z.width);
@@ -351,7 +352,7 @@ function addMapLayers() {
         'text-offset': [0.8, 0], 'text-justify': 'left', 'text-max-width': 12, 'text-padding': 2, 'text-optional': true,
     }, paint: { 'text-color': '#1E2340', 'text-halo-color': 'rgba(255,255,255,0.95)', 'text-halo-width': 1.4 } });
     applyLabelSize();
-    applyLabelColor();
+    applyLabelColor(); applyStreetColor();
 
     // One handler for areas and rows: a row under the cursor wins over the area beneath it.
     const ROW_LAYERS = ['rows-point', 'rows-mid', 'rows-line', 'rows-line-out', 'rows-sline', 'rows-sline-out', 'rows-fill'];
@@ -540,6 +541,8 @@ function repPoint(g) {
         case 'LineString': return alongMid(g.coordinates);
         case 'MultiLineString': return alongMid(g.coordinates.reduce((a, l) => lineLen(l) > lineLen(a) ? l : a, g.coordinates[0]));
         case 'Polygon': case 'MultiPolygon': return focusOf(g).anchor;
+        // Several shapes (e.g. a row linked to blocks and an intersection): the first line, else the first shape.
+        case 'GeometryCollection': return repPoint(g.geometries.find(x => /LineString/.test(x.type)) || g.geometries[0]);
         default: return null;
     }
 }
@@ -731,8 +734,11 @@ function metricOptions() {
 // from the data, numbers that count up 1, 2, 3… (row numbers) or are fixed-length codes
 // (every value an integer with the same 5+ digits, mostly unique: CNNs, CDS codes, GEOIDs).
 const ID_NAMES = /^(_airtable_id|id|fid|objectid|record ?id|row ?id|unique ?id|cnn|address|addr|street|source_?row|row|row_?(num|number|no)|index|zip|zip_?code|zipcode|postal_?code|apn|blklot|block|lot|parcel|geoid|fips|tract|phone)$|[\s_-](id|code|cnn|row|zip|address|geoid|fips|number|no)$/i;
+// Address ranges, part numbers and the like are numbers but not stats.
+const NOT_STAT = /^((address|addr|house|street)[\s_-]?(low|high|from|to|start|end|min|max|range|num|number)s?|parts?|nearby_cnns|cnns|year|latitude|longitude)$/i;
 function isIdColumn(col) {
-    if (ID_NAMES.test(col.trim())) return true;
+    const base = col.includes(': ') ? col.split(': ').pop().trim() : col.trim();   // linked fields: "Link: Field"
+    if (ID_NAMES.test(base) || NOT_STAT.test(base)) return true;
     if (!S.src) return false;
     const memo = S.src._idCols || (S.src._idCols = new Map());
     if (!memo.has(col)) memo.set(col, looksLikeIds(S.src.rows.map(r => JoinKit.cellText(r[col]).trim()).filter(Boolean)));
@@ -1057,6 +1063,11 @@ function renderPanel() {
     const chip = $('source-chip');
     chip.hidden = !S.src;
     if (S.src) chip.textContent = `${S.src.name} · ${S.src.rows.length.toLocaleString()} rows`;
+    if (S.src) {   // the source's name as the card title; when collapsed, the match and color in brief
+        $('src-title').textContent = S.src.name;
+        const placed = (S.rowArea || []).filter(x => x != null).length, by = S.join?.keyCol === LOCATION ? 'location' : S.join?.keyCol;
+        $('src-meta').textContent = `${S.src.rows.length.toLocaleString()} rows · ${placed.toLocaleString()} placed` + (by ? ` by ${by}` : '') + ` · color: ${metricLabel()}`;
+    }
 
     if (S.src) {
         const total = S.src.rows.length;
@@ -1221,7 +1232,7 @@ function setHover(id) {
 const TABLE_MAX = 1000;
 // Below the map (height defaults to about three rows) or beside it (width). The area and name
 // columns stay put while scrolling sideways.
-const T = { open: false, filter: 'all', sort: null, dir: 1, dock: 'bottom', height: 160, width: 460, shown: [] };
+const T = { open: false, filter: 'all', sort: null, dir: 1, dock: 'bottom', height: 160, width: 460, pin: null, shown: [] };
 const AREA_SORT = '__area';
 const saveTablePrefs = () => store.set('tableDock', { open: T.open, dock: T.dock, height: T.height, width: T.width });
 function applyTableDock() {
@@ -1235,7 +1246,7 @@ function applyTableDock() {
 function tableCols() {
     // Every column but internal ones and raw geometry text (WKT); latitude/longitude stay.
     // The row's name column comes first.
-    const cols = (S.src?.headers || []).filter(h => !h.startsWith('_') && !/^(wkt|geom|geometry|the_geom|shape)$/i.test(h.trim()));
+    const cols = (S.src?.headers || []).filter(h => !h.startsWith('_') && !/^(wkt|geom|geometry|the_geom|shape)$/i.test(h.trim()) && !(S.src.geomCols || []).includes(h) && !/: (wkt|geom|geometry|the_geom|shape)$/i.test(h));
     const name = rowLabelCol();
     return cols.includes(name) ? [name, ...cols.filter(c => c !== name)] : cols;
 }
@@ -1271,15 +1282,24 @@ function renderTable() {
         + (T.filter === 'area' ? (S.selectedId == null ? ' · click an area to show its rows' : ` in ${areaName(S.selectedId)}`) : T.filter === 'view' ? ' in view' : '')
         + (idx.length > TABLE_MAX ? ` · showing the first ${TABLE_MAX.toLocaleString()}` : '');
     $('table-filter').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.filter === T.filter));
-    // Every header sorts, the area column included; the name column (first) is pinned beside the area.
+    // Every header sorts. One column is pinned at the left while scrolling sideways: the row's name
+    // column to start; the pin in any header moves it there.
     const sortCls = c => T.sort === c ? (T.dir > 0 ? 'asc' : 'desc') : '';
-    const pin = (c, j) => j === 0 && c === rowLabelCol() ? ' name' : '';
     const areaLabel = shortLabel(S.layers.get(S.layerId));
-    const head = `<tr><th class="area ${sortCls(AREA_SORT)}" data-col="${AREA_SORT}" title="Sort by ${esc(areaLabel)}">${esc(areaLabel)}</th>${cols.map((c, j) => `<th data-col="${esc(c)}" title="Sort by ${esc(c)}" class="${sortCls(c)}${pin(c, j)}">${esc(c)}</th>`).join('')}</tr>`;
-    const body = shown.map(i => `<tr data-row="${i}" class="${S.src.points?.[i] ? 'has-loc' : ''}"><td class="area">${esc(area(i))}</td>${cols.map((c, j) => { const t = cellShow(S.src.rows[i][c]); return `<td class="${pin(c, j).trim()}" title="${esc(t.length > 40 ? t : '')}">${esc(t)}</td>`; }).join('')}</tr>`).join('');
+    const all = [AREA_SORT, ...cols];
+    const pinned = all.includes(T.pin) ? T.pin : (cols.includes(rowLabelCol()) ? rowLabelCol() : AREA_SORT);
+    const order = [pinned, ...all.filter(c => c !== pinned)];
+    const title = c => c === AREA_SORT ? areaLabel : c;
+    const PIN = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 1.5l4 4-2 1-2.6 2.6.4 3.2-1.3 1.2-3-3L2 14.5l-.5-.5 4-4-3-3 1.2-1.3 3.2.4L9.5 3.5z"/></svg>';
+    const head = `<tr>${order.map(c => `<th data-col="${esc(c)}" class="${sortCls(c)}${c === pinned ? ' pinned' : ''}${c === AREA_SORT ? ' area' : ''}" title="Sort by ${esc(title(c))}"><span class="th-t">${esc(title(c))}</span><button type="button" class="pin" data-pin="${esc(c)}" title="${c === pinned ? 'Pinned at the left' : 'Pin this column at the left'}" aria-pressed="${c === pinned}">${PIN}</button></th>`).join('')}</tr>`;
+    const cell = (i, c) => {
+        if (c === AREA_SORT) return `<td class="area${c === pinned ? ' pinned' : ''}">${esc(area(i))}</td>`;
+        const t = cellShow(S.src.rows[i][c]);
+        return `<td class="${c === pinned ? 'pinned' : ''}" title="${esc(t.length > 40 ? t : '')}">${esc(t)}</td>`;
+    };
+    const body = shown.map(i => `<tr data-row="${i}" class="${S.src.points?.[i] ? 'has-loc' : ''}">${order.map(c => cell(i, c)).join('')}</tr>`).join('');
     const grid = $('table-grid');
     grid.innerHTML = `<thead>${head}</thead><tbody>${body}</tbody>`;
-    grid.style.setProperty('--area-w', (grid.querySelector('th.area')?.offsetWidth || 0) + 'px');
 }
 // A feature hovered on the map: highlight and reveal its row.
 let tableHoverRow = null;
@@ -1494,22 +1514,43 @@ function renderHexControls() {
         + (S.hex.auto ? ' Auto picks a finer grid as you zoom in.' : '');
 }
 
+// Color chips: Auto (area labels only) and one chip per pair. A chip keeps its name and size; its
+// sample shows the side in use, and clicking the chosen pair again swaps text and glow.
+const colorSample = c => `<i style="color:${c.text};text-shadow:${[...Array(8)].map((_, k) => { const t = k * Math.PI / 4; return `${(Math.cos(t) * 1.3).toFixed(1)}px ${(Math.sin(t) * 1.3).toFixed(1)}px 0.5px ${c.halo}`; }).join(',')}">Aa</i>`;
+function renderColorChips(el, current, auto) {
+    const cur = CONFIG.labelColors[current];
+    const chips = Object.entries(CONFIG.labelPairs).map(([p, name]) => {
+        const keys = Object.keys(CONFIG.labelColors).filter(k => CONFIG.labelColors[k].pair === p);
+        const on = cur?.pair === p, k = on ? current : (S.lastPair?.[el + p] || keys[0]), c = CONFIG.labelColors[k];
+        const other = CONFIG.labelColors[keys.find(x => x !== k)];
+        return `<button type="button" class="chip pair" data-lcolor="${k}" data-pair="${p}" aria-pressed="${on}" title="${esc(c.label)}${on ? ` — click again for ${esc(other.label.toLowerCase())}` : ''}">${colorSample(c)}<span class="nm">${esc(name)}</span><span class="swap" aria-hidden="true">⇄</span></button>`;
+    });
+    $(el).innerHTML = (auto ? `<button type="button" class="chip" data-lcolor="auto" aria-pressed="${current === 'auto'}" title="Black or white per area">${colorSample({ text: '#1E2340', halo: '#fff' })}<span class="nm">Auto</span></button>` : '') + chips.join('');
+}
+// Which color a click on a chip picks (a second click on the chosen pair swaps it).
+function chipChoice(el, b) {
+    let k = b.dataset.lcolor;
+    if (b.dataset.pair && b.getAttribute('aria-pressed') === 'true')
+        k = Object.keys(CONFIG.labelColors).find(x => CONFIG.labelColors[x].pair === b.dataset.pair && x !== k);
+    if (b.dataset.pair) (S.lastPair ||= {})[el + b.dataset.pair] = k;
+    return k;
+}
+function applyStreetColor() {
+    for (const id of ['roads_labels_major', 'roads_labels_minor']) if (map.getLayer(id)) {
+        const z = CONFIG.labelColors[S.streetColor];
+        map.setPaintProperty(id, 'text-color', z.text);
+        map.setPaintProperty(id, 'text-halo-color', z.halo);
+        map.setPaintProperty(id, 'text-halo-width', z.width);
+    }
+    renderColorChips('scolor-seg', S.streetColor, false);
+}
+
 function applyLabelColor() {
     const z = CONFIG.labelColors[S.labelColor] || CONFIG.labelColors.black;
     map.setPaintProperty('rows-labels', 'text-color', z.text);
     map.setPaintProperty('rows-labels', 'text-halo-color', z.halo);
     map.setPaintProperty('rows-labels', 'text-halo-width', z.width);
-    // Each choice shows a sample of its text and glow; "Auto" is black or white per area.
-    const sample = c => `<i style="color:${c.text};text-shadow:${[...Array(8)].map((_, k) => { const t = k * Math.PI / 4; return `${(Math.cos(t) * 1.3).toFixed(1)}px ${(Math.sin(t) * 1.3).toFixed(1)}px 0.5px ${c.halo}`; }).join(',')}">Aa</i>`;
-    // One chip per pair, showing the side in use (or the first); clicking the chosen pair swaps it.
-    const cur = CONFIG.labelColors[S.labelColor];
-    const chips = Object.entries(CONFIG.labelPairs).map(([p, name]) => {
-        const keys = Object.keys(CONFIG.labelColors).filter(k => CONFIG.labelColors[k].pair === p);
-        const on = cur?.pair === p, k = on ? S.labelColor : (S.lastPair?.[p] || keys[0]), c = CONFIG.labelColors[k];
-        const other = CONFIG.labelColors[keys.find(x => x !== k)];
-        return `<button type="button" class="chip pair" data-lcolor="${k}" data-pair="${p}" aria-pressed="${on}" title="${esc(c.label)}${on ? ` — click again for ${esc(other.label.toLowerCase())}` : ''}">${sample(c)}${esc(c.label)}${on ? '<span class="swap" aria-hidden="true">⇄</span>' : ''}</button>`;
-    });
-    $('lcolor-seg').innerHTML = `<button type="button" class="chip" data-lcolor="auto" aria-pressed="${S.labelColor === 'auto'}" title="Black or white per area">${sample({ text: '#1E2340', halo: '#fff' })}Auto</button>` + chips.join('');
+    renderColorChips('lcolor-seg', S.labelColor, true);
     updateLabels();
 }
 
@@ -1584,7 +1625,7 @@ function popupHTML(f) {
 function bbox(geom) {
     const b = [Infinity, Infinity, -Infinity, -Infinity];
     const walk = c => { if (typeof c[0] === 'number') { b[0] = Math.min(b[0], c[0]); b[1] = Math.min(b[1], c[1]); b[2] = Math.max(b[2], c[0]); b[3] = Math.max(b[3], c[1]); } else c.forEach(walk); };
-    walk(geom.coordinates);
+    if (geom.type === 'GeometryCollection') geom.geometries.forEach(g => walk(g.coordinates)); else walk(geom.coordinates);
     return b;
 }
 
@@ -1625,7 +1666,7 @@ async function useSource(src, { keep = false } = {}) {
             if (st.labels) { S.labels = st.labels.fields ?? null; S.prefix = st.labels.prefix ?? S.prefix; S.prefixZoom = st.labels.prefixZoom ?? S.prefixZoom; }
             if (st.layerId && S.layers.has(st.layerId) && st.layerId !== S.layerId) { await setLayer(st.layerId); return; }
         }
-        T.sort = null;
+        T.sort = null; if (!keep) T.pin = null;
         if (T.wanted && !T.open) setTableOpen(true);
         if (isHex(S.layerId)) { await setLayer(S.layerId); return; }   // the grid gains the file's cells
         recompute();
@@ -1660,7 +1701,7 @@ const AT = () => window.JoinerAirtable;
 let atBusy = false;
 function atStatus(msg, kind = '') { const el = $('at-status'); el.textContent = msg; el.className = 'at-status ' + kind; }
 
-async function loadAirtable(link, { include = [], keep = false } = {}) {
+async function loadAirtable(link, { include = [], skipLinks = [], keep = false } = {}) {
     if (atBusy) return;
     const tok = $('at-token').value.trim() || AT().token.get();
     if (!link) { atStatus('Paste a link to an Airtable view (or table).', 'err'); return; }
@@ -1675,10 +1716,11 @@ async function loadAirtable(link, { include = [], keep = false } = {}) {
         if (p.step === 'schema') step('Connecting to Airtable…', 'Reading the base’s tables and fields');
         else if (p.step === 'fields') { label = `“${p.table}”${p.view ? ' · ' + p.view : ''}`; step(`Reading ${label}…`, `${p.fields} field${p.fields === 1 ? '' : 's'}` + (p.skipped ? `, ${p.skipped} contact field${p.skipped === 1 ? '' : 's'} left out` : '')); }
         else if (p.step === 'records') step(`Reading ${label}…`, `${p.rows.toLocaleString()} records so far (page ${p.page}${p.more ? ', more to come' : ''}) · ${secs()}`);
+        else if (p.step === 'linked') step(`Reading linked records in “${p.table}”…`, `For “${p.field}”: ${p.rows.toLocaleString()} records so far · ${secs()}`);
     };
     try {
         const first = S.src?.kind !== 'airtable';   // collapse the card after a first load, not when switching or reloading
-        const raw = await AT().load(link, tok, { include, onProgress });
+        const raw = await AT().load(link, tok, { include, skipLinks, onProgress });
         step(`Looking for locations in ${raw.rows.length.toLocaleString()} records…`, 'Coordinates, WKT or GeoJSON columns');
         await nextFrame();
         const src = JoinerSources.finishSource(raw);
@@ -1702,14 +1744,15 @@ async function loadAirtable(link, { include = [], keep = false } = {}) {
 
 // Other bases and tables this token can read: bases listed at once, a base's tables when it's opened.
 async function browseAirtable() {
-    const box = $('at-browse'), tok = AT().token.get();
+    const box = $('at-browse'), tok = $('at-token').value.trim() || AT().token.get();
     if (!box.hidden) { box.hidden = true; $('at-browse-btn').textContent = 'Show other tables'; return; }
+    if (!tok) { atStatus('Paste your personal access token to see the tables it can open.', 'err'); $('at-token').focus(); return; }
     box.hidden = false; $('at-browse-btn').textContent = 'Hide other tables';
-    box.innerHTML = '<p class="hint">Reading the bases this token can open…</p>';
+    box.innerHTML = '<p class="hint loading">Loading the bases this token can open</p>';
     try {
         const bases = await AT().listBases(tok);
         const cur = S.src?.airtable?.base;
-        box.innerHTML = bases.length ? bases.map(b => `<details class="at-base" data-base="${b.id}"${b.id === cur ? ' open' : ''}><summary>${esc(b.name)}</summary><ul class="at-tables"><li class="hint">…</li></ul></details>`).join('')
+        box.innerHTML = bases.length ? bases.map(b => `<details class="at-base" data-base="${b.id}"${b.id === cur ? ' open' : ''}><summary>${esc(b.name)}</summary><ul class="at-tables"><li class="hint loading">Loading tables</li></ul></details>`).join('')
             : '<p class="hint">This token can’t open any bases. Add bases to it under Access on the token’s page.</p>';
         const fill = async det => {
             if (det.dataset.loaded) return;
@@ -1725,6 +1768,7 @@ async function browseAirtable() {
             const b = e.target.closest('button[data-table]'); if (!b) return;
             const base = b.closest('details').dataset.base;
             loadAirtable({ base, table: b.dataset.table, view: null });
+            box.hidden = true; $('at-browse-btn').textContent = 'Show other tables';
         };
     } catch (e) { box.innerHTML = `<p class="hint err">${esc(e.message)}</p>`; }
 }
@@ -1745,6 +1789,14 @@ function renderAirtable() {
     $('at-skipped').innerHTML = at.skipped.map(f => `<li><label class="check"><input type="checkbox" data-field="${esc(f.name)}"> ${esc(f.name)} <span class="why">${esc(f.why)}</span></label></li>`).join('')
         + (at.include.length ? at.include.map(n => `<li><label class="check"><input type="checkbox" data-field="${esc(n)}" checked> ${esc(n)} <span class="why">added back</span></label></li>`).join('') : '');
     $('at-reload').hidden = true;
+    const links = at.links || [];
+    $('at-links-sub').hidden = !links.length;
+    $('at-links-n').textContent = `Linked records: ${links.filter(l => l.resolved).length} of ${links.length} brought in`;
+    $('at-links').innerHTML = links.map(l => `<li><label class="check"><input type="checkbox" data-link="${esc(l.field)}"${l.resolved ? ' checked' : ''}${l.tableId ? '' : ' disabled'}> ${esc(l.field)} <span class="why">→ ${esc(l.table)}${l.resolved ? `, ${l.fields} field${l.fields === 1 ? '' : 's'}` : ''}</span></label></li>`).join('');
+    const shared = links.filter(l => l.resolved && l.shared);
+    $('at-links-shared').textContent = shared.map(l => `${l.shared} linked record${l.shared === 1 ? '' : 's'} in “${l.field}” appear${l.shared === 1 ? 's' : ''} on more than one row here, so ${l.shared === 1 ? 'its' : 'their'} numbers count once per row.`).join(' ');
+    $('at-links-shared').hidden = !shared.length;
+    $('at-links-reload').hidden = true;
 }
 
 function saveSnapshot() {
@@ -1783,6 +1835,8 @@ function wireUI() {
     $('file-input').onchange = e => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ''; };
     $('save-btn').onclick = saveSnapshot;
 
+    $('join-card').open = store.get('joinOpen', true);
+    $('join-card').addEventListener('toggle', () => store.set('joinOpen', $('join-card').open));
     $('key-select').onchange = e => { if (e.target.value) matchByColumn(e.target.value); };
     $('loc-check').onchange = e => {
         S.keyCols[S.layerId] = e.target.checked ? LOCATION : (S.colKeys[S.layerId] || S.candidates.find(c => c.col !== LOCATION)?.col);
@@ -1796,7 +1850,7 @@ function wireUI() {
     // Switching views keeps fields added back; a different table starts from the default fields.
     const atSwitch = () => {
         const at = S.src.airtable, same = $('at-table').value === at.table;
-        loadAirtable({ base: at.base, table: $('at-table').value, view: same ? $('at-view').value || null : null }, { include: same ? at.include : [] });
+        loadAirtable({ base: at.base, table: $('at-table').value, view: same ? $('at-view').value || null : null }, { include: same ? at.include : [], skipLinks: same ? at.skipLinks || [] : [] });
     };
     $('at-table').onchange = atSwitch;
     $('at-view').onchange = atSwitch;
@@ -1804,7 +1858,13 @@ function wireUI() {
     $('at-reload').onclick = () => {
         const at = S.src.airtable;
         const include = [...$('at-skipped').querySelectorAll('input:checked')].map(i => i.dataset.field);
-        loadAirtable({ base: at.base, table: at.table, view: at.view }, { include, keep: true });
+        loadAirtable({ base: at.base, table: at.table, view: at.view }, { include, skipLinks: at.skipLinks || [], keep: true });
+    };
+    $('at-links').onchange = () => { $('at-links-reload').hidden = false; };
+    $('at-links-reload').onclick = () => {
+        const at = S.src.airtable;
+        const skipLinks = [...$('at-links').querySelectorAll('input:not(:checked)')].map(i => i.dataset.link);
+        loadAirtable({ base: at.base, table: at.table, view: at.view }, { include: at.include, skipLinks, keep: true });
     };
     $('at-copy').onclick = async () => {
         try { await navigator.clipboard.writeText(location.href); atStatus('Map link copied. It doesn’t include your token.'); }
@@ -1871,6 +1931,8 @@ function wireUI() {
     $('table-filter').onclick = e => { const b = e.target.closest('button'); if (!b) return; T.filter = b.dataset.filter; renderTable(); };
     map.on('moveend', () => { if (T.filter === 'view') renderTable(); });
     $('table-grid').addEventListener('click', e => {
+        const pin = e.target.closest('button.pin');
+        if (pin) { T.pin = pin.dataset.pin; renderTable(); return; }
         const th = e.target.closest('th[data-col]');
         if (th) { const c = th.dataset.col; T.dir = T.sort === c ? -T.dir : 1; T.sort = c; renderTable(); return; }
         const tr = e.target.closest('tr[data-row]'); if (!tr) return;
@@ -1900,12 +1962,13 @@ function wireUI() {
     $('features-toggle').onclick = () => setFeaturesVisible(!S.basemap.points);
     $('lcolor-seg').onclick = e => {
         const b = e.target.closest('button'); if (!b) return;
-        let k = b.dataset.lcolor;
-        if (b.dataset.pair && b.getAttribute('aria-pressed') === 'true')   // the chosen pair: swap text and glow
-            k = Object.keys(CONFIG.labelColors).find(x => CONFIG.labelColors[x].pair === b.dataset.pair && x !== k);
-        if (b.dataset.pair) (S.lastPair ||= {})[b.dataset.pair] = k;
-        S.labelColor = k; store.set('labelColor', S.labelColor);
+        S.labelColor = chipChoice('lcolor-seg', b); store.set('labelColor', S.labelColor);
         applyLabelColor();
+    };
+    $('scolor-seg').onclick = e => {
+        const b = e.target.closest('button'); if (!b) return;
+        S.streetColor = chipChoice('scolor-seg', b); store.set('streetColor', S.streetColor);
+        applyStreetColor();
     };
     $('row-color').onchange = e => { S.rowStyle.colorBy = e.target.value; updateRowLayer(); renderFormatFeatures(); };
     $('row-label-chips').onclick = e => {

@@ -292,8 +292,6 @@ table.grid th { position: sticky; top: 0; background: var(--paper); text-align: 
   max-width: 220px; overflow: hidden; text-overflow: ellipsis; cursor: pointer; border-bottom: 1px solid var(--line); z-index: 1; }
 table.grid th.asc::after { content: ' ▲'; font-size: 9px; } table.grid th.desc::after { content: ' ▼'; font-size: 9px; }
 table.grid td { padding: 4px 10px; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid var(--line); }
-table.grid th.area, table.grid td.area { position: sticky; left: 0; background: var(--card); font-weight: 600; z-index: 2; }
-table.grid th.area { background: var(--paper); z-index: 3; }
 table.grid tbody tr { cursor: pointer; }
 table.grid tbody tr:hover td, table.grid tbody tr.hl td { background: #FFF4D1; }
 
@@ -336,12 +334,47 @@ table.grid tbody tr:hover td, table.grid tbody tr.hl td { background: #FFF4D1; }
 .side-dock .table-drawer { left: auto; top: 0; width: var(--drawer-w); height: auto; border-top: 0; border-left: 1.5px solid var(--line); box-shadow: -4px 0 16px rgba(30,35,64,.08); }
 .side-dock .table-grip { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; height: auto; margin: 0; cursor: ew-resize; z-index: 5; }
 .side-dock .table-head { padding-top: 8px; }
-table.grid th.name, table.grid td.name { position: sticky; left: var(--area-w, 0px); background: var(--card); z-index: 2; box-shadow: 1px 0 0 var(--line); }
-table.grid th.name { background: var(--paper); z-index: 3; }
-table.grid tbody tr:hover td.area, table.grid tbody tr:hover td.name, table.grid tbody tr.hl td.area, table.grid tbody tr.hl td.name { background: #FFF4D1; }
 
 /* v17: three palettes fit the card; the side table's count gets its own line */
 .seg.pal { max-width: 100%; }
 .seg.pal button { padding: 3px 7px; font-size: 12px; gap: 4px; }
 .seg.pal i { width: 15px; }
 .side-dock .table-head .hint { order: 9; flex-basis: 100%; }
+
+/* v18: Airtable buttons on one row; animated "Loading…" */
+.at-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.at-card .at-buttons .btn { margin-top: 0; }
+.btn.small { padding: 4px 10px; font-size: 12.5px; }
+.loading::after { content: '…'; display: inline-block; width: 1.2em; text-align: left; overflow: hidden; vertical-align: bottom; animation: dots 1.2s steps(4, end) infinite; }
+@keyframes dots { 0% { width: 0; } 100% { width: 1.2em; } }
+
+/* v18: one pinned column, chosen with the pin in its header */
+table.grid td.area { font-weight: 600; }
+table.grid th.pinned, table.grid td.pinned { position: sticky; left: 0; background: var(--card); z-index: 2; box-shadow: 1px 0 0 var(--line); }
+table.grid th.pinned { background: var(--paper); z-index: 3; }
+table.grid tbody tr:hover td.pinned, table.grid tbody tr.hl td.pinned { background: #FFF4D1; }
+table.grid th .th-t { overflow: hidden; text-overflow: ellipsis; }
+table.grid th { max-width: 240px; }
+table.grid th .pin { border: 0; background: none; padding: 0 0 0 4px; margin: 0; cursor: pointer; vertical-align: -2px; opacity: 0; }
+table.grid th .pin svg { width: 12px; height: 12px; fill: var(--ink-soft); }
+table.grid th:hover .pin, table.grid th .pin:focus-visible { opacity: .55; }
+table.grid th .pin[aria-pressed="true"] { opacity: 1; }
+table.grid th .pin[aria-pressed="true"] svg { fill: var(--grape); }
+
+/* v18: color chips keep their size (fixed names, swap mark always there) */
+.lcolors { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 4px; width: 100%; }
+.lcolors .chip { font-size: 12px; padding: 2px 7px; gap: 4px; justify-content: flex-start; min-width: 0; }
+.lcolors .chip .nm { flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lcolors .chip i { font-size: 12px; }
+.lcolors .chip .swap { opacity: 0; color: var(--grape); font-size: 12px; }
+.lcolors .chip[aria-pressed="true"] .swap { opacity: 1; }
+
+/* v18: the loaded source's name heads the match card, which collapses */
+.join-card > summary.src-head { cursor: pointer; list-style: none; display: block; margin: -2px 0 8px; }
+.join-card > summary.src-head::-webkit-details-marker { display: none; }
+.src-title { display: block; font-family: var(--display); font-weight: 800; font-size: 18px; line-height: 1.2; overflow-wrap: anywhere; padding-left: 16px; position: relative; }
+.src-title::before { content: '▾'; position: absolute; left: 0; top: 1px; font-size: 13px; color: var(--ink-soft); }
+.join-card:not([open]) .src-title::before { content: '▸'; }
+.src-meta { display: block; padding-left: 16px; margin-top: 2px; font-size: 12.5px; color: var(--ink-soft); }
+.join-card[open] .src-meta { display: none; }
+.join-card:not([open]) > summary.src-head { margin-bottom: 0; }
