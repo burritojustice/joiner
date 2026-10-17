@@ -387,3 +387,9 @@ table.grid th .pin[aria-pressed="true"] svg { fill: var(--grape); }
 .top-opts .lab { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }
 .top-opts .labels-jump { justify-self: start; text-align: left; font-size: 13px; }
 .labels-card.flash { box-shadow: 0 0 0 3px var(--sun); transition: box-shadow .3s; }
+
+/* v20: a pinned row card stays, scrolls and can be closed; the row it shows is marked in the list */
+.rowcard.pinned { pointer-events: auto; box-shadow: 0 0 0 2px var(--pick), 0 6px 24px rgba(30,35,64,.22); }
+.rowcard .card-x { position: sticky; top: 0; float: right; margin: -4px -6px 0 6px; border: 0; background: var(--card); border-radius: 50%; width: 24px; height: 24px; cursor: pointer; color: var(--ink-soft); font-size: 13px; z-index: 1; }
+.rowcard .card-x:hover { color: var(--ink); background: var(--paper); }
+.area-list .items li.cur { background: var(--pick-wash); box-shadow: inset 3px 0 0 var(--pick); font-weight: 700; }
