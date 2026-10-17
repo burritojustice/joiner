@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v20';
+const _BUILD_VERSION = 'v21';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -258,10 +258,24 @@ function addStreetsOverAreas(beforeId) {
 // outlines still on top. Auto: under for hexagons, whose grid ignores the coastline and streets;
 // over for named areas.
 const areasUnder = () => S.areaOrder === 'under' || (S.areaOrder === 'auto' && isHex(S.layerId));
+// With the areas under the basemap (hexagons), its own streets get the same light touch as the
+// copies over named areas: no casings, half the width, a little transparent. Restored when over.
+const roadPaint = new Map();   // original line-width / line-opacity of the basemap's road lines
+function applyRoadHint(on) {
+    for (const l of styleLayers()) {
+        if (l.type !== 'line' || l['source-layer'] !== 'roads' || l.id.startsWith('over_')) continue;
+        if (/casing/.test(l.id)) { map.setLayoutProperty(l.id, 'visibility', on || !S.basemap.roads ? 'none' : 'visible'); continue; }
+        if (!roadPaint.has(l.id)) roadPaint.set(l.id, { w: map.getPaintProperty(l.id, 'line-width') ?? 1, o: map.getPaintProperty(l.id, 'line-opacity') ?? 1 });
+        const o = roadPaint.get(l.id);
+        map.setPaintProperty(l.id, 'line-width', on ? scaleWidth(o.w, CONFIG.streetHintWidth) : o.w);
+        map.setPaintProperty(l.id, 'line-opacity', on ? CONFIG.streetHintOpacity : o.o);
+    }
+}
 function applyAreaOrder() {
     if (!map.getLayer('bounds-fill')) return;
     const water = styleLayers().find(l => l['source-layer'] === 'water')?.id;
     map.moveLayer('bounds-fill', areasUnder() && water ? water : 'bounds-glow');
+    applyRoadHint(areasUnder() && S.showAreas);
     applyBasemapToggles();   // the street copies are redundant when the areas are under the streets
     renderOrderSeg();
 }
@@ -277,6 +291,7 @@ function applyBasemapToggles() {
     for (const id of roadLayers()) if (id !== 'roads_shields' && id !== 'roads_oneway')
         map.setLayoutProperty(id, 'visibility', vis(S.basemap.roads && !(id.startsWith('over_') && areasUnder())));
     for (const id of placeLayers()) map.setLayoutProperty(id, 'visibility', vis(S.basemap.places));
+    if (areasUnder() && S.showAreas) applyRoadHint(true);   // keep casings hidden over hexagons
     store.set('basemap', S.basemap);
 }
 
@@ -544,7 +559,10 @@ async function setLayer(id) {
 // "Match rows by" can be a column, or the row's own location when the file has geometry.
 const LOCATION = '\u0000location';
 const AREA_COL = '\u0000area';
-const keyLabel = col => col === LOCATION ? 'Location (inside the area)' : col;
+// The area set's name for one area: "ZIP Code", "Planning Neighborhood Group", "hexagon".
+const oneArea = (meta = S.layers.get(S.layerId)) => meta.hex ? 'hexagon'
+    : shortLabel(meta).replace(/\s*\d{4}$/, '').replace(/(Groups|Neighborhoods|Neighbourhoods|Tracts|Codes|Districts)$/, m => m.slice(0, -1));
+const keyLabel = col => col === LOCATION ? `Location (inside the ${oneArea()})` : col;
 
 // One point per row for placing it in an area: the point itself, a line's middle vertex,
 // or a spot well inside a polygon.
@@ -1093,7 +1111,8 @@ function renderPanel() {
         const byLoc = S.join?.keyCol === LOCATION, loc = S.candidates.find(c => c.col === LOCATION);
         $('loc-row').hidden = !loc;
         $('loc-check').checked = byLoc;
-        if (loc) $('loc-n').textContent = `${loc.hits.toLocaleString()} of ${total.toLocaleString()} inside an area`;
+        if (loc) $('loc-n').textContent = `${loc.hits.toLocaleString()} of ${total.toLocaleString()} inside one`;
+        $('loc-label').textContent = `Location (inside the ${oneArea()})`;
         const cols = S.candidates.filter(c => c.col !== LOCATION), shown = S.colKeys[S.layerId];
         $('key-select').innerHTML = cols.map(c => `<option value="${esc(c.col)}"${c.col === shown ? ' selected' : ''}>${esc(c.col)}${c.hits ? ` — ${c.hits} of ${total} rows match` : ''}</option>`).join('')
             + (shown ? '' : '<option value="" selected>— no column matches this layer —</option>');
@@ -1186,7 +1205,7 @@ function renderLegend() {
     const zeroLabel = S.metric.startsWith('avg_') ? 'No rows' : fmt(0);
     const nZero = [...S.values.values()].filter(v => !(v > 0)).length;
     lg.innerHTML = `<h4>${esc(metricLabel())}</h4>` + [...(S.classes?.ranges || [])].reverse().map(r =>
-        `<div class="row"><i style="background:${ramp()[r.c]}"></i><span>${r.lo === r.hi ? fmt(r.hi) : `${fmt(r.lo)} – ${fmt(r.hi)}`}</span><span class="n">${r.n}</span></div>`).join('')
+        `<div class="row"><i style="background:${ramp()[r.c]}"></i><span>${r.lo === r.hi ? fmtShort(r.hi, S.metric) : `${fmtShort(r.lo, S.metric)} – ${fmtShort(r.hi, S.metric)}`}</span><span class="n">${r.n}</span></div>`).join('')
         + `<div class="row"><i class="clear"></i><span>${zeroLabel}${hidingEmpty() ? ' (hidden)' : ''}</span><span class="n">${nZero}</span></div>`
         + `<div class="foot">Natural breaks · areas per class</div>` + rowLegendHTML();
 }
@@ -1494,6 +1513,7 @@ function applyAreasVisible() {
     if (S.basemap.places === S.showAreas) { S.basemap.places = !S.showAreas; applyBasemapToggles(); $('hoods-check').checked = S.basemap.places; }
     syncBarToggles();
     for (const id of ['bounds-fill', 'bounds-glow', 'bounds-line', 'bounds-hl', 'area-labels']) map.setLayoutProperty(id, 'visibility', v);
+    applyRoadHint(areasUnder() && S.showAreas);
     store.set('showAreas', S.showAreas);
     updateLabels();
     renderLegend();
@@ -1611,8 +1631,18 @@ function showRowTip(point, i) {
 // row; clicking a row there or in the table pins it, so the card stays (scroll it, select text)
 // until it's closed or another row is pinned.
 let cardPinned = null;   // row index of the pinned card
+// With the table open, the card sits in a corner clear of it: bottom left when the table is
+// beside the map, bottom right when it's below. Otherwise at the left edge, level with the row.
 function placeCard(card, item) {
-    const wrap = card.parentElement.getBoundingClientRect(), r = item?.getBoundingClientRect();
+    const wrap = card.parentElement.getBoundingClientRect();
+    if (T.open) {
+        const side = T.dock === 'side', mapW = wrap.width - (side ? T.width : 0), mapH = wrap.height - (side ? 0 : T.height);
+        card.style.left = (side ? 8 : Math.max(8, mapW - card.offsetWidth - 8)) + 'px';
+        card.style.top = Math.max(8, mapH - card.offsetHeight - 8) + 'px';
+        return;
+    }
+    card.style.left = '';
+    const r = item?.getBoundingClientRect();
     const top = r ? r.top - wrap.top - 8 : 8;
     card.style.top = Math.max(8, Math.min(top, wrap.height - card.offsetHeight - 8)) + 'px';
 }

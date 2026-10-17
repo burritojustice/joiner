@@ -393,3 +393,11 @@ table.grid th .pin[aria-pressed="true"] svg { fill: var(--grape); }
 .rowcard .card-x { position: sticky; top: 0; float: right; margin: -4px -6px 0 6px; border: 0; background: var(--card); border-radius: 50%; width: 24px; height: 24px; cursor: pointer; color: var(--ink-soft); font-size: 13px; z-index: 1; }
 .rowcard .card-x:hover { color: var(--ink); background: var(--paper); }
 .area-list .items li.cur { background: var(--pick-wash); box-shadow: inset 3px 0 0 var(--pick); font-weight: 700; }
+
+/* v21: cards and popups slightly see-through */
+.rowcard, .maplibregl-popup-content { background: rgba(255,255,255,.9); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: rgba(255,255,255,.9); }
+.maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: rgba(255,255,255,.9); }
+.maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: rgba(255,255,255,.9); }
+.maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: rgba(255,255,255,.9); }
+.rowcard .card-x { background: transparent; }
