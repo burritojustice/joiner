@@ -378,3 +378,12 @@ table.grid th .pin[aria-pressed="true"] svg { fill: var(--grape); }
 .src-meta { display: block; padding-left: 16px; margin-top: 2px; font-size: 12.5px; color: var(--ink-soft); }
 .join-card[open] .src-meta { display: none; }
 .join-card:not([open]) > summary.src-head { margin-bottom: 0; }
+
+/* v19: Airtable heading like the other cards; area colors and labels under Color by */
+.at-card > summary { cursor: pointer; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }
+.at-card[open] > summary { margin-bottom: 6px; }
+.top-opts { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.top-opts .lab + .lab, .top-opts .seg + .lab { margin-top: 6px; }
+.top-opts .lab { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }
+.top-opts .labels-jump { justify-self: start; text-align: left; font-size: 13px; }
+.labels-card.flash { box-shadow: 0 0 0 3px var(--sun); transition: box-shadow .3s; }
