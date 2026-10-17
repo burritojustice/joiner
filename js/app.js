@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v19';
+const _BUILD_VERSION = 'v20';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -158,7 +158,7 @@ async function boot() {
         fitBoundsOptions: { padding: 24 }, attributionControl: { compact: true } });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     popup = new maplibregl.Popup({ closeButton: true, maxWidth: '320px' });
-    popup.on('close', () => select(null, { fromPopup: true }));
+    // Popups now only show a feature's fields; closing one leaves the selected area alone.
     await new Promise(r => map.on('load', r));
     S.homeZoom = Math.floor(map.getZoom());
     if (S.prefixZoom == null) S.prefixZoom = S.homeZoom + CONFIG.prefixAfter;
@@ -378,8 +378,18 @@ function addMapLayers() {
     map.on('mouseout', () => { setHover(null); hlRows(null); $('tip').hidden = true; });
     map.on('click', e => {
         const h = hit(e);
-        if (h.row != null) { select(null); popup.setLngLat(e.lngLat).setHTML(rowPopupHTML(h.row)).addTo(map); }
-        else if (h.area != null) select(h.area, { lngLat: e.lngLat });
+        // A feature: its fields in a popup, and its area opened in the list with the row marked.
+        // An area: opened in the list and zoomed to (no popup).
+        if (h.row != null) {
+            pinRowCard(null);
+            const a = S.rowArea[h.row];
+            if (a != null) openArea(a, { fly: false });
+            else select(null);
+            popup.setLngLat(e.lngLat).setHTML(rowPopupHTML(h.row)).addTo(map);
+            markListRow(h.row);
+        }
+        else if (h.area != null) { pinRowCard(null); openArea(h.area); }
+        else { pinRowCard(null); if (S.selectedId != null) { select(null); S.expanded = null; renderList(); } }   // empty map: clear
     });
 }
 
@@ -1164,7 +1174,7 @@ function itemsHTML(id) {
     const MAX = 300;
     const title = it => it.i != null ? rowTitle(it.i) : JoinKit.cellText(it.r[rowLabelCol()]) || '(blank)';
     return `<ul class="items">${items.slice(0, MAX).map(it =>
-        `<li data-row="${it.i ?? ''}" class="${it.i != null && S.src.points?.[it.i] ? 'has-loc' : ''}"><span>${esc(title(it))}</span>${perRow ? `<span class="iv">${it.v === null ? '—' : fmt(it.v, 'sum_' + col)}</span>` : ''}</li>`).join('')}
+        `<li data-row="${it.i ?? ''}" class="${it.i != null && S.src.points?.[it.i] ? 'has-loc' : ''}${it.i != null && it.i === cardPinned ? ' cur' : ''}"><span>${esc(title(it))}</span>${perRow ? `<span class="iv">${it.v === null ? '—' : fmt(it.v, 'sum_' + col)}</span>` : ''}</li>`).join('')}
         ${items.length > MAX ? `<li class="none">and ${items.length - MAX} more</li>` : ''}</ul>`;
 }
 
@@ -1340,8 +1350,7 @@ function select(id, { lngLat, fromPopup = false, fly = false, noPopup = false } 
     const f = S.geo.get(S.layerId).features.find(f => f.id === id);
     const { fit, anchor } = S.anchors.get(S.layerId).get(id);
     if (fly) map.fitBounds([[fit[0], fit[1]], [fit[2], fit[3]]], { padding: 80, maxZoom: 15, duration: 500 });
-    if (noPopup) popup.remove();
-    else popup.setLngLat(lngLat || anchor).setHTML(popupHTML(f)).addTo(map);
+    if (noPopup) popup.remove();   // areas don't get a popup: their rows are in the list
 }
 
 // Where to zoom, where to pin a popup or label, and how big an area is. Small outlying
@@ -1504,7 +1513,7 @@ function setFeaturesVisible(on) {
 }
 
 function clearFile() {
-    S.src = null; S.areaOf = new Map(); S.expanded = null; S.rowArea = [];
+    S.src = null; S.areaOf = new Map(); S.expanded = null; S.rowArea = []; pinRowCard(null);
     S.keyCols = {}; S.colKeys = {}; S.metric = 'count'; S.rowStyle = { colorBy: '', labels: [], sizeBy: '', sizeLog: false };
     popup.remove();
     updateRowLayer();
@@ -1597,21 +1606,60 @@ function showRowTip(point, i) {
     tip.style.left = point.x + 'px'; tip.style.top = point.y + 'px';
     tip.hidden = false;
 }
-// Hovering a row in an expanded area shows its fields in a card at the map's left edge, level with
-// the row, whether or not the row has a location (rows matched by a column have none).
+// A row's fields in a card at the map's left edge, whether or not the row has a location (rows
+// matched by a column have none). Hovering a row in an expanded area previews it, level with the
+// row; clicking a row there or in the table pins it, so the card stays (scroll it, select text)
+// until it's closed or another row is pinned.
+let cardPinned = null;   // row index of the pinned card
+function placeCard(card, item) {
+    const wrap = card.parentElement.getBoundingClientRect(), r = item?.getBoundingClientRect();
+    const top = r ? r.top - wrap.top - 8 : 8;
+    card.style.top = Math.max(8, Math.min(top, wrap.height - card.offsetHeight - 8)) + 'px';
+}
+function fillCard(card, i, pinned) {
+    if (card.dataset.row === String(i) && card.dataset.pinned === String(pinned)) return;
+    card.innerHTML = (pinned ? '<button type="button" class="card-x" aria-label="Close" title="Close (Esc)">✕</button>' : '') + rowPopupHTML(i, { all: pinned });
+    card.dataset.row = i; card.dataset.pinned = pinned;
+    card.classList.toggle('pinned', pinned);
+}
 function showRowCard(item) {
     const card = $('rowcard');
-    if (!item) { card.hidden = true; card.dataset.row = ''; return; }
-    const i = +item.dataset.row;
-    if (card.dataset.row !== String(i)) { card.innerHTML = rowPopupHTML(i); card.dataset.row = i; }
+    if (!item) {   // back to the pinned card, if any
+        if (cardPinned != null) { fillCard(card, cardPinned, true); card.hidden = false; placeCard(card, card._item?.isConnected ? card._item : null); }
+        else { card.hidden = true; card.dataset.row = ''; }
+        return;
+    }
+    fillCard(card, +item.dataset.row, +item.dataset.row === cardPinned);
     card.hidden = false;
-    const wrap = card.parentElement.getBoundingClientRect(), r = item.getBoundingClientRect();
-    card.style.top = Math.max(8, Math.min(r.top - wrap.top - 8, wrap.height - card.offsetHeight - 8)) + 'px';
+    placeCard(card, item);
+}
+function pinRowCard(i, item = null) {
+    const card = $('rowcard');
+    if (i == null) { cardPinned = null; card.hidden = true; card.dataset.row = ''; markListRow(null); return; }
+    cardPinned = i; card._item = item;
+    fillCard(card, i, true); card.hidden = false; placeCard(card, item);
+    markListRow(i);
+}
+// The row shown in the card (or clicked on the map), marked in the expanded area's list.
+function markListRow(i) {
+    document.querySelectorAll('#area-list .items li.cur').forEach(li => li.classList.remove('cur'));
+    if (i == null) return;
+    const li = document.querySelector(`#area-list .items li[data-row="${i}"]`);
+    if (li) { li.classList.add('cur'); li.scrollIntoView({ block: 'nearest' }); }
+}
+// Open an area in the list (closing any other), select it and zoom to it. Used for clicks on the
+// map, in the table and in the list.
+function openArea(id, { fly = true, toggle = false } = {}) {
+    if (id == null) return;
+    S.expanded = toggle && S.expanded === id ? null : id;
+    select(id, { fly, noPopup: true });
+    renderList();
+    document.querySelector(`#area-list li[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest' });
 }
 
-function rowPopupHTML(i) {
+function rowPopupHTML(i, { all = false } = {}) {
     const r = S.src.rows[i], a = areaName(S.rowArea[i]);
-    const fields = S.src.headers.filter(h => !h.startsWith('_') && JoinKit.cellText(r[h]) !== '').slice(0, 30);
+    const fields = S.src.headers.filter(h => !h.startsWith('_') && JoinKit.cellText(r[h]) !== '' && !(S.src.geomCols || []).includes(h)).slice(0, all ? Infinity : 30);
     // Value first, field name under it (long names are cut short; the full name is in the tooltip).
     return `<div class="pop"><h4>${esc(rowTitle(i))}</h4><div class="sub">${a ? `In ${esc(a)}` : 'Not placed in an area'}</div>
         <dl class="fields">${fields.map(h => `<div><dd>${esc(cellShow(r[h]))}</dd><dt title="${esc(h)}">${esc(h)}</dt></div>`).join('')}</dl></div>`;
@@ -1654,7 +1702,7 @@ async function loadFile(file) {
 // match, statistic and formatting choices stay.
 async function useSource(src, { keep = false } = {}) {
         src.points = src.geoms ? src.geoms.map(repPoint) : null;
-        S.src = src;
+        S.src = src; pinRowCard(null);
         S.areaOf = new Map();
         S.expanded = null;
         if (!keep) { S.rowStyle = { colorBy: '', labels: [], sizeBy: '', sizeLog: false }; S.keyCols = {}; S.colKeys = {}; S.metric = 'count'; }
@@ -1957,9 +2005,13 @@ function wireUI() {
         const th = e.target.closest('th[data-col]');
         if (th) { const c = th.dataset.col; T.dir = T.sort === c ? -T.dir : 1; T.sort = c; renderTable(); return; }
         const tr = e.target.closest('tr[data-row]'); if (!tr) return;
+        // A row: its area opened in the list and its fields pinned in the card; zoom to the row
+        // when it has a location, else to its area.
         const i = +tr.dataset.row, p = S.src.points?.[i];
-        if (p) { map.flyTo({ center: p, zoom: Math.max(map.getZoom(), 15), duration: 600 }); popup.setLngLat(p).setHTML(rowPopupHTML(i)).addTo(map); }
-        else if (S.rowArea[i] != null) select(S.rowArea[i], { fly: true });
+        popup.remove();
+        if (S.rowArea[i] != null) openArea(S.rowArea[i], { fly: !p });
+        if (p) map.flyTo({ center: p, zoom: Math.max(map.getZoom(), 15), duration: 600 });
+        pinRowCard(i, document.querySelector(`#area-list .items li[data-row="${i}"]`));
     });
     $('table-grid').addEventListener('mouseover', e => {
         const tr = e.target.closest('tr[data-row]'); if (!tr) return;
@@ -2019,22 +2071,20 @@ function wireUI() {
     list.addEventListener('click', e => {
         // A row inside an expanded area: go to it on the map when it has a location.
         const item = e.target.closest('.items li[data-row]');
-        if (item) {
+        if (item) {   // pin its card (click again to unpin); go to it when it has a location
+            if (item.dataset.row === '') return;
             const i = +item.dataset.row;
-            if (item.dataset.row !== '' && S.src.points?.[i]) {
-                map.flyTo({ center: S.src.points[i], zoom: Math.max(map.getZoom(), 15.5), duration: 600 });
-                popup.setLngLat(S.src.points[i]).setHTML(rowPopupHTML(i)).addTo(map);
-            }
+            if (cardPinned === i) { pinRowCard(null); return; }
+            popup.remove();
+            pinRowCard(i, item);
+            if (S.src.points?.[i]) map.flyTo({ center: S.src.points[i], zoom: Math.max(map.getZoom(), 15.5), duration: 600 });
             return;
         }
         if (e.target.closest('.items')) return;
         const li = e.target.closest('li[data-id]'); if (!li) return;
         // Clicking an area expands it to list its rows (no popup); clicking again collapses it.
-        const id = li.dataset.id;
-        S.expanded = S.expanded === id ? null : id;
-        select(id, { fly: true, noPopup: true });
-        renderList();
-        document.querySelector(`#area-list li[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest' });
+        pinRowCard(null); popup.remove();
+        openArea(li.dataset.id, { toggle: true });
     });
     // Hovering an area in the list highlights it and its rows on the map; hovering a row in an
     // expanded area highlights just that row.
@@ -2047,6 +2097,9 @@ function wireUI() {
         showRowCard(item && item.dataset.row !== '' ? item : null);
     });
     list.addEventListener('mouseleave', () => { setHover(null); hlRows(null); showRowCard(null); });
+    // The pinned card: hover it to scroll; ✕ or Esc closes it.
+    $('rowcard').addEventListener('click', e => { if (e.target.closest('.card-x')) pinRowCard(null); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && cardPinned != null) pinRowCard(null); });
 
     let depth = 0;
     const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');

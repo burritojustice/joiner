@@ -2,6 +2,11 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v20
+- **Click a row to keep its card open.** In an open area in the list, or in the table, clicking a row pins its card at the map's edge with every field, so you can move onto it, scroll it and select text. ✕, Esc, clicking the row again or clicking empty map closes it. Hovering rows still previews them. The row is marked in the list. Rows with a location also zoom to it (no popup), with features shown or not.
+- **Clicking an area opens it in the list and zooms to it** (on the map, in the list, or a table row's area), closing any other open area. Areas no longer get a popup listing their rows; the list shows them.
+- **Clicking a feature** still shows its fields in a popup, and now also opens its area in the list with the feature's row marked.
+
 ## v19
 - **Blue–yellow–red pairs with green features:** rows are green, and colored by a number they use ColorBrewer Greens. The selected area is purple with this palette (green with the others), so it doesn't blend with the features.
 - **Area colors and Area labels sit under Color by**, so the map's look can be set where the data is chosen. Area colors is the same picker as below; Area labels lists the label lines and jumps down to the label picker.
