@@ -2,6 +2,14 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v22
+- **Airtable's table list is ready sooner.** As soon as there's a token (remembered, or pasted), Joiner reads the bases and their tables in the background, several bases at once, and keeps the list for the tab. Show other tables opens at once from that list, fills in any base still loading, and says when it was read, with **Refresh**. It's re-read quietly when it's over 5 minutes old, when you click Refresh, and when a table can't be found; changing or forgetting the token clears it.
+- **Hexbins have their own feature size, Tiny to start.** The size control (now **Size**) edits whichever is showing, hexagons or other areas, and each keeps its setting.
+- **Lines follow the size control** too, on a gentler scale (Tiny 0.6× to Huge 2.1×), including the highlighted line.
+- **Lines are placed and counted by their midpoint**, and Match rows by now says so when the rows include lines.
+- **Clicking a hexagon doesn't zoom** (on the map, in the list, or a table row): it pans, so the grid under the cursor stays the same. Zooming with Auto on moves the open hexagon to the new grid: its busiest smaller hexagon zooming in, the bigger one around it zooming out.
+- **Hexagons have friendlier names:** the neighborhood covering most of it and a short code, “Mission #82c7”, instead of the full H3 index. The code drops the digits every hexagon in the city shares and the unused f's at the end. The list sorts A–Z by neighborhood. Hexagons off the neighborhoods (piers) are “Shoreline”.
+
 ## v21
 - **Streets over hexagons get the light touch too:** with the areas under the basemap (hexagons, or Under roads), its streets lose their casings and draw at half width, a little transparent, like the street copies over named areas. Hiding the areas or drawing them over restores the basemap's streets.
 - **Match rows by names the area set:** “Location (inside the ZIP Code)”, “(inside the Planning Neighborhood Group)”, “(inside the hexagon)”.

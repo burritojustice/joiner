@@ -184,5 +184,42 @@ async function listTables(base, tok) {
     return tables.map(t => ({ id: t.id, name: t.name.trim(), fields: t.fields.length, views: (t.views || []).map(v => ({ id: v.id, name: v.name })) }));
 }
 
-window.JoinerAirtable = { parseLink, linkFor, load, listBases, listTables, token, planFields, AirtableError };
+// The bases and tables a token can open, kept for the tab (sessionStorage) so the list is there at
+// once. It's re-read in the background when older than CATALOG_MAX_AGE, on request (force), and
+// from scratch when the token changes. Tables for every base are read in parallel (the rate limit
+// is per base), a few at a time; onUpdate gets the catalog as it fills in.
+const CATALOG_KEY = 'joiner.airtable.catalog', CATALOG_MAX_AGE = 5 * 60 * 1000;
+const fingerprint = t => { let h = 5381; for (const ch of t) h = (h * 33 + ch.charCodeAt(0)) >>> 0; return h.toString(36); };   // not the token itself
+let catalogRun = null;
+function readCatalog(tok) {
+    try { const c = JSON.parse(sessionStorage.getItem(CATALOG_KEY)); return c && c.fp === fingerprint(tok) ? c : null; } catch { return null; }
+}
+function saveCatalog(c) { try { sessionStorage.setItem(CATALOG_KEY, JSON.stringify(c)); } catch { /* too big or private mode */ } }
+function forgetCatalog() { try { sessionStorage.removeItem(CATALOG_KEY); } catch { /* */ } }
+function catalog(tok, { force = false, onUpdate } = {}) {
+    const have = readCatalog(tok);
+    const stale = !have || force || Date.now() - have.at > CATALOG_MAX_AGE;
+    if (stale && !catalogRun) catalogRun = refreshCatalog(tok, have, onUpdate).finally(() => { catalogRun = null; });
+    else if (catalogRun && onUpdate) catalogRun.then(c => onUpdate(c)).catch(() => {});
+    return { catalog: have, refreshing: catalogRun };
+}
+async function refreshCatalog(tok, prev, onUpdate) {
+    const bases = await listBases(tok);
+    const old = new Map((prev?.bases || []).map(b => [b.id, b]));
+    const c = { fp: fingerprint(tok), at: Date.now(), bases: bases.map(b => ({ ...b, tables: old.get(b.id)?.tables || null })) };
+    saveCatalog(c); onUpdate?.(c);
+    let next = 0;
+    const worker = async () => {
+        while (next < c.bases.length) {
+            const b = c.bases[next++];
+            try { b.tables = await listTables(b.id, tok); b.error = null; }
+            catch (e) { b.error = e.message; }
+            c.at = Date.now(); saveCatalog(c); onUpdate?.(c);
+        }
+    };
+    await Promise.all([...Array(Math.min(4, c.bases.length))].map(worker));
+    return c;
+}
+
+window.JoinerAirtable = { parseLink, linkFor, load, listBases, listTables, catalog, readCatalog, forgetCatalog, token, planFields, AirtableError };
 })();

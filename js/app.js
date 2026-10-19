@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v21';
+const _BUILD_VERSION = 'v22';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -42,6 +42,8 @@ const CONFIG = {
     // Point radius at zoom 10 / 13 / 16 for the "small" size; other sizes scale it.
     pointRadius: [3, 4.5, 7.5],
     pointSizes: { tiny: 0.6, small: 1, medium: 1.45, big: 2, huge: 2.8 },
+    // The same control sets line widths, on a gentler scale (a 2.8× street would hide its block).
+    lineSizes: { tiny: 0.6, small: 1, medium: 1.3, big: 1.65, huge: 2.1 },
     linesFromZoom: 12,         // lines from the file draw from here in; zoomed out, a dot at each line's midpoint
     highlight: '#00A862',     // the selected area: green, apart from the blue, yellow–red and blue–red ramps
     hexAutoRes: z => Math.max(5, Math.min(10, Math.round(z * 0.75 - 0.5))),   // H3 resolution for a map zoom
@@ -132,7 +134,7 @@ async function boot() {
         t.layers.push(l);
     }
     // H3 hexagons: a generated layer over SF's land, at a resolution that follows the zoom or a fixed one.
-    const hexMeta = { id: 'h3', tab: 'Hexbins', label: 'H3 hexagons', short: 'Hexbins', key: 'h3', name: 'h3', hex: true, match: {} };
+    const hexMeta = { id: 'h3', tab: 'Hexbins', label: 'H3 hexagons', short: 'Hexbins', key: 'h3', name: 'name', hex: true, match: {} };
     if (window.h3) { S.layers.set('h3', hexMeta); S.tabs.push({ tab: hexMeta.tab, layers: [hexMeta] }); }
     for (const t of S.tabs) S.tabChoice[t.tab] = (t.layers.find(l => l.default) || t.layers[0]).id;
     const fromHash = new URLSearchParams(location.hash.slice(1)).get('layer');
@@ -148,6 +150,8 @@ async function boot() {
     S.hideEmpty = !!store.get('hideEmpty', false);
     S.areaOrder = ['auto', 'over', 'under'].includes(store.get('areaOrder', 'auto')) ? store.get('areaOrder', 'auto') : 'auto';
     S.pointSize = CONFIG.pointSizes[store.get('pointSize', 'small')] ? store.get('pointSize', 'small') : 'small';
+    // Hexagons are small, so rows default to tiny there; each mode keeps its own size.
+    S.hexPointSize = CONFIG.pointSizes[store.get('hexPointSize', 'tiny')] ? store.get('hexPointSize', 'tiny') : 'tiny';
     S.hex = { ...S.hex, ...store.get('hex', {}) };
     const lab = store.get('labels', null);
     if (lab) { S.labels = lab.fields ?? null; S.prefix = lab.prefix ?? true; S.prefixZoom = lab.prefixZoom != null ? Math.round(lab.prefixZoom) : null; }
@@ -169,7 +173,17 @@ async function boot() {
     renderOrderSeg();
     wireUI();
     map.on('zoom', updateZoomReadout);
-    map.on('zoomend', () => { if (isHex(S.layerId) && S.hex.auto && hexResNow() !== S.hexRes) setLayer(S.layerId); });
+    map.on('zoomend', async () => {
+        if (!(isHex(S.layerId) && S.hex.auto && hexResNow() !== S.hexRes)) return;
+        // Keep the open hexagon open: zooming in, its busiest smaller hexagon; zooming out, the bigger one around it.
+        const was = S.expanded ?? S.selectedId, from = S.hexRes;
+        await setLayer(S.layerId);
+        if (!was) return;
+        const n = c => S.join?.byId[c]?.rows.length || 0;
+        const cands = S.hexRes > from ? h3.cellToChildren(was, S.hexRes) : [h3.cellToParent(was, S.hexRes)];
+        const best = cands.reduce((a, c) => n(c) > n(a) ? c : a, cands[0]);
+        if (n(best)) openArea(best, { fly: false });
+    });
     await setLayer(first);
     renderAirtable();
     const atLink = AT() && AT().parseLink(new URLSearchParams(location.search).get('airtable'));
@@ -323,7 +337,6 @@ function addMapLayers() {
     addStreetsOverAreas(before);
     // Lines get thicker as you zoom in, most of all from the zoom where streets draw over the areas.
     const isLine = ['==', ['geometry-type'], 'LineString'];
-    const lineW = k => ['interpolate', ['linear'], ['zoom'], 12, 4.5 * k, 14, 7 * k, 16, 11 * k, 18, 14 * k];
     map.addLayer({ id: 'rows-fill', type: 'fill', source: 'rows', filter: ['all', isPoly, ['get', '_in']], paint: { 'fill-opacity': 0.18 } });
     // Lines from the file draw from linesFromZoom; zoomed out, each line is a dot at its midpoint.
     map.addLayer({ id: 'rows-line-glow', type: 'line', source: 'rows', filter: ['all', ['!', isPt], ['!', isLine]], paint: { 'line-width': 6, 'line-blur': 2.5, 'line-opacity': 0.9 } });
@@ -346,7 +359,6 @@ function addMapLayers() {
     // Highlight: rows in the area under the cursor (map or list), or the row hovered in an expanded list.
     map.addSource('rows-hl', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     // Hovered rows draw bigger, in yellow with a dark ring, above every other row.
-    const hlW = k => ['interpolate', ['linear'], ['zoom'], 10, 5 * k, 12, 7 * k, 14, 10.5 * k, 16, 16 * k, 18, 20 * k];
     map.addLayer({ id: 'rows-hl-casing', type: 'line', source: 'rows-hl', filter: ['!=', ['geometry-type'], 'Point'],
         layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': CONFIG.hover.ring, 'line-width': hlW(1.6) } });
     map.addLayer({ id: 'rows-hl-line', type: 'line', source: 'rows-hl', filter: ['!=', ['geometry-type'], 'Point'],
@@ -495,12 +507,21 @@ async function loadHex() {
     let c = S.hexCache.get(res);
     if (!c) {
         const land = await loadGeo('analysis_neighborhoods');
-        const fine = Math.min(10, res + 2), cells = new Set();
+        const fine = Math.min(10, res + 2), cells = new Set(), votes = new Map();   // cell → { neighborhood: fine cells }
+        const landMeta = S.layers.get('analysis_neighborhoods');
         for (const f of land.features) {
+            const hood = String(landMeta ? nameOf(f, landMeta) : f.id);
             const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
-            for (const p of polys) for (const cell of h3.polygonToCells(p, fine, true)) cells.add(fine === res ? cell : h3.cellToParent(cell, res));
+            for (const p of polys) for (const fc of h3.polygonToCells(p, fine, true)) {
+                const cell = fine === res ? fc : h3.cellToParent(fc, res);
+                cells.add(cell);
+                const v = votes.get(cell) || votes.set(cell, {}).get(cell);
+                v[hood] = (v[hood] || 0) + 1;
+            }
         }
-        const features = [...cells].sort().map(cell => ({ type: 'Feature', id: cell, properties: { h3: cell, _jid: cell },
+        // Each hexagon is named for the neighborhood covering most of it.
+        const hoodOf = new Map([...votes].map(([cell, v]) => [cell, Object.entries(v).sort((a, b) => b[1] - a[1])[0][0]]));
+        const features = [...cells].sort().map(cell => ({ type: 'Feature', id: cell, properties: { h3: cell, _jid: cell, hood: hoodOf.get(cell) },
             geometry: { type: 'Polygon', coordinates: [h3.cellToBoundary(cell, true)] } }));
         c = { fc: { type: 'FeatureCollection', features }, cells, land: cells.size };
         S.hexCache.set(res, c);
@@ -515,8 +536,9 @@ async function loadHex() {
             const cell = h3.latLngToCell(p[1], p[0], res);
             if (seen.has(cell)) continue;
             seen.add(cell);
-            c.fc.features.push({ type: 'Feature', id: cell, properties: { h3: cell, _jid: cell }, geometry: { type: 'Polygon', coordinates: [h3.cellToBoundary(cell, true)] } });
+            c.fc.features.push({ type: 'Feature', id: cell, properties: { h3: cell, _jid: cell, hood: 'Shoreline' }, geometry: { type: 'Polygon', coordinates: [h3.cellToBoundary(cell, true)] } });
         }
+        hexNames(c.fc.features);
         c.src = S.src;
     }
     const anchors = new Map();
@@ -529,6 +551,22 @@ async function loadHex() {
     return c.fc;
 }
 
+// A short code for each hexagon: its H3 index without the digits every hexagon here shares and
+// without the trailing f's (unused finer levels). "8928308280fffff" → "#280".
+function hexNames(features) {
+    const ids = features.map(f => f.id);
+    let pre = ids[0]?.length || 0;
+    for (const id of ids) { let k = 0; while (k < pre && id[k] === ids[0][k]) k++; pre = k; }
+    for (const f of features) {
+        // Finer levels a hexagon doesn't use fill whole hex digits with f's: a fixed number per resolution,
+        // so every code here is the same length.
+        const tail = Math.floor(3 * (15 - h3.getResolution(f.id)) / 4);
+        const code = '#' + (f.id.slice(Math.min(pre, f.id.length - tail - 1), f.id.length - tail));
+        f.properties.code = code;
+        f.properties.name = `${f.properties.hood} ${code}`;
+    }
+}
+
 async function setLayer(id) {
     const meta = S.layers.get(id);
     S.layerId = id;
@@ -537,6 +575,7 @@ async function setLayer(id) {
     renderTabs();
     const fc = await loadGeo(id);
     renderHexControls();
+    applyPointSize(); renderFormatFeatures();
     applyAreaOrder();
     applyLabelSize();   // Auto size follows the set's typical area
     // Thousands of hexagons: keep their outlines light.
@@ -1072,7 +1111,7 @@ function renderFormatFeatures() {
     const z = S.rowSizes;
     $('row-size-hint').textContent = !nums.length ? 'No numeric columns.' : !z ? 'Size points by a number.'
         : `${fmtCol(z.min, z.col)} to ${fmtCol(z.max, z.col)}; ` + (z.log ? 'log scale, so small values stay visible.' : 'circle area follows the value.');
-    $('psize-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.psize === S.pointSize));
+    $('psize-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.psize === sizeNow()));
     const labs = S.rowStyle.labels;
     $('rowlabels-n').textContent = labs.length ? labs.join(', ') : 'none';
     $('row-label-chips').innerHTML = cols.map(c => {
@@ -1120,7 +1159,9 @@ function renderPanel() {
         $('key-row').classList.toggle('off', byLoc);
         const meta = S.layers.get(S.layerId);
         $('key-hint').textContent = byLoc
-            ? `Each row is placed in the ${meta.hex ? 'hexagon' : 'area'} that contains its location (${S.src.geomFrom}). Turn this off to match by a column.`
+            ? `Each row is placed in the ${meta.hex ? 'hexagon' : 'area'} that contains its location (${S.src.geomFrom}).`
+                + (S.src.geoms?.some(g => g && /LineString/.test(g.type)) ? ' Lines are placed, and counted, by their midpoint.' : '')
+                + ' Turn this off to match by a column.'
             : `Compared with ${shortLabel(meta)} “${meta.key}”` + (meta.match?.delimiter ? `; cells with “${meta.match.delimiter}” count toward each value` : '') + '.';
         $('metric-select').innerHTML = metricOptions().map(m => `<option value="${esc(m.value)}"${m.value === S.metric ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
         $('metric-select').disabled = !S.join;
@@ -1161,9 +1202,9 @@ function renderList() {
     if (!fc) return;
     const showV = !!(S.src && S.join);
     const listExtras = extrasWith('list');
-    const rows = fc.features.map(f => ({ id: f.id, name: String(nameOf(f)), v: S.values.get(f.id) ?? null,
-        sub: listExtras.map(x => extraValue(x, f)).filter(Boolean).join(' · ') }));
     const meta = S.layers.get(S.layerId);
+    const rows = fc.features.map(f => ({ id: f.id, name: meta.hex ? f.properties.hood : String(nameOf(f)), v: S.values.get(f.id) ?? null,
+        sub: [meta.hex ? f.properties.code : '', ...listExtras.map(x => extraValue(x, f))].filter(Boolean).join(' · ') }));
     let list = rows;
     if (meta.hex) list = showV ? rows.filter(r => r.v > 0) : [];
     else if (hidingEmpty()) list = rows.filter(r => !isEmptyArea(r.id));
@@ -1368,7 +1409,9 @@ function select(id, { lngLat, fromPopup = false, fly = false, noPopup = false } 
     if (!fly) li?.scrollIntoView({ block: 'nearest' });
     const f = S.geo.get(S.layerId).features.find(f => f.id === id);
     const { fit, anchor } = S.anchors.get(S.layerId).get(id);
-    if (fly) map.fitBounds([[fit[0], fit[1]], [fit[2], fit[3]]], { padding: 80, maxZoom: 15, duration: 500 });
+    // Hexagons pan without zooming: a new zoom would bring a different grid under the cursor.
+    if (fly && isHex(S.layerId)) map.easeTo({ center: anchor, duration: 500 });
+    else if (fly) map.fitBounds([[fit[0], fit[1]], [fit[2], fit[3]]], { padding: 80, maxZoom: 15, duration: 500 });
     if (noPopup) popup.remove();   // areas don't get a popup: their rows are in the list
 }
 
@@ -1464,8 +1507,11 @@ function computeRowSizes() {
 const sizeOf = i => S.rowSizes ? S.rowSizes.s[i] : 0;
 
 // Radius at zoom 10 / 13 / 16, times the size setting; sized points range from 0.45× to 2×.
+const sizeNow = () => isHex(S.layerId) ? S.hexPointSize : S.pointSize;
+const lineW = k => ['interpolate', ['linear'], ['zoom'], 12, 4.5 * k, 14, 7 * k, 16, 11 * k, 18, 14 * k];
+const hlW = k => ['interpolate', ['linear'], ['zoom'], 10, 5 * k, 12, 7 * k, 14, 10.5 * k, 16, 16 * k, 18, 20 * k];
 function radiusExpr(extra = 0, mul = 1) {
-    const m = (CONFIG.pointSizes[S.pointSize] || 1) * mul;
+    const m = (CONFIG.pointSizes[sizeNow()] || 1) * mul;
     const r = base => S.rowSizes ? ['+', extra, ['*', base * m, ['+', 0.45, ['*', 1.55, ['max', 0, ['get', '_s']]]]]] : base * m + extra;
     const [a, b, c] = CONFIG.pointRadius;
     return ['interpolate', ['linear'], ['zoom'], 10, r(a), 13, r(b), 16, r(c)];
@@ -1477,6 +1523,14 @@ function applyPointSize() {
         map.setLayoutProperty(id, 'circle-sort-key', S.rowSizes ? ['-', 0, ['get', '_s']] : 0);
     }
     map.setPaintProperty('rows-hl-point', 'circle-radius', radiusExpr(2, 1.6));
+    // Lines follow the same control.
+    const k = CONFIG.lineSizes[sizeNow()] || 1;
+    map.setPaintProperty('rows-sline-casing', 'line-width', lineW(1.55 * k));
+    for (const id of ['rows-sline', 'rows-sline-out']) map.setPaintProperty(id, 'line-width', lineW(k));
+    for (const id of ['rows-line', 'rows-line-out']) map.setPaintProperty(id, 'line-width', 2.5 * k);
+    map.setPaintProperty('rows-line-glow', 'line-width', 6 * k);
+    map.setPaintProperty('rows-hl-casing', 'line-width', hlW(1.6 * k));
+    map.setPaintProperty('rows-hl-line', 'line-width', hlW(k));
 }
 
 function updateRowLayer() {
@@ -1744,6 +1798,7 @@ async function useSource(src, { keep = false } = {}) {
             if (st.palette && CONFIG.palettes[palKey(st.palette)]) { S.palette = palKey(st.palette); applyPalette(); }
             if (st.rowStyle) S.rowStyle = { colorBy: st.rowStyle.colorBy || '', labels: st.rowStyle.labels || [], sizeBy: st.rowStyle.sizeBy || '', sizeLog: !!st.rowStyle.sizeLog };
             if (st.pointSize && CONFIG.pointSizes[st.pointSize]) S.pointSize = st.pointSize;
+            if (st.hexPointSize && CONFIG.pointSizes[st.hexPointSize]) S.hexPointSize = st.hexPointSize;
             if (st.hex) S.hex = { ...S.hex, ...st.hex };
             if (typeof st.hideEmpty === 'boolean') S.hideEmpty = st.hideEmpty;
             if (['auto', 'over', 'under'].includes(st.areaOrder)) { S.areaOrder = st.areaOrder; applyAreaOrder(); }
@@ -1825,39 +1880,51 @@ async function loadAirtable(link, { include = [], skipLinks = [], keep = false }
         atStatus(e.message, 'err');
         toast('Couldn’t load from Airtable', { sub: e.message, ms: 9000 });
         if (/token/i.test(e.message)) $('at-token-row').hidden = false;
+        if (/couldn’t find|isn’t in/i.test(e.message)) startCatalog(tok, { force: true });   // a table moved or was deleted
         console.error(e);
     } finally { atBusy = false; $('at-load').disabled = false; renderAirtable(); }
 }
 
-// Other bases and tables this token can read: bases listed at once, a base's tables when it's opened.
-async function browseAirtable() {
+// Other bases and tables this token can read. The list comes from the tab's catalog (read in the
+// background as soon as there's a token), so it's usually there at once; it fills in as bases are read.
+const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m === 1 ? '1 min ago' : `${m} min ago`; };
+function renderBrowse(c, refreshing) {
+    const box = $('at-browse');
+    if (box.hidden) return;
+    const open = new Set([...box.querySelectorAll('details.at-base[open]')].map(d => d.dataset.base));
+    if (!box.dataset.drawn && S.src?.airtable?.base) open.add(S.src.airtable.base);
+    box.dataset.drawn = '1';
+    if (!c) { box.innerHTML = '<p class="hint loading">Loading the bases this token can open</p>'; return; }
+    const cur = S.src?.airtable?.table;
+    box.innerHTML = (c.bases.length ? c.bases.map(b => `<details class="at-base" data-base="${b.id}"${open.has(b.id) ? ' open' : ''}><summary>${esc(b.name)}${b.tables ? ` <span class="why">${b.tables.length} table${b.tables.length === 1 ? '' : 's'}</span>` : ''}</summary><ul class="at-tables">`
+        + (b.tables ? b.tables.map(t => `<li><button type="button" class="linkish" data-table="${t.id}"${cur === t.id ? ' aria-current="true"' : ''}>${esc(t.name)}</button> <span class="why">${t.fields} fields</span></li>`).join('')
+            : b.error ? `<li class="hint err">${esc(b.error)}</li>` : '<li class="hint loading">Loading tables</li>')
+        + '</ul></details>').join('')
+        : '<p class="hint">This token can’t open any bases. Add bases to it under Access on the token’s page.</p>')
+        + `<p class="hint at-fresh">${refreshing ? '<span class="loading">Updating</span>' : `Updated ${ago(c.at)}`} · <button type="button" class="linkish" id="at-refresh">Refresh</button></p>`;
+}
+function startCatalog(tok, { force = false } = {}) {
+    if (!tok) return;
+    const { catalog, refreshing } = AT().catalog(tok, { force, onUpdate: c => renderBrowse(c, !!atCatalogBusy) });
+    atCatalogBusy = refreshing;
+    refreshing?.then(c => { atCatalogBusy = null; renderBrowse(c, false); }, e => { atCatalogBusy = null; if (!$('at-browse').hidden && !AT().readCatalog(tok)) $('at-browse').innerHTML = `<p class="hint err">${esc(e.message)}</p>`; });
+    return catalog;
+}
+let atCatalogBusy = null;
+function browseAirtable() {
     const box = $('at-browse'), tok = $('at-token').value.trim() || AT().token.get();
     if (!box.hidden) { box.hidden = true; $('at-browse-btn').textContent = 'Show other tables'; return; }
     if (!tok) { atStatus('Paste your personal access token to see the tables it can open.', 'err'); $('at-token').focus(); return; }
-    box.hidden = false; $('at-browse-btn').textContent = 'Hide other tables';
-    box.innerHTML = '<p class="hint loading">Loading the bases this token can open</p>';
-    try {
-        const bases = await AT().listBases(tok);
-        const cur = S.src?.airtable?.base;
-        box.innerHTML = bases.length ? bases.map(b => `<details class="at-base" data-base="${b.id}"${b.id === cur ? ' open' : ''}><summary>${esc(b.name)}</summary><ul class="at-tables"><li class="hint loading">Loading tables</li></ul></details>`).join('')
-            : '<p class="hint">This token can’t open any bases. Add bases to it under Access on the token’s page.</p>';
-        const fill = async det => {
-            if (det.dataset.loaded) return;
-            det.dataset.loaded = '1';
-            const ul = det.querySelector('ul');
-            try {
-                const tables = await AT().listTables(det.dataset.base, tok);
-                ul.innerHTML = tables.map(t => `<li><button type="button" class="linkish" data-table="${t.id}"${S.src?.airtable?.table === t.id ? ' aria-current="true"' : ''}>${esc(t.name)}</button> <span class="why">${t.fields} fields</span></li>`).join('');
-            } catch (e) { ul.innerHTML = `<li class="hint">${esc(e.message)}</li>`; delete det.dataset.loaded; }
-        };
-        box.querySelectorAll('details.at-base').forEach(det => { det.addEventListener('toggle', () => det.open && fill(det)); if (det.open) fill(det); });
-        box.onclick = e => {
-            const b = e.target.closest('button[data-table]'); if (!b) return;
-            const base = b.closest('details').dataset.base;
-            loadAirtable({ base, table: b.dataset.table, view: null });
-            box.hidden = true; $('at-browse-btn').textContent = 'Show other tables';
-        };
-    } catch (e) { box.innerHTML = `<p class="hint err">${esc(e.message)}</p>`; }
+    box.hidden = false; box.dataset.drawn = ''; $('at-browse-btn').textContent = 'Hide other tables';
+    const c = startCatalog(tok);
+    renderBrowse(c, !!atCatalogBusy);
+    box.onclick = e => {
+        if (e.target.closest('#at-refresh')) { startCatalog(tok, { force: true }); renderBrowse(AT().readCatalog(tok), true); return; }
+        const b = e.target.closest('button[data-table]'); if (!b) return;
+        const base = b.closest('details').dataset.base;
+        loadAirtable({ base, table: b.dataset.table, view: null });
+        box.hidden = true; $('at-browse-btn').textContent = 'Show other tables';
+    };
 }
 
 function renderAirtable() {
@@ -1887,7 +1954,7 @@ function renderAirtable() {
 }
 
 function saveSnapshot() {
-    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, revealAll: S.revealAll, labelColor: S.labelColor, pointSize: S.pointSize, hex: S.hex, areaOrder: S.areaOrder, hideEmpty: S.hideEmpty,
+    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, revealAll: S.revealAll, labelColor: S.labelColor, pointSize: S.pointSize, hexPointSize: S.hexPointSize, hex: S.hex, areaOrder: S.areaOrder, hideEmpty: S.hideEmpty,
         labels: { fields: S.labels, prefix: S.prefix, prefixZoom: S.prefixZoom } });
     const blob = new Blob([JSON.stringify(snap)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -1943,7 +2010,10 @@ function wireUI() {
     };
     $('clear-btn').onclick = clearFile;
     $('at-form').onsubmit = e => { e.preventDefault(); loadAirtable(AT().parseLink($('at-url').value)); };
-    $('at-forget').onclick = () => { AT().token.set(''); $('at-browse').hidden = true; renderAirtable(); atStatus('Token forgotten.'); };
+    $('at-forget').onclick = () => { AT().token.set(''); AT().forgetCatalog(); $('at-browse').hidden = true; renderAirtable(); atStatus('Token forgotten.'); };
+    // Read the bases and tables in the background as soon as there's a token: remembered, or pasted.
+    if (AT().token.get()) startCatalog(AT().token.get());
+    $('at-token').addEventListener('input', e => { const t = e.target.value.trim(); if (/^pat\w{10,}\.\w{20,}$/.test(t)) startCatalog(t); });
     $('at-browse-btn').onclick = browseAirtable;
     $('toast').querySelector('.toast-x').onclick = () => toast('');
     // Switching views keeps fields added back; a different table starts from the default fields.
@@ -1979,7 +2049,8 @@ function wireUI() {
     $('size-log').onchange = e => { S.rowStyle.sizeLog = e.target.checked; updateRowLayer(); renderFormatFeatures(); };
     $('psize-seg').onclick = e => {
         const b = e.target.closest('button'); if (!b) return;
-        S.pointSize = b.dataset.psize; store.set('pointSize', S.pointSize);
+        if (isHex(S.layerId)) { S.hexPointSize = b.dataset.psize; store.set('hexPointSize', S.hexPointSize); }
+        else { S.pointSize = b.dataset.psize; store.set('pointSize', S.pointSize); }
         applyPointSize(); renderFormatFeatures();
     };
     $('hex-seg').onclick = e => {
@@ -2040,7 +2111,7 @@ function wireUI() {
         const i = +tr.dataset.row, p = S.src.points?.[i];
         popup.remove();
         if (S.rowArea[i] != null) openArea(S.rowArea[i], { fly: !p });
-        if (p) map.flyTo({ center: p, zoom: Math.max(map.getZoom(), 15), duration: 600 });
+        if (p) map.flyTo({ center: p, zoom: isHex(S.layerId) ? map.getZoom() : Math.max(map.getZoom(), 15), duration: 600 });
         pinRowCard(i, document.querySelector(`#area-list .items li[data-row="${i}"]`));
     });
     $('table-grid').addEventListener('mouseover', e => {
@@ -2107,7 +2178,7 @@ function wireUI() {
             if (cardPinned === i) { pinRowCard(null); return; }
             popup.remove();
             pinRowCard(i, item);
-            if (S.src.points?.[i]) map.flyTo({ center: S.src.points[i], zoom: Math.max(map.getZoom(), 15.5), duration: 600 });
+            if (S.src.points?.[i]) map.flyTo({ center: S.src.points[i], zoom: isHex(S.layerId) ? map.getZoom() : Math.max(map.getZoom(), 15.5), duration: 600 });
             return;
         }
         if (e.target.closest('.items')) return;
