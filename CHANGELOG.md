@@ -2,6 +2,14 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v23
+- **Point styles from Selecter:** Fill (as before), Ring, Ghost, Black ring, White ring and Black & white, under Format features › Style. Lines follow along: ghosted, a black or white casing, or black on white.
+- **Pinpoint size**, below Tiny: small dots with no outline (rings keep a hairline), for a light hint of where rows are. Size and Style are now rows of pictures, with the choice named next to the heading.
+- **Smaller where crowded** (on to start): points shrink as more rows are in view, from full size with under 80 to about a third with 15,000 or more, on top of growing with the zoom. Pinpoints stay as they are.
+- **Big files start as pinpoints:** with 2,000 or more located rows a file gets its own look (pinpoints, your style), noted in the card; changing size or style changes that file's look only. With 50,000 or more its features start hidden. The next file starts from the usual settings.
+- **Hexagon resolution has − and + buttons:** in Auto they shift the zoom-to-resolution steps bigger or smaller (up to 3 steps) and the hint says so; at a fixed level they step the level. In Auto the level in use is outlined.
+- **The resolution control sits on its own row** under its heading, and Auto keeps one label, so the card no longer changes height when switching between Auto and a level.
+
 ## v22
 - **Airtable's table list is ready sooner.** As soon as there's a token (remembered, or pasted), Joiner reads the bases and their tables in the background, several bases at once, and keeps the list for the tab. Show other tables opens at once from that list, fills in any base still loading, and says when it was read, with **Refresh**. It's re-read quietly when it's over 5 minutes old, when you click Refresh, and when a table can't be found; changing or forgetting the token clears it.
 - **Hexbins have their own feature size, Tiny to start.** The size control (now **Size**) edits whichever is showing, hexagons or other areas, and each keeps its setting.

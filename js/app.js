@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v22';
+const _BUILD_VERSION = 'v23';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -41,13 +41,21 @@ const CONFIG = {
     labelSizes: { small: { areas: 12, rows: 11 }, medium: { areas: 14, rows: 12.5 }, large: { areas: 16, rows: 14 } },
     // Point radius at zoom 10 / 13 / 16 for the "small" size; other sizes scale it.
     pointRadius: [3, 4.5, 7.5],
-    pointSizes: { tiny: 0.6, small: 1, medium: 1.45, big: 2, huge: 2.8 },
+    // Pinpoint: a hint of where rows are, without outlines.
+    pointSizes: { pinpoint: 0.4, tiny: 0.6, small: 1, medium: 1.45, big: 2, huge: 2.8 },
+    // How points are drawn (from Selecter). Fill: solid with a ring that contrasts with its color.
+    pointStyles: { fill: 'Fill', ring: 'Ring', ghost: 'Ghost', black: 'Black ring', white: 'White ring', bw: 'Black & white' },
+    // "Smaller where crowded": points shrink as more of them are in view (visible rows → size factor).
+    crowd: [[80, 1], [300, 0.85], [1200, 0.7], [5000, 0.55], [15000, 0.42], [Infinity, 0.32]],
+    // Big files: pinpoints from bigFile.look rows with a location; features hidden from bigFile.hide.
+    bigFile: { look: 2000, hide: 50000 },
     // The same control sets line widths, on a gentler scale (a 2.8× street would hide its block).
-    lineSizes: { tiny: 0.6, small: 1, medium: 1.3, big: 1.65, huge: 2.1 },
+    lineSizes: { pinpoint: 0.4, tiny: 0.6, small: 1, medium: 1.3, big: 1.65, huge: 2.1 },
     linesFromZoom: 12,         // lines from the file draw from here in; zoomed out, a dot at each line's midpoint
     highlight: '#00A862',     // the selected area: green, apart from the blue, yellow–red and blue–red ramps
     hexAutoRes: z => Math.max(5, Math.min(10, Math.round(z * 0.75 - 0.5))),   // H3 resolution for a map zoom
     hexRange: [5, 10],
+    hexBump: [-3, 3],          // the − / + buttons shift Auto by up to this many steps
     // Streets draw above the areas: major roads and highways from streetsMajorZoom, every street
     // from streetsOverZoom; all are named from streetNamesZoom.
     streetsMajorZoom: 13,
@@ -152,6 +160,8 @@ async function boot() {
     S.pointSize = CONFIG.pointSizes[store.get('pointSize', 'small')] ? store.get('pointSize', 'small') : 'small';
     // Hexagons are small, so rows default to tiny there; each mode keeps its own size.
     S.hexPointSize = CONFIG.pointSizes[store.get('hexPointSize', 'tiny')] ? store.get('hexPointSize', 'tiny') : 'tiny';
+    S.pointStyle = CONFIG.pointStyles[store.get('pointStyle', 'fill')] ? store.get('pointStyle', 'fill') : 'fill';
+    S.crowd = store.get('crowd', true); S.crowdK = 1;
     S.hex = { ...S.hex, ...store.get('hex', {}) };
     const lab = store.get('labels', null);
     if (lab) { S.labels = lab.fields ?? null; S.prefix = lab.prefix ?? true; S.prefixZoom = lab.prefixZoom != null ? Math.round(lab.prefixZoom) : null; }
@@ -351,11 +361,10 @@ function addMapLayers() {
     map.addLayer({ id: 'rows-sline-out', type: 'line', source: 'rows', minzoom: CONFIG.linesFromZoom, filter: ['all', isLine, ['!', ['get', '_in']]],
         paint: { 'line-width': lineW(1), 'line-opacity': 0.95, 'line-dasharray': [1.2, 0.8] } });
     // Points, and line midpoints below linesFromZoom (features with _mid).
-    const stroke = ['interpolate', ['linear'], ['zoom'], 10, ['case', ['get', '_in'], 0.8, 1.8], 14, ['case', ['get', '_in'], 1.4, 2.2]];
     map.addLayer({ id: 'rows-mid', type: 'circle', source: 'rows', maxzoom: CONFIG.linesFromZoom, filter: ['get', '_mid'],
-        paint: { 'circle-stroke-width': stroke, 'circle-opacity': 1 } });
+        paint: { 'circle-opacity': 1 } });
     map.addLayer({ id: 'rows-point', type: 'circle', source: 'rows', filter: ['all', isPt, ['!', ['get', '_mid']]],
-        paint: { 'circle-stroke-width': stroke, 'circle-opacity': 1 } });
+        paint: { 'circle-opacity': 1 } });
     // Highlight: rows in the area under the cursor (map or list), or the row hovered in an expanded list.
     map.addSource('rows-hl', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     // Hovered rows draw bigger, in yellow with a dark ring, above every other row.
@@ -456,12 +465,48 @@ function applyPalette() {
     map.setPaintProperty('rows-line-glow', 'line-color', glow);
     // Line casing follows the line's color, as points' rings do: dark under light colors, white under dark ones.
     map.setPaintProperty('rows-sline-casing', 'line-color', glow);
-    for (const id of ['rows-point', 'rows-mid']) {
-        map.setPaintProperty(id, 'circle-color', ['case', ['get', '_in'], color, '#ffffff']);
-        // Light colors (the pale ends of a ramp, yellow) get a dark ring instead of a white one.
-        map.setPaintProperty(id, 'circle-stroke-color', ['case', ['get', '_in'], glow, color]);
-    }
+    applyPointStyle(color, glow);
     document.documentElement.style.setProperty('--rows', p.rows);
+}
+
+// Points and lines in the chosen style. Rows not placed in an area are hollow or faded.
+function applyPointStyle(color, glow) {
+    const style = styleNow(), pin = sizeNow() === 'pinpoint', inA = ['get', '_in'];
+    const cas = (a, b) => ['case', inA, a, b];
+    const z = (a, b) => ['interpolate', ['linear'], ['zoom'], 10, a, 14, b];
+    let fill = cas(color, '#ffffff'), fillOp = 1, ring = cas(glow, color), ringOp = 1,
+        width = z(cas(0.8, 1.8), cas(1.4, 2.2));   // light colors (pale ramp ends, yellow) get a dark ring, others white
+    if (style === 'ring') { fill = 'rgba(0,0,0,0)'; ring = color; ringOp = cas(1, 0.45); width = z(1.3, 2.2); }
+    else if (style === 'ghost') { fill = color; fillOp = cas(0.18, 0.07); ring = color; ringOp = cas(0.6, 0.3); width = 0.6; }
+    else if (style === 'black') { ring = 'rgba(30,30,30,0.85)'; width = z(1.1, 1.6); }
+    else if (style === 'white') { fill = color; fillOp = cas(1, 0.4); ring = '#ffffff'; width = z(1.1, 1.6); }
+    else if (style === 'bw') { fill = '#ffffff'; ring = cas('rgba(30,30,30,0.9)', 'rgba(30,30,30,0.4)'); width = z(1.1, 1.6); }
+    if (pin) {   // pinpoints: no outline (a thin one for rings, which are only outline)
+        if (style === 'ring') width = 0.8;
+        else {
+            width = 0;
+            if (style === 'bw') fill = cas('#1e1e1e', '#9a9a9a');
+            else if (style === 'ghost') { fill = color; fillOp = cas(0.55, 0.2); }
+            else { fill = color; fillOp = cas(1, 0.4); }
+        }
+    }
+    for (const id of ['rows-point', 'rows-mid']) {
+        map.setPaintProperty(id, 'circle-color', fill);
+        map.setPaintProperty(id, 'circle-opacity', fillOp);
+        map.setPaintProperty(id, 'circle-stroke-color', ring);
+        map.setPaintProperty(id, 'circle-stroke-opacity', ringOp);
+        map.setPaintProperty(id, 'circle-stroke-width', width);
+    }
+    // Lines: ghosted, or with a black or white casing, or black on white.
+    const ghost = style === 'ghost';
+    for (const id of ['rows-sline', 'rows-sline-out']) {
+        map.setPaintProperty(id, 'line-color', style === 'bw' ? '#1e1e1e' : color);
+        map.setPaintProperty(id, 'line-opacity', ghost ? 0.35 : 0.95);
+    }
+    map.setPaintProperty('rows-sline-casing', 'line-color', style === 'black' ? '#1e1e1e' : style === 'white' || style === 'bw' ? '#ffffff' : glow);
+    map.setPaintProperty('rows-sline-casing', 'line-opacity', ghost || pin || style === 'ring' ? 0 : 0.85);
+    map.setPaintProperty('rows-line-glow', 'line-opacity', ghost || pin ? 0 : 0.9);
+    for (const id of ['rows-line', 'rows-line-out']) map.setPaintProperty(id, 'line-opacity', ghost ? 0.35 : 0.9);
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -498,7 +543,8 @@ async function loadGeo(id) {
 
 // ── H3 hexagons ──
 const isHex = id => !!S.layers.get(id)?.hex;
-const hexResNow = () => S.hex.auto ? CONFIG.hexAutoRes(map.getZoom()) : S.hex.res;
+const clampRes = r => Math.max(CONFIG.hexRange[0], Math.min(CONFIG.hexRange[1], r));
+const hexResNow = () => S.hex.auto ? clampRes(CONFIG.hexAutoRes(map.getZoom()) + (S.hex.bump || 0)) : S.hex.res;
 S.hexCache = new Map();   // resolution → { fc, anchors, cellOfRow: Map(src → [cell|null]) }
 // Cells covering SF's land (the analysis neighborhoods), plus the cell of every row from the
 // loaded file inside the city's bounds, so rows on piers and islands aren't lost.
@@ -1112,6 +1158,13 @@ function renderFormatFeatures() {
     $('row-size-hint').textContent = !nums.length ? 'No numeric columns.' : !z ? 'Size points by a number.'
         : `${fmtCol(z.min, z.col)} to ${fmtCol(z.max, z.col)}; ` + (z.log ? 'log scale, so small values stay visible.' : 'circle area follows the value.');
     $('psize-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.psize === sizeNow()));
+    $('psize-name').textContent = $('psize-seg').querySelector(`[data-psize="${sizeNow()}"]`)?.title || '';
+    $('pstyle-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.pstyle === styleNow()));
+    $('pstyle-name').textContent = CONFIG.pointStyles[styleNow()];
+    $('crowd-check').checked = S.crowd;
+    const located = S.src.points.filter(Boolean).length;
+    $('look-hint').hidden = !S.fileLook;
+    if (S.fileLook) $('look-hint').textContent = `${located.toLocaleString()} rows with a location: drawn ${S.fileLook.size === 'pinpoint' ? 'as pinpoints' : 'as set here'} for this file${S.autoHid ? ', and hidden until you show them' : ''}.`;
     const labs = S.rowStyle.labels;
     $('rowlabels-n').textContent = labs.length ? labs.join(', ') : 'none';
     $('row-label-chips').innerHTML = cols.map(c => {
@@ -1507,11 +1560,24 @@ function computeRowSizes() {
 const sizeOf = i => S.rowSizes ? S.rowSizes.s[i] : 0;
 
 // Radius at zoom 10 / 13 / 16, times the size setting; sized points range from 0.45× to 2×.
-const sizeNow = () => isHex(S.layerId) ? S.hexPointSize : S.pointSize;
+// A big file gets its own look (S.fileLook) until it's unloaded; otherwise hexagons and other areas each keep a size.
+const sizeNow = () => S.fileLook?.size ?? (isHex(S.layerId) ? S.hexPointSize : S.pointSize);
+const styleNow = () => S.fileLook?.style ?? S.pointStyle;
+// Smaller where crowded: count the rows in view and pick a size factor.
+function updateCrowd() {
+    let k = 1;
+    if (S.crowd && S.src?.points && S.basemap.points) {
+        const b = map.getBounds(), w = b.getWest(), e = b.getEast(), so = b.getSouth(), n = b.getNorth();
+        let c = 0;
+        for (const p of S.src.points) if (p && p[0] >= w && p[0] <= e && p[1] >= so && p[1] <= n) c++;
+        k = CONFIG.crowd.find(([max]) => c <= max)[1];
+    }
+    if (k !== S.crowdK) { S.crowdK = k; applyPointSize(); }
+}
 const lineW = k => ['interpolate', ['linear'], ['zoom'], 12, 4.5 * k, 14, 7 * k, 16, 11 * k, 18, 14 * k];
 const hlW = k => ['interpolate', ['linear'], ['zoom'], 10, 5 * k, 12, 7 * k, 14, 10.5 * k, 16, 16 * k, 18, 20 * k];
 function radiusExpr(extra = 0, mul = 1) {
-    const m = (CONFIG.pointSizes[sizeNow()] || 1) * mul;
+    const m = (CONFIG.pointSizes[sizeNow()] || 1) * mul * (sizeNow() === 'pinpoint' ? 1 : S.crowdK);   // pinpoints are already as small as they go
     const r = base => S.rowSizes ? ['+', extra, ['*', base * m, ['+', 0.45, ['*', 1.55, ['max', 0, ['get', '_s']]]]]] : base * m + extra;
     const [a, b, c] = CONFIG.pointRadius;
     return ['interpolate', ['linear'], ['zoom'], 10, r(a), 13, r(b), 16, r(c)];
@@ -1524,7 +1590,7 @@ function applyPointSize() {
     }
     map.setPaintProperty('rows-hl-point', 'circle-radius', radiusExpr(2, 1.6));
     // Lines follow the same control.
-    const k = CONFIG.lineSizes[sizeNow()] || 1;
+    const k = (CONFIG.lineSizes[sizeNow()] || 1) * Math.sqrt(S.crowdK);
     map.setPaintProperty('rows-sline-casing', 'line-width', lineW(1.55 * k));
     for (const id of ['rows-sline', 'rows-sline-out']) map.setPaintProperty(id, 'line-width', lineW(k));
     for (const id of ['rows-line', 'rows-line-out']) map.setPaintProperty(id, 'line-width', 2.5 * k);
@@ -1550,7 +1616,7 @@ function updateRowLayer() {
     });
     src.setData({ type: 'FeatureCollection', features: feats });
     hlKey = undefined; hlRows(null);   // force a reset: rows changed
-    applyPointSize();
+    S.crowdK = 0; updateCrowd();   // (forces applyPointSize)
     const labs = show ? S.rowStyle.labels.filter(c => S.src.headers.includes(c)) : [];
     map.getSource('rowlabels').setData({ type: 'FeatureCollection', features: !labs.length ? [] : S.src.points.map((p, i) => {
         if (!p) return null;
@@ -1582,12 +1648,14 @@ function syncBarToggles() {
     f.setAttribute('aria-pressed', !!S.basemap.points); f.title = S.basemap.points ? 'Hide the features from the file' : 'Show the features from the file';
 }
 function setFeaturesVisible(on) {
+    S.autoHid = false;
     S.basemap.points = on; store.set('basemap', S.basemap);
     updateRowLayer(); renderFormatFeatures(); syncBarToggles();
 }
 
 function clearFile() {
     S.src = null; S.areaOf = new Map(); S.expanded = null; S.rowArea = []; pinRowCard(null);
+    S.fileLook = null; if (S.autoHid) { S.autoHid = false; S.basemap.points = true; }
     S.keyCols = {}; S.colKeys = {}; S.metric = 'count'; S.rowStyle = { colorBy: '', labels: [], sizeBy: '', sizeLog: false };
     popup.remove();
     updateRowLayer();
@@ -1598,12 +1666,17 @@ function renderHexControls() {
     const on = isHex(S.layerId);
     $('hex-card').hidden = !on;
     if (!on) return;
-    $('hex-seg').innerHTML = `<button type="button" data-res="auto" aria-pressed="${S.hex.auto}">Auto${S.hex.auto ? ` (${S.hexRes})` : ''}</button>`
+    // Auto keeps one label (no jump when it's pressed); in Auto the level in use is outlined.
+    $('hex-seg').innerHTML = `<button type="button" data-res="auto" aria-pressed="${S.hex.auto}">Auto</button>`
         + Array.from({ length: CONFIG.hexRange[1] - CONFIG.hexRange[0] + 1 }, (_, i) => CONFIG.hexRange[0] + i)
-            .map(r => `<button type="button" data-res="${r}" aria-pressed="${!S.hex.auto && S.hex.res === r}">${r}</button>`).join('');
+            .map(r => `<button type="button" data-res="${r}" aria-pressed="${!S.hex.auto && S.hex.res === r}"${S.hex.auto && S.hexRes === r ? ' class="cur"' : ''}>${r}</button>`).join('');
+    const bump = S.hex.bump || 0;
+    $('hex-coarser').disabled = S.hex.auto ? bump <= CONFIG.hexBump[0] : S.hex.res <= CONFIG.hexRange[0];
+    $('hex-finer').disabled = S.hex.auto ? bump >= CONFIG.hexBump[1] : S.hex.res >= CONFIG.hexRange[1];
     const km = h3.getHexagonEdgeLengthAvg(S.hexRes, 'km');
-    $('hex-hint').textContent = `Resolution ${S.hexRes}: hexagons about ${km >= 1 ? km.toFixed(1) + ' km' : Math.round(km * 1000) + ' m'} across each side.`
-        + (S.hex.auto ? ' Auto picks a finer grid as you zoom in.' : '');
+    const steps = n => `${Math.abs(n)} step${Math.abs(n) === 1 ? '' : 's'} ${n < 0 ? 'bigger' : 'smaller'}`;
+    $('hex-hint').textContent = `Resolution ${S.hexRes}: sides about ${km >= 1 ? km.toFixed(1) + ' km' : Math.round(km * 1000) + ' m'}. `
+        + (S.hex.auto ? `Auto follows the zoom${bump ? `, ${steps(bump)} than usual` : ''}.` : 'Fixed at every zoom.');
 }
 
 // Color chips: Auto (area labels only) and one chip per pair. A chip keeps its name and size; its
@@ -1784,12 +1857,21 @@ async function loadFile(file) {
 
 // Show a loaded source. keep: the same table reloaded (e.g. with a field added back), so the
 // match, statistic and formatting choices stay.
+// A file with thousands of located rows starts as pinpoints (its own look, so the next file
+// starts from the usual settings); with tens of thousands, its features start hidden.
+function bigFileLook(src) {
+    const n = src.points ? src.points.filter(Boolean).length : 0;
+    if (S.autoHid && !S.basemap.points) S.basemap.points = true;
+    S.autoHid = false;
+    S.fileLook = n >= CONFIG.bigFile.look ? { size: 'pinpoint', style: S.pointStyle } : null;
+    if (n >= CONFIG.bigFile.hide && S.basemap.points) { S.basemap.points = false; S.autoHid = true; syncBarToggles(); }   // not stored: the next file shows its features
+}
 async function useSource(src, { keep = false } = {}) {
         src.points = src.geoms ? src.geoms.map(repPoint) : null;
         S.src = src; pinRowCard(null);
         S.areaOf = new Map();
         S.expanded = null;
-        if (!keep) { S.rowStyle = { colorBy: '', labels: [], sizeBy: '', sizeLog: false }; S.keyCols = {}; S.colKeys = {}; S.metric = 'count'; }
+        if (!keep) { S.rowStyle = { colorBy: '', labels: [], sizeBy: '', sizeLog: false }; S.keyCols = {}; S.colKeys = {}; S.metric = 'count'; bigFileLook(src); }
         renderAirtable();
         const st = src.settings;
         if (st) {
@@ -1799,6 +1881,8 @@ async function useSource(src, { keep = false } = {}) {
             if (st.rowStyle) S.rowStyle = { colorBy: st.rowStyle.colorBy || '', labels: st.rowStyle.labels || [], sizeBy: st.rowStyle.sizeBy || '', sizeLog: !!st.rowStyle.sizeLog };
             if (st.pointSize && CONFIG.pointSizes[st.pointSize]) S.pointSize = st.pointSize;
             if (st.hexPointSize && CONFIG.pointSizes[st.hexPointSize]) S.hexPointSize = st.hexPointSize;
+            if (st.pointStyle && CONFIG.pointStyles[st.pointStyle]) S.pointStyle = st.pointStyle;
+            if ('look' in st) S.fileLook = st.look && CONFIG.pointSizes[st.look.size] && CONFIG.pointStyles[st.look.style] ? { ...st.look } : null;
             if (st.hex) S.hex = { ...S.hex, ...st.hex };
             if (typeof st.hideEmpty === 'boolean') S.hideEmpty = st.hideEmpty;
             if (['auto', 'over', 'under'].includes(st.areaOrder)) { S.areaOrder = st.areaOrder; applyAreaOrder(); }
@@ -1954,7 +2038,7 @@ function renderAirtable() {
 }
 
 function saveSnapshot() {
-    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, revealAll: S.revealAll, labelColor: S.labelColor, pointSize: S.pointSize, hexPointSize: S.hexPointSize, hex: S.hex, areaOrder: S.areaOrder, hideEmpty: S.hideEmpty,
+    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, revealAll: S.revealAll, labelColor: S.labelColor, pointSize: S.pointSize, hexPointSize: S.hexPointSize, pointStyle: S.pointStyle, look: S.fileLook, hex: S.hex, areaOrder: S.areaOrder, hideEmpty: S.hideEmpty,
         labels: { fields: S.labels, prefix: S.prefix, prefixZoom: S.prefixZoom } });
     const blob = new Blob([JSON.stringify(snap)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -2049,16 +2133,36 @@ function wireUI() {
     $('size-log').onchange = e => { S.rowStyle.sizeLog = e.target.checked; updateRowLayer(); renderFormatFeatures(); };
     $('psize-seg').onclick = e => {
         const b = e.target.closest('button'); if (!b) return;
-        if (isHex(S.layerId)) { S.hexPointSize = b.dataset.psize; store.set('hexPointSize', S.hexPointSize); }
+        if (S.fileLook) S.fileLook.size = b.dataset.psize;
+        else if (isHex(S.layerId)) { S.hexPointSize = b.dataset.psize; store.set('hexPointSize', S.hexPointSize); }
         else { S.pointSize = b.dataset.psize; store.set('pointSize', S.pointSize); }
-        applyPointSize(); renderFormatFeatures();
+        applyPointSize(); applyPalette(); renderFormatFeatures();
+    };
+    $('pstyle-seg').onclick = e => {
+        const b = e.target.closest('button'); if (!b) return;
+        if (S.fileLook) S.fileLook.style = b.dataset.pstyle;
+        else { S.pointStyle = b.dataset.pstyle; store.set('pointStyle', S.pointStyle); }
+        applyPalette(); renderFormatFeatures();
+    };
+    $('crowd-check').onchange = e => {
+        S.crowd = e.target.checked; store.set('crowd', S.crowd);
+        S.crowdK = 0; updateCrowd();
     };
     $('hex-seg').onclick = e => {
         const b = e.target.closest('button'); if (!b) return;
-        S.hex = b.dataset.res === 'auto' ? { ...S.hex, auto: true } : { auto: false, res: +b.dataset.res };
+        S.hex = b.dataset.res === 'auto' ? { ...S.hex, auto: true } : { ...S.hex, auto: false, res: +b.dataset.res };
         store.set('hex', S.hex);
         setLayer('h3');
     };
+    // − / +: bigger or smaller hexagons. In Auto they shift the zoom-to-resolution steps; fixed, they change the level.
+    const hexStep = d => {
+        if (S.hex.auto) S.hex = { ...S.hex, bump: Math.max(CONFIG.hexBump[0], Math.min(CONFIG.hexBump[1], (S.hex.bump || 0) + d)) };
+        else S.hex = { ...S.hex, res: clampRes(S.hex.res + d) };
+        store.set('hex', S.hex);
+        setLayer('h3');
+    };
+    $('hex-coarser').onclick = () => hexStep(-1);
+    $('hex-finer').onclick = () => hexStep(1);
     $('metric-select').onchange = e => { S.metric = e.target.value; recompute(); };
     $('sort-seg').onclick = e => {
         const b = e.target.closest('button'); if (!b) return;
@@ -2099,7 +2203,7 @@ function wireUI() {
     $('table-toggle').onclick = () => setTableOpen(!T.open);
     $('table-close').onclick = () => setTableOpen(false);
     $('table-filter').onclick = e => { const b = e.target.closest('button'); if (!b) return; T.filter = b.dataset.filter; renderTable(); };
-    map.on('moveend', () => { if (T.filter === 'view') renderTable(); });
+    map.on('moveend', () => { if (T.filter === 'view') renderTable(); updateCrowd(); });
     $('table-grid').addEventListener('click', e => {
         const pin = e.target.closest('button.pin');
         if (pin) { T.pin = pin.dataset.pin; renderTable(); return; }

@@ -219,7 +219,7 @@ button, input, select { font: inherit; color: inherit; }
 .field .check.loc { margin: 2px 0 6px; font-weight: 600; text-transform: none; letter-spacing: 0; font-size: 13.5px; color: var(--ink); }
 .check.loc .n { font-weight: 400; color: var(--ink-soft); font-size: 12.5px; }
 #key-row.off select { opacity: .45; }
-#psize-seg button, #hex-seg button { padding: 3px 8px; }
+#hex-seg button { padding: 3px 8px; }
 .hex-card .hint { margin-top: 6px; }
 .area-list li.note { font-size: 12.5px; color: var(--ink-soft); cursor: default; display: block; }
 .area-list li.note:hover { background: none; }
@@ -404,3 +404,28 @@ table.grid th .pin[aria-pressed="true"] svg { fill: var(--grape); }
 
 /* v22: the table list's freshness line */
 .at-fresh { margin: 6px 0 2px; font-size: 12px; }
+
+/* v23: hexagon resolution on its own row, with − / + */
+.hex-card .lab, .fmt-card .look .lab { display: block; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 5px; }
+.fmt-card .look .lab b { text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--ink); margin-left: 4px; }
+.hex-row { display: flex; gap: 8px; flex-wrap: nowrap; align-items: center; }
+#hex-seg button.cur { box-shadow: inset 0 0 0 2px var(--ink); }
+.hex-row .seg button:disabled { opacity: .35; cursor: default; }
+#hex-hint { min-height: 2.6em; }
+/* Size and style as pictures; the name of the choice is next to the heading */
+.seg.dots button { width: 34px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.seg.dots i { display: inline-block; border-radius: 50%; background: var(--rows); }
+#psize-seg button[aria-pressed="true"] i { background: #fff; }
+#pstyle-seg i { width: 12px; height: 12px; }
+#pstyle-seg .ps-fill { border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(30,35,64,.25); }
+#pstyle-seg .ps-ring { background: none; border: 2px solid var(--rows); }
+#pstyle-seg .ps-ghost { background: color-mix(in srgb, var(--rows) 22%, transparent); border: 1px solid color-mix(in srgb, var(--rows) 60%, transparent); }
+#pstyle-seg .ps-black { border: 2px solid #1e1e1e; }
+#pstyle-seg .ps-white { border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(30,35,64,.2); }
+#pstyle-seg .ps-bw { background: #fff; border: 2px solid #1e1e1e; }
+#pstyle-seg button[aria-pressed="true"] { background: #e9e9f1; }
+#pstyle-seg button[aria-pressed="true"] i { outline: none; }
+.fmt-card .look { margin-top: 10px; }
+/* Checkboxes inside a field read as options, not headings */
+.field label.check { display: flex; font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink); margin-bottom: 0; }
+.fmt-card .look .lab { font-size: 12px; letter-spacing: .04em; }
