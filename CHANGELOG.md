@@ -2,6 +2,15 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v24
+- **White ring and white ghost:** click Ring or Ghost again to switch it to white, bright on dark bin colors; click again to go back. The chip turns dark to show it. Black ring and White ring are now called Black outline and White outline.
+- **H3 hexbins work anywhere,** not just San Francisco: every row with a location gets its hexagon, wherever it is. Auto now picks the resolution whose hexagons are closest to 32 pixels across at the map's zoom and latitude (the same steps as before in SF), and the range is 0–12, so a national or world view gets big hexagons.
+- **A small table of levels** in the H3 card: the level in use and the one either side, each with the map zooms where Auto picks it, its side length and its area, in fixed columns so nothing jumps while zooming. Under it, the live map zoom.
+- **−½ / +½ on the zoom side:** each level arrives half a zoom later or sooner (up to 2 zooms either way), for testing whether the steps are off by half. − / + still step the level. **Auto / Fixed** replaces the row of level buttons; Fixed holds the level in use.
+- **Hexagon names:** Friendly (“Mission #82c7”) or the full H3 index, and **Named by** any area set, or nothing (code only). Empty hexagons fill out the naming set where the data overlaps it and there aren't too many; hexagons outside it are named by the area at their center, or by code alone.
+- **“Hexbins” is now “H3 hexbins”.**
+- **“Number of rows” is now “Count”** (“count: 3” on the map), and “% of all rows” is “% of total count”.
+
 ## v23
 - **Point styles from Selecter:** Fill (as before), Ring, Ghost, Black ring, White ring and Black & white, under Format features › Style. Lines follow along: ghosted, a black or white casing, or black on white.
 - **Pinpoint size**, below Tiny: small dots with no outline (rings keep a hairline), for a light hint of where rows are. Size and Style are now rows of pictures, with the choice named next to the heading.

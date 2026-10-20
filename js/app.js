@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v23';
+const _BUILD_VERSION = 'v24';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -44,7 +44,9 @@ const CONFIG = {
     // Pinpoint: a hint of where rows are, without outlines.
     pointSizes: { pinpoint: 0.4, tiny: 0.6, small: 1, medium: 1.45, big: 2, huge: 2.8 },
     // How points are drawn (from Selecter). Fill: solid with a ring that contrasts with its color.
-    pointStyles: { fill: 'Fill', ring: 'Ring', ghost: 'Ghost', black: 'Black ring', white: 'White ring', bw: 'Black & white' },
+    pointStyles: { fill: 'Fill', ring: 'Ring', ghost: 'Ghost', black: 'Black outline', white: 'White outline', bw: 'Black & white',
+        // Click Ring or Ghost again for a white version: bright on dark bin colors.
+        'ring-w': 'White ring', 'ghost-w': 'White ghost' },
     // "Smaller where crowded": points shrink as more of them are in view (visible rows → size factor).
     crowd: [[80, 1], [300, 0.85], [1200, 0.7], [5000, 0.55], [15000, 0.42], [Infinity, 0.32]],
     // Big files: pinpoints from bigFile.look rows with a location; features hidden from bigFile.hide.
@@ -53,8 +55,12 @@ const CONFIG = {
     lineSizes: { pinpoint: 0.4, tiny: 0.6, small: 1, medium: 1.3, big: 1.65, huge: 2.1 },
     linesFromZoom: 12,         // lines from the file draw from here in; zoomed out, a dot at each line's midpoint
     highlight: '#00A862',     // the selected area: green, apart from the blue, yellow–red and blue–red ramps
-    hexAutoRes: z => Math.max(5, Math.min(10, Math.round(z * 0.75 - 0.5))),   // H3 resolution for a map zoom
-    hexRange: [5, 10],
+    // Auto picks the resolution whose hexagons are closest to this many pixels across at the map's zoom
+    // and latitude, so it works the same for a city, a region or the world. 32 matches the old SF steps.
+    hexTargetPx: 32,
+    hexRange: [0, 12],
+    hexZoomShift: [-2, 2],     // the ½ buttons shift the zoom side by up to this much
+    hexCoverMax: 40000,        // most empty hexagons drawn to cover the naming areas
     hexBump: [-3, 3],          // the − / + buttons shift Auto by up to this many steps
     // Streets draw above the areas: major roads and highways from streetsMajorZoom, every street
     // from streetsOverZoom; all are named from streetNamesZoom.
@@ -142,7 +148,7 @@ async function boot() {
         t.layers.push(l);
     }
     // H3 hexagons: a generated layer over SF's land, at a resolution that follows the zoom or a fixed one.
-    const hexMeta = { id: 'h3', tab: 'Hexbins', label: 'H3 hexagons', short: 'Hexbins', key: 'h3', name: 'name', hex: true, match: {} };
+    const hexMeta = { id: 'h3', tab: 'H3 hexbins', label: 'H3 hexagons', short: 'H3 hexbins', key: 'h3', name: 'name', hex: true, match: {} };
     if (window.h3) { S.layers.set('h3', hexMeta); S.tabs.push({ tab: hexMeta.tab, layers: [hexMeta] }); }
     for (const t of S.tabs) S.tabChoice[t.tab] = (t.layers.find(l => l.default) || t.layers[0]).id;
     const fromHash = new URLSearchParams(location.hash.slice(1)).get('layer');
@@ -182,7 +188,7 @@ async function boot() {
     applyAreasVisible();
     renderOrderSeg();
     wireUI();
-    map.on('zoom', updateZoomReadout);
+    map.on('zoom', () => { updateZoomReadout(); updateHexZoomNow(); });
     map.on('zoomend', async () => {
         if (!(isHex(S.layerId) && S.hex.auto && hexResNow() !== S.hexRes)) return;
         // Keep the open hexagon open: zooming in, its busiest smaller hexagon; zooming out, the bigger one around it.
@@ -476,17 +482,18 @@ function applyPointStyle(color, glow) {
     const z = (a, b) => ['interpolate', ['linear'], ['zoom'], 10, a, 14, b];
     let fill = cas(color, '#ffffff'), fillOp = 1, ring = cas(glow, color), ringOp = 1,
         width = z(cas(0.8, 1.8), cas(1.4, 2.2));   // light colors (pale ramp ends, yellow) get a dark ring, others white
-    if (style === 'ring') { fill = 'rgba(0,0,0,0)'; ring = color; ringOp = cas(1, 0.45); width = z(1.3, 2.2); }
-    else if (style === 'ghost') { fill = color; fillOp = cas(0.18, 0.07); ring = color; ringOp = cas(0.6, 0.3); width = 0.6; }
+    const white = style.endsWith('-w'), tint = white ? '#ffffff' : color;
+    if (style.startsWith('ring')) { fill = 'rgba(0,0,0,0)'; ring = tint; ringOp = cas(1, 0.45); width = z(1.3, 2.2); }
+    else if (style.startsWith('ghost')) { fill = tint; fillOp = white ? cas(0.24, 0.1) : cas(0.18, 0.07); ring = tint; ringOp = white ? cas(0.8, 0.4) : cas(0.6, 0.3); width = white ? 0.8 : 0.6; }
     else if (style === 'black') { ring = 'rgba(30,30,30,0.85)'; width = z(1.1, 1.6); }
     else if (style === 'white') { fill = color; fillOp = cas(1, 0.4); ring = '#ffffff'; width = z(1.1, 1.6); }
     else if (style === 'bw') { fill = '#ffffff'; ring = cas('rgba(30,30,30,0.9)', 'rgba(30,30,30,0.4)'); width = z(1.1, 1.6); }
     if (pin) {   // pinpoints: no outline (a thin one for rings, which are only outline)
-        if (style === 'ring') width = 0.8;
+        if (style.startsWith('ring')) width = 0.8;
         else {
             width = 0;
             if (style === 'bw') fill = cas('#1e1e1e', '#9a9a9a');
-            else if (style === 'ghost') { fill = color; fillOp = cas(0.55, 0.2); }
+            else if (style.startsWith('ghost')) { fill = tint; fillOp = white ? cas(0.7, 0.3) : cas(0.55, 0.2); }
             else { fill = color; fillOp = cas(1, 0.4); }
         }
     }
@@ -498,13 +505,13 @@ function applyPointStyle(color, glow) {
         map.setPaintProperty(id, 'circle-stroke-width', width);
     }
     // Lines: ghosted, or with a black or white casing, or black on white.
-    const ghost = style === 'ghost';
+    const ghost = style.startsWith('ghost');
     for (const id of ['rows-sline', 'rows-sline-out']) {
-        map.setPaintProperty(id, 'line-color', style === 'bw' ? '#1e1e1e' : color);
+        map.setPaintProperty(id, 'line-color', style === 'bw' ? '#1e1e1e' : white ? '#ffffff' : color);
         map.setPaintProperty(id, 'line-opacity', ghost ? 0.35 : 0.95);
     }
     map.setPaintProperty('rows-sline-casing', 'line-color', style === 'black' ? '#1e1e1e' : style === 'white' || style === 'bw' ? '#ffffff' : glow);
-    map.setPaintProperty('rows-sline-casing', 'line-opacity', ghost || pin || style === 'ring' ? 0 : 0.85);
+    map.setPaintProperty('rows-sline-casing', 'line-opacity', ghost || pin || style.startsWith('ring') ? 0 : 0.85);
     map.setPaintProperty('rows-line-glow', 'line-opacity', ghost || pin ? 0 : 0.9);
     for (const id of ['rows-line', 'rows-line-out']) map.setPaintProperty(id, 'line-opacity', ghost ? 0.35 : 0.9);
 }
@@ -544,19 +551,41 @@ async function loadGeo(id) {
 // ── H3 hexagons ──
 const isHex = id => !!S.layers.get(id)?.hex;
 const clampRes = r => Math.max(CONFIG.hexRange[0], Math.min(CONFIG.hexRange[1], r));
-const hexResNow = () => S.hex.auto ? clampRes(CONFIG.hexAutoRes(map.getZoom()) + (S.hex.bump || 0)) : S.hex.res;
-S.hexCache = new Map();   // resolution → { fc, anchors, cellOfRow: Map(src → [cell|null]) }
-// Cells covering SF's land (the analysis neighborhoods), plus the cell of every row from the
-// loaded file inside the city's bounds, so rows on piers and islands aren't lost.
+// Hexagon width in pixels: flat side to flat side, at a zoom and latitude (512px tiles).
+const EDGE_M = r => h3.getHexagonEdgeLengthAvg(r, 'm');
+const mPerPx = (z, lat) => 78271.517 * Math.cos(lat * Math.PI / 180) / 2 ** z;
+const hexPx = (r, z, lat) => Math.sqrt(3) * EDGE_M(r) / mPerPx(z, lat);
+// Auto, before the − / + steps: the resolution closest (on a log scale) to the target width.
+function hexAutoBase(z, lat) {
+    let best = 0, d = Infinity;
+    for (let r = 0; r <= 15; r++) { const e = Math.abs(Math.log(hexPx(r, z, lat) / CONFIG.hexTargetPx)); if (e < d) { d = e; best = r; } }
+    return best;
+}
+// The zoom (with the ½ shift) where Auto moves from base resolution r to r + 1.
+const hexSwitchZoom = (r, lat) => Math.log2(CONFIG.hexTargetPx * mPerPx(0, lat) / Math.sqrt(3 * EDGE_M(r) * EDGE_M(r + 1)));
+const viewLat = () => map.getCenter().lat;
+const hexResNow = () => S.hex.auto ? clampRes(hexAutoBase(map.getZoom() + (S.hex.zshift || 0), viewLat()) + (S.hex.bump || 0)) : clampRes(S.hex.res);
+// The set that names hexagons ("Mission #82c7") and, where the data overlaps it, fills the grid
+// with its empty hexagons. '' for none: only hexagons with rows, named by code.
+const hexNameSet = () => S.hex.names === undefined ? 'analysis_neighborhoods' : S.layers.has(S.hex.names) ? S.hex.names : '';
+S.hexCache = new Map();   // resolution|set → { fc, land, src }
+// Cells covering the naming set (for SF, the analysis neighborhoods), plus the cell of every row
+// from the loaded file, anywhere.
 async function loadHex() {
-    const res = S.hexRes = hexResNow();
-    let c = S.hexCache.get(res);
+    const res = S.hexRes = hexResNow(), set = hexNameSet();
+    const setMeta = set ? S.layers.get(set) : null, land = set ? await loadGeo(set) : null;
+    // Cover the set only when there's no file or the file has rows inside the set's bounds.
+    const sb = land && bboxFC(land);
+    const overlaps = !S.src?.points || S.src.points.some(p => p && sb && p[0] >= sb[0] && p[0] <= sb[2] && p[1] >= sb[1] && p[1] <= sb[3]);
+    const fine = Math.min(15, res + 2);
+    const tooMany = land && h3.getHexagonAreaAvg(fine, 'm2') * CONFIG.hexCoverMax * 49 < bboxArea(sb);
+    const cover = !!land && overlaps && !tooMany;
+    const key = `${res}|${cover ? set : ''}`;
+    let c = S.hexCache.get(key);
     if (!c) {
-        const land = await loadGeo('analysis_neighborhoods');
-        const fine = Math.min(10, res + 2), cells = new Set(), votes = new Map();   // cell → { neighborhood: fine cells }
-        const landMeta = S.layers.get('analysis_neighborhoods');
-        for (const f of land.features) {
-            const hood = String(landMeta ? nameOf(f, landMeta) : f.id);
+        const cells = new Set(), votes = new Map();   // cell → { area name: fine cells }
+        if (cover) for (const f of land.features) {
+            const hood = String(nameOf(f, setMeta));
             const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
             for (const p of polys) for (const fc of h3.polygonToCells(p, fine, true)) {
                 const cell = fine === res ? fc : h3.cellToParent(fc, res);
@@ -569,23 +598,30 @@ async function loadHex() {
         const hoodOf = new Map([...votes].map(([cell, v]) => [cell, Object.entries(v).sort((a, b) => b[1] - a[1])[0][0]]));
         const features = [...cells].sort().map(cell => ({ type: 'Feature', id: cell, properties: { h3: cell, _jid: cell, hood: hoodOf.get(cell) },
             geometry: { type: 'Polygon', coordinates: [h3.cellToBoundary(cell, true)] } }));
-        c = { fc: { type: 'FeatureCollection', features }, cells, land: cells.size };
-        S.hexCache.set(res, c);
+        c = { fc: { type: 'FeatureCollection', features }, land: features.length };
+        S.hexCache.set(key, c);
     }
-    // Add cells for this file's rows (kept per file, so each file starts from the land grid).
-    if (c.src !== S.src) {
-        const home = unionBbox(S.manifest.layers.map(l => l.bbox).filter(Boolean));
+    S.hexCover = { set, cover, tooMany: !!tooMany, overlaps };
+    // Add cells for this file's rows (kept per file, so each file starts from the cover grid).
+    if (c.src !== S.src || c.label !== S.hex.label) {
         c.fc.features = c.fc.features.slice(0, c.land);
-        const seen = new Set(c.fc.features.map(f => f.id));
+        const seen = new Set(c.fc.features.map(f => f.id)), extra = [];
         for (const p of S.src?.points || []) {
-            if (!p || p[0] < home[0] || p[0] > home[2] || p[1] < home[1] || p[1] > home[3]) continue;
+            if (!p) continue;
             const cell = h3.latLngToCell(p[1], p[0], res);
             if (seen.has(cell)) continue;
             seen.add(cell);
-            c.fc.features.push({ type: 'Feature', id: cell, properties: { h3: cell, _jid: cell, hood: 'Shoreline' }, geometry: { type: 'Polygon', coordinates: [h3.cellToBoundary(cell, true)] } });
+            extra.push({ type: 'Feature', id: cell, properties: { h3: cell, _jid: cell, hood: '' }, geometry: { type: 'Polygon', coordinates: [h3.cellToBoundary(cell, true)] } });
         }
+        // Hexagons outside the cover are named by the area their center falls in, if any.
+        if (land && extra.length) {
+            const at = JoinKit.assignPointsToPolygons(extra.map(f => { const [la, ln] = h3.cellToLatLng(f.id); return [ln, la]; }), land.features, { idOf: f => f.id });
+            const byId = new Map(land.features.map(f => [f.id, f]));
+            extra.forEach((f, i) => { f.properties.hood = at[i] != null ? String(nameOf(byId.get(at[i]), setMeta)) : ''; });   // outside every area: code only
+        }
+        c.fc.features.push(...extra);
         hexNames(c.fc.features);
-        c.src = S.src;
+        c.src = S.src; c.label = S.hex.label;
     }
     const anchors = new Map();
     for (const f of c.fc.features) {
@@ -599,6 +635,8 @@ async function loadHex() {
 
 // A short code for each hexagon: its H3 index without the digits every hexagon here shares and
 // without the trailing f's (unused finer levels). "8928308280fffff" → "#280".
+function bboxFC(fc) { return unionBbox(fc.features.map(f => bbox(f.geometry))); }
+const bboxArea = b => { if (!b) return 0; const mid = (b[1] + b[3]) / 2; return (b[2] - b[0]) * 111320 * Math.cos(mid * Math.PI / 180) * (b[3] - b[1]) * 110540; };
 function hexNames(features) {
     const ids = features.map(f => f.id);
     let pre = ids[0]?.length || 0;
@@ -609,7 +647,8 @@ function hexNames(features) {
         const tail = Math.floor(3 * (15 - h3.getResolution(f.id)) / 4);
         const code = '#' + (f.id.slice(Math.min(pre, f.id.length - tail - 1), f.id.length - tail));
         f.properties.code = code;
-        f.properties.name = `${f.properties.hood} ${code}`;
+        // Friendly: "Mission #82c7" (or just the code with no naming set); H3: the full index.
+        f.properties.name = S.hex.label === 'h3' ? f.id : f.properties.hood ? `${f.properties.hood} ${code}` : code;
     }
 }
 
@@ -836,8 +875,8 @@ function statFor(id, stat) {
 }
 
 function metricOptions() {
-    const opts = [{ value: 'count', label: 'Number of rows', short: 'rows' },
-                  { value: 'pct_count', label: '% of all rows', short: '% of rows' }];
+    const opts = [{ value: 'count', label: 'Count', short: 'count' },
+                  { value: 'pct_count', label: '% of total count', short: '% of count' }];
     if (!S.join) return opts.slice(0, 1);
     for (const col of S.join.numericCols) {
         if (isIdColumn(col) || isCoordColumn(col)) continue;
@@ -1159,7 +1198,12 @@ function renderFormatFeatures() {
         : `${fmtCol(z.min, z.col)} to ${fmtCol(z.max, z.col)}; ` + (z.log ? 'log scale, so small values stay visible.' : 'circle area follows the value.');
     $('psize-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.psize === sizeNow()));
     $('psize-name').textContent = $('psize-seg').querySelector(`[data-psize="${sizeNow()}"]`)?.title || '';
-    $('pstyle-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.pstyle === styleNow()));
+    $('pstyle-seg').querySelectorAll('button').forEach(b => {
+        const on = b.dataset.pstyle === styleNow().replace('-w', '');
+        b.setAttribute('aria-pressed', on);
+        b.classList.toggle('w', on && styleNow().endsWith('-w'));
+        if (b.dataset.pstyle === 'ring' || b.dataset.pstyle === 'ghost') b.title = `${CONFIG.pointStyles[b.dataset.pstyle]} (click again for white)`;
+    });
     $('pstyle-name').textContent = CONFIG.pointStyles[styleNow()];
     $('crowd-check').checked = S.crowd;
     const located = S.src.points.filter(Boolean).length;
@@ -1256,8 +1300,9 @@ function renderList() {
     const showV = !!(S.src && S.join);
     const listExtras = extrasWith('list');
     const meta = S.layers.get(S.layerId);
-    const rows = fc.features.map(f => ({ id: f.id, name: meta.hex ? f.properties.hood : String(nameOf(f)), v: S.values.get(f.id) ?? null,
-        sub: [meta.hex ? f.properties.code : '', ...listExtras.map(x => extraValue(x, f))].filter(Boolean).join(' · ') }));
+    const friendly = f => meta.hex && S.hex.label !== 'h3' && f.properties.hood;   // name the area, code beside it
+    const rows = fc.features.map(f => ({ id: f.id, name: friendly(f) ? f.properties.hood : String(nameOf(f)), v: S.values.get(f.id) ?? null,
+        sub: [friendly(f) ? f.properties.code : '', ...listExtras.map(x => extraValue(x, f))].filter(Boolean).join(' · ') }));
     let list = rows;
     if (meta.hex) list = showV ? rows.filter(r => r.v > 0) : [];
     else if (hidingEmpty()) list = rows.filter(r => !isEmptyArea(r.id));
@@ -1662,21 +1707,53 @@ function clearFile() {
     if (isHex(S.layerId)) setLayer(S.layerId); else recompute();
 }
 
+const fmtSide = m => m < 1000 ? `${Math.round(m)} m` : m < 10000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m / 1000).toLocaleString()} km`;
+const fmtArea = m2 => m2 < 100000 ? `${(m2 < 1000 ? Math.round(m2) : Math.round(m2 / 100) * 100).toLocaleString()} m²`
+    : m2 < 1e7 ? `${(m2 / 1e6).toFixed(m2 < 1e6 ? 2 : 1)} km²` : `${Math.round(m2 / 1e6).toLocaleString()} km²`;
 function renderHexControls() {
     const on = isHex(S.layerId);
     $('hex-card').hidden = !on;
     if (!on) return;
-    // Auto keeps one label (no jump when it's pressed); in Auto the level in use is outlined.
-    $('hex-seg').innerHTML = `<button type="button" data-res="auto" aria-pressed="${S.hex.auto}">Auto</button>`
-        + Array.from({ length: CONFIG.hexRange[1] - CONFIG.hexRange[0] + 1 }, (_, i) => CONFIG.hexRange[0] + i)
-            .map(r => `<button type="button" data-res="${r}" aria-pressed="${!S.hex.auto && S.hex.res === r}"${S.hex.auto && S.hexRes === r ? ' class="cur"' : ''}>${r}</button>`).join('');
-    const bump = S.hex.bump || 0;
-    $('hex-coarser').disabled = S.hex.auto ? bump <= CONFIG.hexBump[0] : S.hex.res <= CONFIG.hexRange[0];
-    $('hex-finer').disabled = S.hex.auto ? bump >= CONFIG.hexBump[1] : S.hex.res >= CONFIG.hexRange[1];
-    const km = h3.getHexagonEdgeLengthAvg(S.hexRes, 'km');
-    const steps = n => `${Math.abs(n)} step${Math.abs(n) === 1 ? '' : 's'} ${n < 0 ? 'bigger' : 'smaller'}`;
-    $('hex-hint').textContent = `Resolution ${S.hexRes}: sides about ${km >= 1 ? km.toFixed(1) + ' km' : Math.round(km * 1000) + ' m'}. `
-        + (S.hex.auto ? `Auto follows the zoom${bump ? `, ${steps(bump)} than usual` : ''}.` : 'Fixed at every zoom.');
+    const auto = S.hex.auto, bump = S.hex.bump || 0, zs = S.hex.zshift || 0, lat = viewLat(), cur = S.hexRes;
+    $('hex-auto').setAttribute('aria-pressed', auto); $('hex-fixed').setAttribute('aria-pressed', !auto);
+    // The level in use and the one either side. In Auto, each with the zooms where Auto picks it.
+    const [lo, hi] = CONFIG.hexRange;
+    const zoomsFor = r => {
+        if (!auto) return r === cur ? 'every zoom' : '';
+        const b = r - bump, from = hexSwitchZoom(b - 1, lat) - zs, to = hexSwitchZoom(b, lat) - zs;
+        const f = z => Math.max(0, z).toFixed(1);
+        return r <= lo ? `to ${f(to)}` : r >= hi ? `${f(from)} +` : `${f(from)} – ${f(to)}`;
+    };
+    $('hex-rows').innerHTML = [cur - 1, cur, cur + 1].map(r => r < lo || r > hi ? '<tr class="none"><td colspan="4">&nbsp;</td></tr>'
+        : `<tr${r === cur ? ' class="cur"' : ''}><td>${zoomsFor(r)}</td><td>${r}</td><td>${fmtSide(EDGE_M(r))}</td><td>${fmtArea(h3.getHexagonAreaAvg(r, 'm2'))}</td></tr>`).join('');
+    $('hex-z-down').disabled = !auto || zs <= CONFIG.hexZoomShift[0];
+    $('hex-z-up').disabled = !auto || zs >= CONFIG.hexZoomShift[1];
+    $('hex-coarser').disabled = auto ? bump <= -3 : cur <= lo;
+    $('hex-finer').disabled = auto ? bump >= 3 : cur >= hi;
+    updateHexZoomNow();
+    // Names
+    document.querySelectorAll('[data-hlabel]').forEach(b => b.setAttribute('aria-pressed', (S.hex.label || 'friendly') === b.dataset.hlabel));
+    const set = hexNameSet();
+    $('hex-set').innerHTML = `<option value=""${set ? '' : ' selected'}>Named by: nothing (code only)</option>`
+        + [...S.layers.values()].filter(l => !l.hex).map(l => `<option value="${esc(l.id)}"${l.id === set ? ' selected' : ''}>Named by: ${esc(shortLabel(l))}</option>`).join('');
+    $('hex-set').disabled = S.hex.label === 'h3';
+    const hc = S.hexCover || {};
+    $('hex-names-hint').textContent = S.hex.label === 'h3' ? 'Each hexagon’s full H3 index.'
+        : !set ? 'Only hexagons with rows are drawn, named by a short code.'
+        : (hc.cover ? `Empty hexagons fill out the ${shortLabel(S.layers.get(set))}; each is named for the area covering most of it, with a short code.`
+            : `Named for the ${oneArea(S.layers.get(set))} at its center, with a short code.` + (hc.tooMany ? ' (Too many to fill out the empty ones at this resolution.)' : !hc.overlaps ? ' The rows are outside these areas, so only hexagons with rows are drawn.' : ''));
+}
+// The live zoom in the table caption, and what the shifts do.
+function updateHexZoomNow() {
+    if ($('hex-card').hidden) return;
+    const zs = S.hex.zshift || 0, bump = S.hex.bump || 0;
+    const parts = [`Map zoom ${map.getZoom().toFixed(2)}`];
+    if (S.hex.auto) {
+        if (zs) parts.push(`zoom side ${zs > 0 ? '+' : '−'}${Math.abs(zs) % 1 ? (Math.abs(zs) === 0.5 ? '' : Math.floor(Math.abs(zs))) + '½' : Math.abs(zs)}`);
+        if (bump) parts.push(`${Math.abs(bump)} step${Math.abs(bump) === 1 ? '' : 's'} ${bump < 0 ? 'bigger' : 'smaller'}`);
+        parts.push(`Auto aims for hexagons about ${CONFIG.hexTargetPx} px across`);
+    } else parts.push('fixed resolution');
+    $('hex-hint').textContent = parts.join(' · ') + '.';
 }
 
 // Color chips: Auto (area labels only) and one chip per pair. A chip keeps its name and size; its
@@ -2140,29 +2217,30 @@ function wireUI() {
     };
     $('pstyle-seg').onclick = e => {
         const b = e.target.closest('button'); if (!b) return;
-        if (S.fileLook) S.fileLook.style = b.dataset.pstyle;
-        else { S.pointStyle = b.dataset.pstyle; store.set('pointStyle', S.pointStyle); }
+        // Ring and Ghost: clicking the chosen one again switches between colored and white.
+        const cur = styleNow(), base = b.dataset.pstyle;
+        const next = (base === 'ring' || base === 'ghost') && cur.replace('-w', '') === base ? (cur.endsWith('-w') ? base : base + '-w') : base;
+        if (S.fileLook) S.fileLook.style = next;
+        else { S.pointStyle = next; store.set('pointStyle', S.pointStyle); }
         applyPalette(); renderFormatFeatures();
     };
     $('crowd-check').onchange = e => {
         S.crowd = e.target.checked; store.set('crowd', S.crowd);
         S.crowdK = 0; updateCrowd();
     };
-    $('hex-seg').onclick = e => {
-        const b = e.target.closest('button'); if (!b) return;
-        S.hex = b.dataset.res === 'auto' ? { ...S.hex, auto: true } : { ...S.hex, auto: false, res: +b.dataset.res };
-        store.set('hex', S.hex);
-        setLayer('h3');
-    };
+    const setHex = h => { S.hex = { ...S.hex, ...h }; store.set('hex', S.hex); setLayer('h3'); };
+    $('hex-auto').onclick = () => setHex({ auto: true });
+    $('hex-fixed').onclick = () => setHex({ auto: false, res: S.hexRes });   // fix at the level in use
     // − / +: bigger or smaller hexagons. In Auto they shift the zoom-to-resolution steps; fixed, they change the level.
-    const hexStep = d => {
-        if (S.hex.auto) S.hex = { ...S.hex, bump: Math.max(CONFIG.hexBump[0], Math.min(CONFIG.hexBump[1], (S.hex.bump || 0) + d)) };
-        else S.hex = { ...S.hex, res: clampRes(S.hex.res + d) };
-        store.set('hex', S.hex);
-        setLayer('h3');
-    };
+    const hexStep = d => setHex(S.hex.auto ? { bump: Math.max(-3, Math.min(3, (S.hex.bump || 0) + d)) } : { res: clampRes(S.hexRes + d) });
     $('hex-coarser').onclick = () => hexStep(-1);
     $('hex-finer').onclick = () => hexStep(1);
+    // ½: move the zoom side, so each level arrives half a zoom level sooner or later.
+    const zStep = d => setHex({ zshift: Math.max(CONFIG.hexZoomShift[0], Math.min(CONFIG.hexZoomShift[1], (S.hex.zshift || 0) + d)) });
+    $('hex-z-down').onclick = () => zStep(-0.5);
+    $('hex-z-up').onclick = () => zStep(0.5);
+    document.querySelectorAll('[data-hlabel]').forEach(b => b.onclick = () => setHex({ label: b.dataset.hlabel }));
+    $('hex-set').onchange = e => setHex({ names: e.target.value });
     $('metric-select').onchange = e => { S.metric = e.target.value; recompute(); };
     $('sort-seg').onclick = e => {
         const b = e.target.closest('button'); if (!b) return;
