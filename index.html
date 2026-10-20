@@ -75,11 +75,9 @@
     </section>
 
 
-    <section class="card hex-card" id="hex-card" hidden>
-      <div class="hex-top">
-        <span class="lab">H3 resolution</span>
-        <div class="seg" role="group" aria-label="Resolution mode"><button type="button" id="hex-auto">Auto</button><button type="button" id="hex-fixed">Fixed</button></div>
-      </div>
+    <details class="card hex-card" id="hex-card" hidden open>
+      <summary>H3 resolution <span class="n" id="hex-sum"></span>
+        <span class="seg mini" role="group" aria-label="Resolution mode"><button type="button" id="hex-auto">Auto</button><button type="button" id="hex-fixed">Fixed</button></span></summary>
       <table class="hex-tab">
         <colgroup><col class="c-z"><col class="c-r"><col class="c-s"><col class="c-a"></colgroup>
         <thead><tr><th>Map zoom</th><th>H3</th><th>Side</th><th>Area</th></tr></thead>
@@ -96,7 +94,7 @@
         <select id="hex-set" aria-label="Name hexagons by"></select>
       </div>
       <p class="hint" id="hex-names-hint"></p>
-    </section>
+    </details>
 
     <section class="list-card">
       <div class="list-head">
