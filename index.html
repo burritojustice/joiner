@@ -76,12 +76,26 @@
 
 
     <section class="card hex-card" id="hex-card" hidden>
-      <span class="lab">Resolution</span>
-      <div class="hex-row">
-        <div class="seg" id="hex-seg" role="group" aria-label="H3 resolution"></div>
-        <div class="seg" role="group" aria-label="Bigger or smaller hexagons"><button type="button" id="hex-coarser" title="Bigger hexagons (one step coarser)">−</button><button type="button" id="hex-finer" title="Smaller hexagons (one step finer)">+</button></div>
+      <div class="hex-top">
+        <span class="lab">H3 resolution</span>
+        <div class="seg" role="group" aria-label="Resolution mode"><button type="button" id="hex-auto">Auto</button><button type="button" id="hex-fixed">Fixed</button></div>
       </div>
+      <table class="hex-tab">
+        <colgroup><col class="c-z"><col class="c-r"><col class="c-s"><col class="c-a"></colgroup>
+        <thead><tr><th>Map zoom</th><th>H3</th><th>Side</th><th>Area</th></tr></thead>
+        <tbody id="hex-rows"></tbody>
+        <tfoot><tr>
+          <td><div class="seg mini" role="group" aria-label="Shift the zoom side by half a step"><button type="button" id="hex-z-down" title="Each resolution half a zoom level later (bigger hexagons)">−½</button><button type="button" id="hex-z-up" title="Each resolution half a zoom level sooner (smaller hexagons)">+½</button></div></td>
+          <td colspan="3"><div class="seg mini" role="group" aria-label="Bigger or smaller hexagons"><button type="button" id="hex-coarser" title="Bigger hexagons (one step coarser)">−</button><button type="button" id="hex-finer" title="Smaller hexagons (one step finer)">+</button></div></td>
+        </tr></tfoot>
+      </table>
       <p class="hint" id="hex-hint"></p>
+      <div class="hex-names">
+        <span class="lab">Names</span>
+        <div class="seg mini" role="group" aria-label="Hexagon names"><button type="button" data-hlabel="friendly">Friendly</button><button type="button" data-hlabel="h3">H3 index</button></div>
+        <select id="hex-set" aria-label="Name hexagons by"></select>
+      </div>
+      <p class="hint" id="hex-names-hint"></p>
     </section>
 
     <section class="list-card">
@@ -166,7 +180,7 @@
       <div class="field look">
         <span class="lab">Style <b id="pstyle-name"></b></span>
         <div class="seg dots" id="pstyle-seg" role="group" aria-label="Point style">
-          <button type="button" data-pstyle="fill" title="Fill"><i class="ps-fill"></i></button><button type="button" data-pstyle="ring" title="Ring"><i class="ps-ring"></i></button><button type="button" data-pstyle="ghost" title="Ghost"><i class="ps-ghost"></i></button><button type="button" data-pstyle="black" title="Black ring"><i class="ps-black"></i></button><button type="button" data-pstyle="white" title="White ring"><i class="ps-white"></i></button><button type="button" data-pstyle="bw" title="Black &amp; white"><i class="ps-bw"></i></button>
+          <button type="button" data-pstyle="fill" title="Fill"><i class="ps-fill"></i></button><button type="button" data-pstyle="ring" title="Ring"><i class="ps-ring"></i></button><button type="button" data-pstyle="ghost" title="Ghost"><i class="ps-ghost"></i></button><button type="button" data-pstyle="black" title="Black outline"><i class="ps-black"></i></button><button type="button" data-pstyle="white" title="White outline"><i class="ps-white"></i></button><button type="button" data-pstyle="bw" title="Black &amp; white"><i class="ps-bw"></i></button>
         </div>
         <p class="hint" id="look-hint" hidden></p>
       </div>

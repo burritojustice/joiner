@@ -429,3 +429,22 @@ table.grid th .pin[aria-pressed="true"] svg { fill: var(--grape); }
 /* Checkboxes inside a field read as options, not headings */
 .field label.check { display: flex; font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink); margin-bottom: 0; }
 .fmt-card .look .lab { font-size: 12px; letter-spacing: .04em; }
+/* v24: white ring / ghost show on a dark chip */
+#pstyle-seg button.w { background: #4a5170; }
+#pstyle-seg button.w .ps-ring { border-color: #fff; }
+#pstyle-seg button.w .ps-ghost { background: rgba(255,255,255,.3); border-color: rgba(255,255,255,.8); }
+/* v24: the H3 card: mode, a small aligned table of levels, names */
+.hex-top, .hex-names { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hex-top .lab, .hex-names .lab { margin: 0; flex: 1; }
+.hex-names { margin-top: 10px; }
+.hex-names select { flex-basis: 100%; width: 100%; max-width: 100%; min-width: 0; }
+.seg.mini button { padding: 2px 8px; font-size: 12px; }
+.seg.mini button:disabled { opacity: .35; cursor: default; }
+.hex-tab { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 8px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.hex-tab col.c-z { width: 36%; } .hex-tab col.c-r { width: 12%; } .hex-tab col.c-s { width: 22%; } .hex-tab col.c-a { width: 30%; }
+.hex-tab th { text-align: left; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); padding: 0 4px 3px; }
+.hex-tab td { padding: 3px 4px; white-space: nowrap; color: var(--ink-soft); }
+.hex-tab tbody tr.cur td { background: var(--ink); color: #fff; font-weight: 600; }
+.hex-tab tbody tr.cur td:first-child { border-radius: 6px 0 0 6px; } .hex-tab tbody tr.cur td:last-child { border-radius: 0 6px 6px 0; }
+.hex-tab tfoot td { padding-top: 6px; }
+#hex-hint { min-height: 2.6em; font-variant-numeric: tabular-nums; }
