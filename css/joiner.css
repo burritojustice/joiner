@@ -478,3 +478,29 @@ table.grid tbody tr.hl-area td { background: #FFF9E6; }
 .source-chip { max-width: 120px; }
 .bar { gap: 8px; }
 @media (max-width: 1440px) { .version { display: none; } }
+/* v26: the legend folds to one bar per layer */
+.legend .lg-fold { all: unset; cursor: pointer; display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 4px; }
+.legend .lg-fold:hover { color: var(--ink); }
+.legend.compact { width: 250px; }
+.legend .lg-row + .lg-row { margin-top: 8px; }
+.legend .lg-name { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 600; color: var(--ink); }
+.legend .lg-name span { font-weight: 400; color: var(--ink-soft); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.legend .lg-bar { position: relative; display: flex; height: 10px; margin-top: 4px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(30,35,64,.18); }
+.legend .lg-bar b { flex: 1; }
+.legend .lg-bar b:first-child { border-radius: 3px 0 0 3px; } .legend .lg-bar b:last-child { border-radius: 0 3px 3px 0; }
+.legend .lg-bar .mk { position: absolute; transform: translateX(-50%); }
+.legend .lg-bar .mk.med { top: -3px; bottom: -3px; width: 2px; background: var(--ink); border-radius: 1px; box-shadow: 0 0 0 1px rgba(255,255,255,.8); }
+.legend .lg-bar .mk.mean { top: 50%; width: 7px; height: 7px; background: #fff; border: 1.5px solid var(--ink); transform: translate(-50%, -50%) rotate(45deg); }
+.legend .lg-ticks { position: relative; height: 15px; margin-top: 3px; font-size: 11px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.legend .lg-ticks span { position: absolute; white-space: nowrap; }
+.legend .lg-ticks .l { left: 0; } .legend .lg-ticks .r { right: 0; }
+.legend .lg-ticks .m { transform: translateX(-50%); font-weight: 600; color: var(--ink); }
+.legend .lg-cats { display: flex; flex-wrap: wrap; gap: 3px 10px; margin-top: 3px; font-size: 11.5px; }
+.legend .lg-cats i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+.legend .lg-key { display: flex; gap: 12px; margin-top: 6px; font-size: 10.5px; color: var(--ink-soft); }
+.legend .lg-key i { display: inline-block; vertical-align: middle; margin-right: 4px; }
+.legend .lg-key i.med { width: 2px; height: 11px; background: var(--ink); }
+.legend .lg-key i.mean { width: 6px; height: 6px; border: 1.5px solid var(--ink); transform: rotate(45deg); margin-right: 6px; }
+.legend.compact { width: 270px; }
+.legend .lg-name { align-items: baseline; }
+.legend .lg-name span { font-size: 11px; }
