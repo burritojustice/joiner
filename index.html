@@ -52,6 +52,11 @@
       <div class="field top-opts">
         <span class="lab">Area colors</span>
         <div class="seg pal palette-seg" role="group" aria-label="Area colors"></div>
+        <span class="lab">Classes</span>
+        <div class="class-row">
+          <div class="seg mini class-seg" role="group" aria-label="How values are split into colors"><button type="button" data-method="jenks" title="Classes built around gaps in the values">Natural breaks</button><button type="button" data-method="equal" title="Each class spans the same range of values">Equal width</button><button type="button" data-method="quantile" title="Each class has about the same number of areas">Quantiles</button></div>
+          <label class="check"><input type="checkbox" class="class-log"> Log</label>
+        </div>
         <span class="lab">Area labels</span>
         <button type="button" class="linkish labels-jump" id="labels-jump" title="Choose the label lines (in Format areas &amp; map below)"><span id="labels-top-n"></span> ↓</button>
       </div>
@@ -202,7 +207,7 @@
       <div class="basemap-opts tight">
         <span>Size</span>
         <div class="seg" id="size-seg" role="group" aria-label="Label size">
-          <button type="button" data-size="auto" title="By the size of the areas: bigger for districts, smaller for neighborhoods and tracts">Auto</button><button type="button" data-size="small">Small</button><button type="button" data-size="medium">Medium</button><button type="button" data-size="large">Large</button>
+          <button type="button" data-size="auto" title="Bigger labels on bigger areas (can make big areas look like big values)">Dynamic</button><button type="button" data-size="small">Small</button><button type="button" data-size="medium">Medium</button><button type="button" data-size="large">Large</button>
         </div>
       </div>
       <div class="basemap-opts tight">
@@ -261,7 +266,7 @@
     <div class="drop" id="drop" hidden><div>Drop to load</div></div>
     <div class="toast" id="toast" role="status" aria-live="polite" hidden>
       <i class="spin" aria-hidden="true"></i>
-      <div class="toast-body"><div class="toast-msg"></div><div class="toast-sub"></div><div class="toast-actions" hidden></div></div>
+      <div class="toast-body"><div class="toast-msg"></div><div class="toast-sub"></div><div class="toast-bar" hidden><i></i></div><div class="toast-actions" hidden></div></div>
       <button type="button" class="toast-x" aria-label="Dismiss">✕</button>
     </div>
   </main>
