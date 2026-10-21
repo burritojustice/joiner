@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v25';
+const _BUILD_VERSION = 'v26';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -161,6 +161,7 @@ async function boot() {
     { const ls = store.get('labelSize2', 'auto'); S.labelSize = ls === 'auto' || CONFIG.labelSizes[ls] ? ls : 'auto'; }
     S.revealAll = !!store.get('revealAll', false);
     S.showAreas = store.get('showAreas', true);
+    S.legendCompact = store.get('legendCompact', false);
     S.hideEmpty = !!store.get('hideEmpty', false);
     S.areaOrder = ['auto', 'over', 'under'].includes(store.get('areaOrder', 'auto')) ? store.get('areaOrder', 'auto') : 'auto';
     S.pointSize = CONFIG.pointSizes[store.get('pointSize', 'small')] ? store.get('pointSize', 'small') : 'small';
@@ -960,6 +961,12 @@ function ckmeans(sorted, k) {
     return groups;
 }
 
+// Min, max, median and mean of sorted values, for the compact legend.
+function statsOf(sorted) {
+    const n = sorted.length, mid = n >> 1;
+    return { n, min: sorted[0], max: sorted[n - 1], median: n % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2,
+        mean: sorted.reduce((a, b) => a + b, 0) / n };
+}
 function classify(vals) {
     if (!vals.length) return null;
     const sorted = [...vals].sort((a, b) => a - b);
@@ -969,7 +976,7 @@ function classify(vals) {
     const offset = ramp().length - k;   // few classes → use the darker end of the ramp
     const classOf = v => { if (v === null || !(v > 0)) return -1; const i = uppers.findIndex(u => v <= u); return (i < 0 ? k - 1 : i) + offset; };
     const ranges = groups.map((g, i) => ({ lo: g[0], hi: g[g.length - 1], n: g.length, c: i + offset }));
-    return { classOf, ranges };
+    return { classOf, ranges, stats: statsOf(sorted) };
 }
 
 // "Hide areas without data": areas no row was placed in are left off the map, the labels and the list.
@@ -1365,17 +1372,65 @@ function itemsHTML(id) {
         ${items.length > MAX ? `<li class="none">and ${items.length - MAX} more</li>` : ''}</ul>`;
 }
 
+// The legend folds to one bar per layer (the ▸ in its heading): the classes as equal blocks,
+// min and max at the ends, the median as a line and the mean as a diamond where they fall.
+const legendHead = () => `<button type="button" class="lg-fold" aria-expanded="${!S.legendCompact}" title="${S.legendCompact ? 'Show every class' : 'Fold to one bar per layer'}">${S.legendCompact ? '▸' : '▾'} Legend</button>`;
 function renderLegend() {
     const lg = $('legend');
     if (!S.src || (!S.join && !S.rowClasses && !S.rowSizes)) { lg.hidden = true; return; }
-    if (!S.join || !S.showAreas) { const h = rowLegendHTML(); lg.hidden = !h; lg.innerHTML = h; return; }
+    lg.classList.toggle('compact', S.legendCompact);
+    if (S.legendCompact) { const h = compactLegendHTML(); lg.hidden = !h; lg.innerHTML = h && legendHead() + h; return; }
+    if (!S.join || !S.showAreas) { const h = rowLegendHTML(); lg.hidden = !h; lg.innerHTML = h && legendHead() + h; return; }
     lg.hidden = false;
     const zeroLabel = S.metric.startsWith('avg_') ? 'No rows' : fmt(0);
     const nZero = [...S.values.values()].filter(v => !(v > 0)).length;
-    lg.innerHTML = `<h4>${esc(metricLabel())}</h4>` + [...(S.classes?.ranges || [])].reverse().map(r =>
+    lg.innerHTML = legendHead() + `<h4>${esc(metricLabel())}</h4>` + [...(S.classes?.ranges || [])].reverse().map(r =>
         `<div class="row"><i style="background:${ramp()[r.c]}"></i><span>${r.lo === r.hi ? fmtShort(r.hi, S.metric) : `${fmtShort(r.lo, S.metric)} – ${fmtShort(r.hi, S.metric)}`}</span><span class="n">${r.n}</span></div>`).join('')
         + `<div class="row"><i class="clear"></i><span>${zeroLabel}${hidingEmpty() ? ' (hidden)' : ''}</span><span class="n">${nZero}</span></div>`
         + `<div class="foot">Natural breaks · areas per class</div>` + rowLegendHTML();
+}
+
+function compactLegendHTML() {
+    const parts = [];
+    const meta = S.layers.get(S.layerId);
+    if (S.join && S.showAreas && S.classes) {
+        const nZero = [...S.values.values()].filter(v => !(v > 0)).length;
+        const unit = meta.hex ? 'hexagons' : 'areas';
+        parts.push(legendBar({ name: metricLabel(), right: `${S.classes.stats.n.toLocaleString()} ${unit}${nZero ? ` · ${nZero.toLocaleString()} empty` : ''}`,
+            blocks: S.classes.ranges.map(r => ({ color: ramp()[r.c], lo: r.lo, hi: r.hi })), stats: S.classes.stats, f: v => fmtShort(v, S.metric) }));
+    }
+    const rc = S.rowClasses;
+    if (rc?.type === 'numeric') parts.push(legendBar({ name: `Features · ${rc.col}`, right: rc.stats.n.toLocaleString() + (rc.none ? ` · ${rc.none.toLocaleString()} blank` : ''),
+        blocks: rc.ranges.map(r => ({ color: r.color, lo: r.lo, hi: r.hi })), stats: rc.stats, f: v => fmtCol(v, rc.col) }));
+    else if (rc) parts.push(`<div class="lg-row"><div class="lg-name">Features · ${esc(rc.col)}</div><div class="lg-cats">`
+        + rc.cats.map(c => `<span><i style="background:${c.color}"></i>${esc(c.v)}</span>`).join('')
+        + (rc.otherN ? `<span><i style="background:${CONFIG.other}"></i>Other</span>` : '') + '</div></div>');
+    if (!parts.length) return sizeLegendHTML();
+    const anyBar = parts.some(p => p.includes('lg-bar'));
+    return parts.join('') + sizeLegendHTML() + (anyBar ? '<div class="lg-key"><span><i class="med"></i>median</span><span><i class="mean"></i>mean</span></div>' : '');
+}
+// One bar: equal blocks per class; a value's place is its class plus how far it is through it.
+function legendBar({ name, right, blocks, stats, f }) {
+    const k = blocks.length;
+    const at = v => {
+        for (let j = 0; j < k; j++) {
+            const b = blocks[j];
+            if (v <= b.hi) return 100 * (j + (v < b.lo ? 0 : b.hi > b.lo ? (v - b.lo) / (b.hi - b.lo) : 0.5)) / k;
+        }
+        return 100;
+    };
+    const med = at(stats.median), mean = at(stats.mean);
+    // Labels under the markers: one shared label when they're close; kept clear of the ends.
+    const clamp = x => Math.max(16, Math.min(84, x));
+    const same = f(stats.median) === f(stats.mean);
+    let labs = Math.abs(med - mean) < 16 || same
+        ? [{ x: clamp((med + mean) / 2), t: same ? f(stats.median) : `${f(stats.median)} · ${f(stats.mean)}` }]
+        : [{ x: clamp(med), t: f(stats.median) }, { x: clamp(mean), t: f(stats.mean) }];
+    labs = labs.filter(l => l.t !== f(stats.min) && l.t !== f(stats.max));   // already shown at an end
+    return `<div class="lg-row" title="Min ${esc(f(stats.min))} · median ${esc(f(stats.median))} · mean ${esc(f(stats.mean))} · max ${esc(f(stats.max))}">
+        <div class="lg-name">${esc(name)}<span>${esc(right)}</span></div>
+        <div class="lg-bar">${blocks.map(b => `<b style="background:${b.color}"></b>`).join('')}<span class="mk med" style="left:${med}%"></span><span class="mk mean" style="left:${mean}%"></span></div>
+        <div class="lg-ticks"><span class="l">${esc(f(stats.min))}</span>${labs.map(l => `<span class="m" style="left:${l.x}%">${esc(l.t)}</span>`).join('')}<span class="r">${esc(f(stats.max))}</span></div></div>`;
 }
 
 function rowLegendHTML() {
@@ -1612,7 +1667,7 @@ function computeRowClasses() {
         const ramp = rowRamp(), k = Math.min(ramp.length, new Set(sorted).size);
         const groups = ckmeans(sorted, k), uppers = groups.map(g => g[g.length - 1]);
         const colors = ramp.slice(ramp.length - k);
-        return { type: 'numeric', col, colors,
+        return { type: 'numeric', col, colors, stats: statsOf(sorted),
             ranges: groups.map((g, i) => ({ lo: g[0], hi: g[g.length - 1], n: g.length, color: colors[i] })),
             none: vals.filter(v => v === null).length,
             classOf: i => { const v = vals[i]; if (v === null) return -1; const j = uppers.findIndex(u => v <= u); return j < 0 ? k - 1 : j; } };
@@ -2432,6 +2487,10 @@ function wireUI() {
     list.addEventListener('mouseleave', () => { setHover(null); hlRows(null); showRowCard(null); tableHover(null); tableAreaHover(null); });
     // The pinned card: hover it to scroll; ✕ or Esc closes it.
     $('rowcard').addEventListener('click', e => { if (e.target.closest('.card-x')) pinRowCard(null); });
+    $('legend').addEventListener('click', e => {
+        if (!e.target.closest('.lg-fold')) return;
+        S.legendCompact = !S.legendCompact; store.set('legendCompact', S.legendCompact); renderLegend();
+    });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && cardPinned != null) pinRowCard(null); });
 
     let depth = 0;

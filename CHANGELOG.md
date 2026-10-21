@@ -2,6 +2,9 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v26
+- **The legend folds to one bar per layer.** Click ▾ Legend to fold it (it remembers). Each layer (the areas' statistic, and the features when they're colored by a number) is one bar with an equal block per class, the min and max at its ends, the median as a line and the mean as a diamond where they fall in their class, labelled underneath (merged when they're close or the same). The heading line gives how many areas or hexagons have values and how many are empty; hover a bar for all four numbers. Features colored by categories show their colors as a short key. Click ▸ Legend to unfold.
+
 ## v25
 - **Hexagons count faster with big files.** With 12,000 rows, switching levels spent 2–3 seconds in Joiner's own code; it's now 0.1–0.3 s. Natural breaks run on runs of equal values (and at most 1,500 groups of neighbors) instead of every hexagon, number formats and name sorting reuse one formatter, empty hexagons get no label, the features aren't resent when only the hexagons changed, and the list shows the first 500 hexagons (and says so). What's left is MapLibre drawing thousands of hexagons.
 - **A toast while counting:** files with 3,000 or more rows say “Counting 12,000 rows into hexagons” (with the resolution) until the map has drawn them.
