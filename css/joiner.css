@@ -527,3 +527,17 @@ details.join-card > summary.src-head::before, details.join-card[open] > summary.
 details.card > summary::before, details.sub > summary::before, .src-title::before, .legend .lg-fold::before, .hex-card > summary::before { font-size: 15px; width: 15px; }
 .src-title::before { top: 1px; font-size: 16px; }
 .src-title { padding-left: 17px; }
+/* v29: area outline swatches: a square of area color with the outline */
+.outline-field { margin-top: 10px; }
+.outline-field .lab { display: block; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 5px; }
+.outline-field .lab b { text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--ink); margin-left: 4px; }
+#outline-seg i { width: 14px; height: 12px; border-radius: 2px; background: #5598e7; box-sizing: border-box; }
+#outline-seg .ol-auto { border: 1.5px solid rgba(30,35,64,.55); }
+#outline-seg .ol-palette { border: 2px solid #1c5cab; }
+#outline-seg .ol-ghost { border: 2px solid rgba(28,92,171,.35); }
+#outline-seg .ol-grey { border: 1.5px solid #8a8f9c; }
+#outline-seg .ol-white { border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(30,35,64,.2); }
+#outline-seg .ol-black { border: 1.5px solid #1e1e1e; }
+#outline-seg .ol-none { border: 0; }
+#outline-seg button[aria-pressed="true"] { background: #e9e9f1; }
+#outline-w { margin-top: 6px; }

@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v28';
+const _BUILD_VERSION = 'v29';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -165,6 +165,7 @@ async function boot() {
     { const ls = store.get('labelSize3', 'small'); S.labelSize = ls === 'auto' || CONFIG.labelSizes[ls] ? ls : 'small'; }
     S.classMethod = ['jenks', 'equal', 'quantile'].includes(store.get('classMethod')) ? store.get('classMethod') : 'jenks';
     S.classLog = store.get('classLog', false);
+    S.outline = { color: 'auto', width: 'thin', ...store.get('outline', {}) };
     S.revealAll = !!store.get('revealAll', false);
     S.showAreas = store.get('showAreas', true);
     S.legendCompact = store.get('legendCompact', false);
@@ -416,7 +417,7 @@ function addMapLayers() {
     };
     map.on('mousemove', e => {
         const h = hit(e);
-        setHover(h.area ?? (h.row != null ? S.rowArea[h.row] ?? null : null));
+        if (h.row != null && h.area == null) setHoverRow(h.row); else setHover(h.area ?? null);
         hlRows(h.row != null ? { row: h.row } : null);
         tableHover(h.row ?? null);
         if (h.row != null) showRowTip(e.point, h.row);
@@ -479,6 +480,7 @@ function applyPalette() {
     // Line casing follows the line's color, as points' rings do: dark under light colors, white under dark ones.
     map.setPaintProperty('rows-sline-casing', 'line-color', glow);
     applyPointStyle(color, glow);
+    applyOutline();
     document.documentElement.style.setProperty('--rows', p.rows);
 }
 
@@ -715,8 +717,7 @@ async function setLayer(id) {
     applyAreaOrder();
     applyLabelSize();   // Auto size follows the set's typical area
     // Thousands of hexagons: keep their outlines light.
-    map.setPaintProperty('bounds-line', 'line-opacity', meta.hex ? 0.7 : 0.5);
-    map.setPaintProperty('bounds-line', 'line-color', meta.hex ? '#c4c4c0' : '#1E2340');
+    applyOutline();
     // Clear hover and selection by id. removeFeatureState({ source }) here was applied after the
     // new layer's colors were set in the same frame, wiping some of them (areas with rows left blank).
     if (S.selectedId !== null) map.setFeatureState({ source: 'bounds', id: S.selectedId }, { selected: false });
@@ -731,10 +732,7 @@ async function setLayer(id) {
     if (S.wideView) { const b = meta.bbox || bboxFC(fc); map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 30, duration: 600 }); }
     else if (wasWide && !meta.hex) { const h = unionBbox(S.manifest.layers.filter(l => !l.regional).map(l => l.bbox).filter(Boolean)); map.fitBounds([[h[0], h[1]], [h[2], h[3]]], { padding: 24, duration: 600 }); }
     $('list-title').textContent = shortLabel(meta);
-    if (busy) {
-        await placeRowsAsync(id);
-        toast(busyMsg(), { busy: true, sub: 'Counting and coloring' }); await nextFrame();
-    }
+    if (busy) await prepare();   // places and counts in chunks, with progress
     recompute();
     // Keep the toast until the map has drawn the new areas (much of the wait is drawing, not counting).
     if (busy) map.once('idle', () => toast(null));
@@ -954,13 +952,33 @@ async function matchByColumn(col) {
     if (want === 'neighborhood' && cur.tab !== 'Neighborhood') {
         const sets = [...S.layers.values()].filter(l => l.tab === 'Neighborhood' && !l.hex);
         toast(`“${col}” looks like neighborhood names. Which neighborhood set?`, { sub: 'Pick the one the names come from. You can switch later from the Neighborhood tab.',
-            actions: [...sets.map(l => ({ label: shortLabel(l), fn: () => go(l.id) })), { label: `Stay on ${shortLabel(cur)}`, fn: () => { S.keyCols[S.layerId] = S.colKeys[S.layerId] = col; recompute(); } }] });
+            actions: [...sets.map(l => ({ label: shortLabel(l), fn: () => go(l.id) })), { label: `Stay on ${shortLabel(cur)}`, fn: () => { S.keyCols[S.layerId] = S.colKeys[S.layerId] = col; refresh(); } }] });
         return;
     }
     if (want && want !== 'neighborhood' && want !== S.layerId && S.layers.has(want)) return go(want);
     S.keyCols[S.layerId] = S.colKeys[S.layerId] = col;
-    recompute();
+    await refresh();
 }
+
+// Which column rows match by on this layer (or their location): the user's pick, else the best.
+function pickKey(meta, fc, normalize) {
+    S.candidates = keyCandidates(meta, fc, normalize);
+    let keyCol = S.keyCols[S.layerId];
+    if (!keyCol || !S.candidates.some(c => c.col === keyCol)) keyCol = S.candidates[0]?.hits ? S.candidates[0].col : null;
+    // The column the menu shows (also when placing by location): the user's pick, else the best column.
+    const cols = S.candidates.filter(c => c.col !== LOCATION);
+    if (!S.colKeys[S.layerId] || !cols.some(c => c.col === S.colKeys[S.layerId])) S.colKeys[S.layerId] = keyCol !== LOCATION && keyCol ? keyCol : cols[0]?.col ?? null;
+    if (keyCol) { S.keyCols[S.layerId] = keyCol; if (keyCol !== LOCATION) S.colKeys[S.layerId] = keyCol; }
+    return keyCol;
+}
+// A join is kept until what it depends on changes (the file, the set, the column, the hexagons), so
+// changing the statistic, classes or colors doesn't count everything again.
+const tokOf = (() => { const m = new WeakMap(); let n = 0; return o => o && typeof o === 'object' ? (m.get(o) || (m.set(o, ++n), n)) : 0; })();
+function joinKey(meta, fc, keyCol) {
+    return [tokOf(S.src), S.layerId, tokOf(fc), fc.features.length, keyCol, keyCol === LOCATION ? tokOf(S.areaOf.get(S.layerId)) : String(delimFor(keyCol, meta))].join('|');
+}
+let joined = null;   // { key, join, rowArea, rowAreas, unmatched, rowIndex }
+const BIG_JOIN = 20000;
 
 function recompute() {
     const meta = S.layers.get(S.layerId);
@@ -968,55 +986,11 @@ function recompute() {
     S.join = null; S.values = new Map(); S.classes = null; S.unmatched = []; S.rowAreas = null;
     if (S.src && fc) {
         const normalize = normalizerFor(meta, fc);
-        S.candidates = keyCandidates(meta, fc, normalize);
-        let keyCol = S.keyCols[S.layerId];
-        if (!keyCol || !S.candidates.some(c => c.col === keyCol)) keyCol = S.candidates[0]?.hits ? S.candidates[0].col : null;
-        // The column the menu shows (also when placing by location): the user's pick, else the best column.
-        const cols = S.candidates.filter(c => c.col !== LOCATION);
-        if (!S.colKeys[S.layerId] || !cols.some(c => c.col === S.colKeys[S.layerId])) S.colKeys[S.layerId] = keyCol !== LOCATION && keyCol ? keyCol : cols[0]?.col ?? null;
-        if (keyCol && keyCol !== LOCATION) S.colKeys[S.layerId] = keyCol;
+        const keyCol = pickKey(meta, fc, normalize);
         S.rowArea = new Array(S.src.rows.length).fill(null);
-        if (keyCol === LOCATION) {
-            S.keyCols[S.layerId] = keyCol;
-            const areas = areasForRows(S.layerId);
-            const rows = S.src.rows.map((r, i) => ({ ...r, [AREA_COL]: areas[i] ?? '' }));
-            S.rowIndex = new Map(rows.map((r, i) => [r, i]));
-            S.join = JoinKit.buildJoin({ rows, headers: [...S.src.headers, AREA_COL], keyCol: AREA_COL, features: fc.features,
-                propKey: '_jid', idOf: f => f.id });
-            S.join.keyCol = keyCol;
-            S.join.numericCols = S.join.numericCols.filter(c => !(S.src.geomCols || []).includes(c));
-            areas.forEach((a, i) => { S.rowArea[i] = a; });
-            S.rowAreas = null;
-            const outside = S.src.points.filter((p, i) => p && areas[i] == null).length;
-            S.unmatched = outside ? [{ label: 'Outside every area', n: outside }] : [];
-            S.join.nullRows = S.src.points.filter(p => !p).length;
-        } else if (keyCol) {
-            S.keyCols[S.layerId] = keyCol;
-            const delimiter = delimFor(keyCol, meta);
-            S.join = JoinKit.buildJoin({ rows: S.src.rows, headers: S.src.headers, keyCol, features: fc.features,
-                propKey: meta.key, normalize, delimiter, idOf: f => f.id });
-            S.join.keyCol = keyCol;
-            S.join.numericCols = S.join.numericCols.filter(c => !(S.src.geomCols || []).includes(c));
-            const idx = S.rowIndex = new Map(S.src.rows.map((r, i) => [r, i]));
-            // Every area a row is in (several when its cell lists several), in the cell's order.
-            S.rowAreas = S.src.rows.map(() => []);
-            for (const [id, e] of Object.entries(S.join.byId)) for (const r of e.rows) { const i = idx.get(r); if (i != null && !S.rowAreas[i].includes(id)) S.rowAreas[i].push(id); }
-            const order = new Map(fc.features.map(f => [f.id, f]));
-            S.rowAreas.forEach((ids, i) => {
-                if (ids.length > 1) { const keys = JoinKit.rowKeys(S.src.rows[i], keyCol, normalize, delimiter); ids.sort((a, b) => keys.indexOf(normalize(order.get(a)?.properties[meta.key])) - keys.indexOf(normalize(order.get(b)?.properties[meta.key]))); }
-                S.rowArea[i] = ids[0] ?? null;
-            });
-            // Unmatched values with row counts, labelled with the text as it appears in the data.
-            const index = JoinKit.buildFeatureIndex(fc.features, meta.key, { normalize, idOf: f => f.id });
-            const tally = new Map();
-            for (const row of S.src.rows) for (const raw of rawValues(row, keyCol, delimiter)) {
-                const k = normalize(raw);
-                if (!k || index.has(k)) continue;
-                const t = tally.get(k) || { label: String(JoinKit.cellText(raw)).trim(), n: 0 };
-                t.n++; tally.set(k, t);
-            }
-            S.unmatched = [...tally.values()].sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
-        }
+        const key = keyCol && joinKey(meta, fc, keyCol);
+        const res = !keyCol ? null : joined?.key === key ? joined : (joined = { key, ...joinNow(meta, fc, keyCol, normalize) });
+        if (res) { S.join = res.join; S.rowArea = res.rowArea; S.rowAreas = res.rowAreas; S.unmatched = res.unmatched; S.rowIndex = res.rowIndex; }
         updateRowLayer();
         if (!metricOptions().some(m => m.value === S.metric)) S.metric = 'count';
         for (const f of fc.features) S.values.set(f.id, statFor(f.id, S.metric));
@@ -1027,6 +1001,144 @@ function recompute() {
     renderTable();
     renderLabelControls();
     updateLabels();
+}
+
+// New classes only (method, log): the counts stay, so just re-class, repaint the areas, the legend,
+// the list and the labels. Instant even with a big file.
+function recolor() {
+    if (!S.join) return recompute();
+    S.classes = classify([...S.values.values()].filter(v => v !== null && v > 0));
+    paint(); renderLegend(); renderList(); updateLabels();
+}
+
+// The join, all at once (JoinKit, as before): fine for files up to some tens of thousands of rows.
+function joinNow(meta, fc, keyCol, normalize) {
+    const out = { rowArea: new Array(S.src.rows.length).fill(null), rowAreas: null, unmatched: [] };
+    if (keyCol === LOCATION) {
+        const areas = areasForRows(S.layerId);
+        const rows = S.src.rows.map((r, i) => ({ ...r, [AREA_COL]: areas[i] ?? '' }));
+        out.rowIndex = new Map(rows.map((r, i) => [r, i]));
+        out.join = JoinKit.buildJoin({ rows, headers: [...S.src.headers, AREA_COL], keyCol: AREA_COL, features: fc.features,
+            propKey: '_jid', idOf: f => f.id });
+        out.join.keyCol = keyCol;
+        out.join.numericCols = out.join.numericCols.filter(c => !(S.src.geomCols || []).includes(c));
+        areas.forEach((a, i) => { out.rowArea[i] = a; });
+        const outside = S.src.points.filter((p, i) => p && areas[i] == null).length;
+        out.unmatched = outside ? [{ label: 'Outside every area', n: outside }] : [];
+        out.join.nullRows = S.src.points.filter(p => !p).length;
+        return out;
+    }
+    const delimiter = delimFor(keyCol, meta);
+    out.join = JoinKit.buildJoin({ rows: S.src.rows, headers: S.src.headers, keyCol, features: fc.features,
+        propKey: meta.key, normalize, delimiter, idOf: f => f.id });
+    out.join.keyCol = keyCol;
+    out.join.numericCols = out.join.numericCols.filter(c => !(S.src.geomCols || []).includes(c));
+    const idx = out.rowIndex = new Map(S.src.rows.map((r, i) => [r, i]));
+    // Every area a row is in (several when its cell lists several), in the cell's order.
+    out.rowAreas = S.src.rows.map(() => []);
+    for (const [id, e] of Object.entries(out.join.byId)) for (const r of e.rows) { const i = idx.get(r); if (i != null && !out.rowAreas[i].includes(id)) out.rowAreas[i].push(id); }
+    const order = new Map(fc.features.map(f => [f.id, f]));
+    out.rowAreas.forEach((ids, i) => {
+        if (ids.length > 1) { const keys = JoinKit.rowKeys(S.src.rows[i], keyCol, normalize, delimiter); ids.sort((a, b) => keys.indexOf(normalize(order.get(a)?.properties[meta.key])) - keys.indexOf(normalize(order.get(b)?.properties[meta.key]))); }
+        out.rowArea[i] = ids[0] ?? null;
+    });
+    // Unmatched values with row counts, labelled with the text as it appears in the data.
+    const index = JoinKit.buildFeatureIndex(fc.features, meta.key, { normalize, idOf: f => f.id });
+    const tally = new Map();
+    for (const row of S.src.rows) for (const raw of rawValues(row, keyCol, delimiter)) {
+        const k = normalize(raw);
+        if (!k || index.has(k)) continue;
+        const t = tally.get(k) || { label: String(JoinKit.cellText(raw)).trim(), n: 0 };
+        t.n++; tally.set(k, t);
+    }
+    out.unmatched = [...tally.values()].sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
+    return out;
+}
+
+// The same join for big files, in chunks with a progress bar: one pass that places each row,
+// adds its numbers to its areas' sums, and tallies values that match no area. Column types come
+// from a sample. Gives counts, totals, averages and shares, which is what the map uses.
+async function joinInChunks(meta, fc, keyCol, normalize) {
+    const rows = S.src.rows, n = rows.length, geomCols = S.src.geomCols || [];
+    const types = JoinKit.classifyColumns(sampleRows(), S.src.headers, { exclude: [keyCol] });
+    const numericCols = types.numericCols.filter(c => !geomCols.includes(c));
+    const byId = {}, tally = new Map(), totals = numericCols.map(() => 0);
+    const rowArea = new Array(n).fill(null);
+    let matchedRows = 0, nullRows = 0, rowAreas = null, areas = null, index = null, delimiter;
+    if (keyCol === LOCATION) areas = areasForRows(S.layerId);
+    else { delimiter = delimFor(keyCol, meta); index = JoinKit.buildFeatureIndex(fc.features, meta.key, { normalize, idOf: f => f.id }); rowAreas = new Array(n); }
+    const label = meta.hex ? 'hexagons' : shortLabel(meta), CH = 20000, m = numericCols.length;
+    const nums = new Array(m);
+    for (let i0 = 0; i0 < n; i0 += CH) {
+        toast(`Counting rows in ${label}`, { busy: true, progress: i0 / n, sub: `${i0.toLocaleString()} of ${n.toLocaleString()}` });
+        await nextFrame();
+        for (let i = i0; i < Math.min(n, i0 + CH); i++) {
+            const row = rows[i];
+            let ids;
+            if (areas) { if (areas[i] == null) continue; ids = [areas[i]]; }
+            else {
+                ids = []; let any = false;
+                for (const raw of rawValues(row, keyCol, delimiter)) {
+                    const k = normalize(raw); if (!k) continue; any = true;
+                    const hit = index.get(k);
+                    if (!hit) { const t = tally.get(k) || tally.set(k, { label: String(JoinKit.cellText(raw)).trim(), n: 0 }).get(k); t.n++; continue; }
+                    for (const id of hit) if (!ids.includes(id)) ids.push(id);
+                }
+                rowAreas[i] = ids;
+                if (!any) { nullRows++; continue; }
+            }
+            if (!ids.length) continue;
+            matchedRows++; rowArea[i] = ids[0];
+            for (let j = 0; j < m; j++) { const v = JoinKit.parseNum(row[numericCols[j]]); nums[j] = v; if (v !== null) totals[j] += v; }
+            for (const id of ids) {
+                const e = byId[id] || (byId[id] = { rows: [], agg: { count: 0 }, s: new Float64Array(m), c: new Uint32Array(m) });
+                e.rows.push(row); e.agg.count++;
+                for (let j = 0; j < m; j++) if (nums[j] !== null) { e.s[j] += nums[j]; e.c[j]++; }
+            }
+        }
+    }
+    for (const e of Object.values(byId)) {
+        numericCols.forEach((col, j) => {
+            const has = e.c[j] > 0;
+            e.agg['count_' + col] = e.c[j];
+            e.agg['sum_' + col] = has ? e.s[j] : null;
+            e.agg['avg_' + col] = has ? e.s[j] / e.c[j] : null;
+            if (totals[j] > 0) e.agg['pct_' + col] = has ? e.s[j] / totals[j] * 100 : null;
+        });
+        delete e.s; delete e.c;
+    }
+    let unmatched;
+    if (areas) {
+        const outside = S.src.points.filter((p, i) => p && areas[i] == null).length;
+        nullRows = S.src.points.filter(p => !p).length;
+        unmatched = outside ? [{ label: 'Outside every area', n: outside }] : [];
+    } else unmatched = [...tally.values()].sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
+    const join = { keyCol, byId, numericCols, currencyCols: types.currencyCols, matchedRows, nullRows, headers: S.src.headers, rows };
+    return { join, rowArea, rowAreas, unmatched, rowIndex: rowIndexOf(S.src) };
+}
+const rowIndexCache = new WeakMap();
+const rowIndexOf = src => rowIndexCache.get(src) || rowIndexCache.set(src, new Map(src.rows.map((r, i) => [r, i]))).get(src);
+
+// Before recompute, for a big file: place rows and join them in chunks (with progress), so
+// recompute finds the join ready. Small files skip this.
+// Join (in chunks when big), then redraw; the toast goes once the map has drawn.
+async function refresh() {
+    const big = S.src && S.src.rows.length >= BIG_JOIN;
+    await prepare();
+    recompute();
+    if (big) map.once('idle', () => toast(null));
+}
+async function prepare() {
+    if (!S.src || S.src.rows.length < BIG_JOIN) return;
+    const meta = S.layers.get(S.layerId), fc = S.geo.get(S.layerId);
+    if (!fc) return;
+    await placeRowsAsync(S.layerId);
+    const normalize = normalizerFor(meta, fc);
+    const keyCol = pickKey(meta, fc, normalize);
+    if (!keyCol) return;
+    const key = joinKey(meta, fc, keyCol);
+    if (joined?.key !== key) joined = { key, ...(await joinInChunks(meta, fc, keyCol, normalize)) };
+    toast(`Coloring ${meta.hex ? 'hexagons' : shortLabel(meta)}`, { busy: true }); await nextFrame();
 }
 
 // The value of one statistic for one area. Areas with no rows are 0 — except an
@@ -1658,7 +1770,17 @@ function hlRows(t) {
     map.getSource('rows-hl').setData({ type: 'FeatureCollection', features: feats });
 }
 
+// Hovering a row that lists several areas lights them all; id is the main one (outlined in the list).
+S.hoverAlso = [];
+function setHoverRow(i, main) {
+    const ids = i == null ? [] : areasOfRow(i);
+    setHover(main ?? ids[0] ?? null);
+    for (const id of S.hoverAlso) if (id !== S.hoverId) map.setFeatureState({ source: 'bounds', id }, { hover: false });
+    S.hoverAlso = ids.filter(id => id !== S.hoverId);
+    for (const id of S.hoverAlso) map.setFeatureState({ source: 'bounds', id }, { hover: true });
+}
 function setHover(id) {
+    if (S.hoverAlso?.length && id !== S.hoverId) { for (const a of S.hoverAlso) if (a !== id) map.setFeatureState({ source: 'bounds', id: a }, { hover: false }); S.hoverAlso = []; }
     if (id === S.hoverId) return;
     if (S.hoverId !== null) map.setFeatureState({ source: 'bounds', id: S.hoverId }, { hover: false });
     S.hoverId = id;
@@ -2099,6 +2221,28 @@ function autoLabelBase() {
     S._medianArea = km2[km2.length >> 1];
     return Math.max(10, Math.min(15, 11.3 + 2.2 * Math.log10(S._medianArea)));
 }
+// Area outlines (as in Selecter): Auto (dark lines, light grey on hexagons), the area's own color,
+// a faint version of it, grey, white, black or none; and a width.
+const OUTLINES = { auto: 'Auto', palette: 'Area color', ghost: 'Ghost', grey: 'Grey', white: 'White', black: 'Black', none: 'None' };
+const OUTLINE_W = { hair: 0.4, thin: 1, mid: 1.8, thick: 3 };
+function applyOutline() {
+    if (!map.getLayer('bounds-line')) return;
+    const hex = isHex(S.layerId), o = S.outline, k = OUTLINE_W[o.width] || 1;
+    const own = ['match', ['coalesce', ['feature-state', 'c'], -1], ...ramp().flatMap((c, i) => [i, c]), '#9aa0b4'];
+    const [color, op, glow] = {
+        auto: [hex ? '#c4c4c0' : '#1E2340', hex ? 0.7 : 0.5, 0.85],
+        palette: [own, 1, 0.85], ghost: [own, 0.35, 0], grey: ['#8a8f9c', 0.85, 0.6],
+        white: ['#ffffff', 1, 0], black: ['#1e1e1e', 0.85, 0.6], none: ['#000000', 0, 0],
+    }[o.color] || [hex ? '#c4c4c0' : '#1E2340', 0.5, 0.85];
+    map.setPaintProperty('bounds-line', 'line-color', color);
+    map.setPaintProperty('bounds-line', 'line-opacity', op);
+    map.setPaintProperty('bounds-line', 'line-width', ['interpolate', ['linear'], ['zoom'], 11, 0.8 * k, 14, 1.4 * k, 16, 2 * k]);
+    map.setPaintProperty('bounds-glow', 'line-opacity', glow);
+    map.setPaintProperty('bounds-glow', 'line-width', 3.5 * Math.max(1, k * 0.8));
+    document.querySelectorAll('#outline-seg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.outline === o.color));
+    document.querySelectorAll('#outline-w button').forEach(b => b.setAttribute('aria-pressed', b.dataset.w === o.width));
+    if ($('outline-name')) $('outline-name').textContent = OUTLINES[o.color] || '';
+}
 function renderClassControls() {
     document.querySelectorAll('.class-seg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.method === S.classMethod));
     document.querySelectorAll('.class-log').forEach(c => { c.checked = S.classLog; c.disabled = S.classMethod === 'quantile'; c.closest('label').title = S.classMethod === 'quantile' ? 'Quantiles split by rank, so a log scale changes nothing' : 'Classes on the logarithm of the values: for long tails'; });
@@ -2281,6 +2425,7 @@ async function useSource(src, { keep = false } = {}) {
             if (st.pointStyle && CONFIG.pointStyles[st.pointStyle]) S.pointStyle = st.pointStyle;
             if (CLASS_METHODS[st.classMethod]) S.classMethod = st.classMethod;
             if (typeof st.classLog === 'boolean') S.classLog = st.classLog;
+            if (st.outline && OUTLINES[st.outline.color]) { S.outline = { ...S.outline, ...st.outline }; applyOutline(); }
             renderClassControls();
             if ('look' in st) S.fileLook = st.look && CONFIG.pointSizes[st.look.size] && CONFIG.pointStyles[st.look.style] ? { ...st.look } : null;
             if (st.hex) S.hex = { ...S.hex, ...st.hex };
@@ -2295,9 +2440,7 @@ async function useSource(src, { keep = false } = {}) {
         T.sort = null; if (!keep) T.pin = null;
         if (T.wanted && !T.open) setTableOpen(true);
         if (isHex(S.layerId)) { await setLayer(S.layerId); return; }   // the grid gains the file's cells
-        await placeRowsAsync(S.layerId);
-        if (src.rows.length >= 20000) { toast(`Matching ${src.rows.length.toLocaleString()} rows to ${shortLabel(S.layers.get(S.layerId))}`, { busy: true, sub: 'Counting and coloring' }); await nextFrame(); }
-        recompute();
+        await refresh();
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -2444,7 +2587,7 @@ function renderAirtable() {
 }
 
 function saveSnapshot() {
-    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, revealAll: S.revealAll, labelColor: S.labelColor, classMethod: S.classMethod, classLog: S.classLog, pointSize: S.pointSize, hexPointSize: S.hexPointSize, pointStyle: S.pointStyle, look: S.fileLook, hex: S.hex, areaOrder: S.areaOrder, hideEmpty: S.hideEmpty,
+    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, revealAll: S.revealAll, labelColor: S.labelColor, classMethod: S.classMethod, classLog: S.classLog, outline: S.outline, pointSize: S.pointSize, hexPointSize: S.hexPointSize, pointStyle: S.pointStyle, look: S.fileLook, hex: S.hex, areaOrder: S.areaOrder, hideEmpty: S.hideEmpty,
         labels: { fields: S.labels, prefix: S.prefix, prefixZoom: S.prefixZoom } });
     const blob = new Blob([JSON.stringify(snap)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -2501,7 +2644,7 @@ function wireUI() {
     $('key-select').onchange = e => { if (e.target.value) matchByColumn(e.target.value); };
     $('loc-check').onchange = e => {
         S.keyCols[S.layerId] = e.target.checked ? LOCATION : (S.colKeys[S.layerId] || S.candidates.find(c => c.col !== LOCATION)?.col);
-        recompute();
+        refresh();
     };
     $('clear-btn').onclick = clearFile;
     $('at-form').onsubmit = e => { e.preventDefault(); loadAirtable(AT().parseLink($('at-url').value)); };
@@ -2638,7 +2781,7 @@ function wireUI() {
     $('table-grid').addEventListener('mouseover', e => {
         const tr = e.target.closest('tr[data-row]'); if (!tr) return;
         const i = +tr.dataset.row;
-        hlRows({ row: i }); setHover(S.rowArea[i] ?? null);
+        hlRows({ row: i }); setHoverRow(i);
     });
     $('table-grid').addEventListener('mouseleave', () => { hlRows(null); setHover(null); });
     // Drag the drawer's inner edge (top below the map, left beside it) to resize it.
@@ -2680,13 +2823,15 @@ function wireUI() {
     // Classes: method and log, in the top section.
     document.addEventListener('click', e => {
         const b = e.target.closest('.class-seg button'); if (!b) return;
-        S.classMethod = b.dataset.method; store.set('classMethod', S.classMethod); recompute(); renderClassControls();
+        S.classMethod = b.dataset.method; store.set('classMethod', S.classMethod); recolor(); renderClassControls();
     });
     document.addEventListener('change', e => {
         if (!e.target.matches('.class-log')) return;
-        S.classLog = e.target.checked; store.set('classLog', S.classLog); recompute(); renderClassControls();
+        S.classLog = e.target.checked; store.set('classLog', S.classLog); recolor(); renderClassControls();
     });
     renderClassControls();
+    $('outline-seg').onclick = e => { const b = e.target.closest('button'); if (!b) return; S.outline = { ...S.outline, color: b.dataset.outline }; store.set('outline', S.outline); applyOutline(); };
+    $('outline-w').onclick = e => { const b = e.target.closest('button'); if (!b) return; S.outline = { ...S.outline, width: b.dataset.w }; store.set('outline', S.outline); applyOutline(); };
     $('size-seg').onclick = e => {
         const b = e.target.closest('button'); if (!b) return;
         S.labelSize = b.dataset.size; store.set('labelSize3', S.labelSize);
@@ -2723,9 +2868,9 @@ function wireUI() {
     // expanded area highlights just that row.
     list.addEventListener('mouseover', e => {
         const li = e.target.closest('li[data-id]'); if (!li) return;
-        setHover(li.dataset.id);
         // Only a row in an expanded area is enlarged on the map; hovering the area just outlines it.
         const item = e.target.closest('.items li[data-row]');
+        if (item && item.dataset.row !== '') setHoverRow(+item.dataset.row, li.dataset.id); else setHover(li.dataset.id);   // a row: all its areas
         hlRows(item && item.dataset.row !== '' ? { row: +item.dataset.row } : null);
         showRowCard(item && item.dataset.row !== '' ? item : null);
         // With the table open: the hovered row is highlighted there (and scrolled to); an area's rows are tinted.
