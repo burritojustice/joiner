@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v27';
+const _BUILD_VERSION = 'v28';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -161,7 +161,10 @@ async function boot() {
     S.palette = palKey(store.get('palette', 'blues'));
     S.streetColor = store.get('streetColor', CONFIG.streetColor); if (!CONFIG.labelColors[S.streetColor]) S.streetColor = CONFIG.streetColor;
     S.labelColor = store.get('labelColor', 'auto'); if (S.labelColor !== 'auto' && !CONFIG.labelColors[S.labelColor]) S.labelColor = 'auto';
-    { const ls = store.get('labelSize2', 'auto'); S.labelSize = ls === 'auto' || CONFIG.labelSizes[ls] ? ls : 'auto'; }
+    // Label size: Small to start (Dynamic sizes labels by the area's size, which can read as bigger values).
+    { const ls = store.get('labelSize3', 'small'); S.labelSize = ls === 'auto' || CONFIG.labelSizes[ls] ? ls : 'small'; }
+    S.classMethod = ['jenks', 'equal', 'quantile'].includes(store.get('classMethod')) ? store.get('classMethod') : 'jenks';
+    S.classLog = store.get('classLog', false);
     S.revealAll = !!store.get('revealAll', false);
     S.showAreas = store.get('showAreas', true);
     S.legendCompact = store.get('legendCompact', false);
@@ -703,11 +706,9 @@ async function setLayer(id) {
     history.replaceState(null, '', '#layer=' + id);
     renderTabs();
     // Big files on hexagons take a moment: say what's happening, and let the toast paint first.
-    const busy = meta.hex && (S.src?.rows.length || 0) >= 3000;
-    if (busy) {
-        toast(`Counting ${S.src.rows.length.toLocaleString()} rows into hexagons`, { busy: true, sub: `Resolution ${hexResNow()}` });
-        await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
-    }
+    const busy = (S.src?.rows.length || 0) >= (meta.hex ? 3000 : 20000);
+    const busyMsg = () => meta.hex ? `Counting ${S.src.rows.length.toLocaleString()} rows into hexagons` : `Matching ${S.src.rows.length.toLocaleString()} rows to ${shortLabel(meta)}`;
+    if (busy) { toast(busyMsg(), { busy: true, sub: meta.hex ? `Resolution ${hexResNow()}` : 'Loading the areas' }); await nextFrame(); }
     const fc = await loadGeo(id);
     renderHexControls();
     applyPointSize(); renderFormatFeatures();
@@ -730,8 +731,12 @@ async function setLayer(id) {
     if (S.wideView) { const b = meta.bbox || bboxFC(fc); map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 30, duration: 600 }); }
     else if (wasWide && !meta.hex) { const h = unionBbox(S.manifest.layers.filter(l => !l.regional).map(l => l.bbox).filter(Boolean)); map.fitBounds([[h[0], h[1]], [h[2], h[3]]], { padding: 24, duration: 600 }); }
     $('list-title').textContent = shortLabel(meta);
+    if (busy) {
+        await placeRowsAsync(id);
+        toast(busyMsg(), { busy: true, sub: 'Counting and coloring' }); await nextFrame();
+    }
     recompute();
-    // Keep the toast until the map has drawn the new hexagons (most of the wait is drawing, not counting).
+    // Keep the toast until the map has drawn the new areas (much of the wait is drawing, not counting).
     if (busy) map.once('idle', () => toast(null));
 }
 
@@ -776,6 +781,31 @@ function alongMid(l) {
     return l[l.length - 1];
 }
 
+// The same, in chunks with a progress bar, for files with many located rows; afterwards areasForRows
+// finds the answer ready. Run before recompute when a set is shown.
+async function placeRowsAsync(layerId) {
+    const pts = S.src?.points;
+    if (!pts || S.areaOf.has(layerId)) return;
+    const n = pts.length;
+    if (n < 30000) return;
+    const meta = S.layers.get(layerId), label = meta.hex ? 'hexagons' : shortLabel(meta);
+    const out = new Array(n), CH = 20000;
+    let locate;
+    if (isHex(layerId)) {
+        const ids = new Set(S.geo.get(layerId).features.map(f => f.id));
+        locate = slice => slice.map(p => { if (!p) return null; const c = h3.latLngToCell(p[1], p[0], S.hexRes); return ids.has(c) ? c : null; });
+    } else {
+        const index = JoinKit.buildPolygonIndex(S.geo.get(layerId).features, { idOf: f => f.id });
+        locate = slice => index.locateAll(slice);
+    }
+    for (let i = 0; i < n; i += CH) {
+        toast(`Placing rows in ${label}`, { busy: true, progress: i / n, sub: `${i.toLocaleString()} of ${n.toLocaleString()}` });
+        await nextFrame();
+        const got = locate(pts.slice(i, i + CH));
+        for (let j = 0; j < got.length; j++) out[i + j] = got[j];
+    }
+    S.areaOf.set(layerId, out);
+}
 function areasForRows(layerId) {
     if (!S.areaOf.has(layerId)) {
         const pts = S.src.points;
@@ -861,7 +891,17 @@ const rawValues = (row, col, delimiter) => {
     return (Array.isArray(v) || delimiter) ? JoinKit.cellValues(v, delimiter).map(JoinKit.cellText) : [v];
 };
 
-// Every column scored by how many rows it would place on this layer.
+// Up to n rows spread through the file (all of them when it's smaller): enough to judge a column's
+// type or how well it matches, without reading 300,000 rows each time.
+const sampleCache = new WeakMap();
+function sampleRows(n = 5000) {
+    const rows = S.src.rows;
+    if (rows.length <= n) return rows;
+    const byN = sampleCache.get(S.src) || sampleCache.set(S.src, {}).get(S.src);
+    return byN[n] ||= Array.from({ length: n }, (_, i) => rows[Math.floor(i * rows.length / n)]);
+}
+// Every column scored by how many rows it would place on this layer (in a big file, from 20,000
+// rows spread through it, scaled up).
 function keyCandidates(meta, fc, normalize) {
     const index = JoinKit.buildFeatureIndex(fc.features, meta.key, { normalize, idOf: f => f.id });
     const loc = [];
@@ -872,13 +912,14 @@ function keyCandidates(meta, fc, normalize) {
     // Location first on a tie: it doesn't depend on how names are spelled.
     return [...loc, ...S.src.headers.filter(c => !(S.src.geomCols || []).includes(c)).map(col => {
         let hits = 0, filled = 0;
-        for (const row of S.src.rows) {
+        const rows = sampleRows(20000), scale = S.src.rows.length / rows.length;
+        for (const row of rows) {
             const keys = JoinKit.rowKeys(row, col, normalize, delimFor(col, meta));
             if (!keys.length) continue;
             filled++;
             if (keys.some(k => index.has(k))) hits++;
         }
-        return { col, hits, filled };
+        return scale > 1 ? { col, hits: Math.round(hits * scale), filled: Math.round(filled * scale), approx: true } : { col, hits, filled };
     })].sort((a, b) => b.hits - a.hits || (a.col === LOCATION ? -1 : b.col === LOCATION ? 1 : a.col.localeCompare(b.col)));
 }
 
@@ -1085,16 +1126,40 @@ function statsOf(sorted) {
     return { n, min: sorted[0], max: sorted[n - 1], median: n % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2,
         mean: sorted.reduce((a, b) => a + b, 0) / n };
 }
+// Classes for the area colors: natural breaks (around gaps in the values), equal width (the same
+// span of values each) or quantiles (the same number of areas each); with Log, natural breaks and
+// equal width work on the values' logarithms, so a long tail doesn't squeeze everything else into
+// the lightest class. Values are > 0 here.
+const CLASS_METHODS = { jenks: 'Natural breaks', equal: 'Equal width', quantile: 'Quantiles' };
 function classify(vals) {
     if (!vals.length) return null;
-    const sorted = [...vals].sort((a, b) => a - b);
+    const sorted = [...vals].sort((a, b) => a - b), n = sorted.length;
     const k = Math.min(ramp().length, new Set(sorted).size);
-    const groups = ckmeans(sorted, k);
-    const uppers = groups.map(g => g[g.length - 1]);
-    const offset = ramp().length - k;   // few classes → use the darker end of the ramp
-    const classOf = v => { if (v === null || !(v > 0)) return -1; const i = uppers.findIndex(u => v <= u); return (i < 0 ? k - 1 : i) + offset; };
-    const ranges = groups.map((g, i) => ({ lo: g[0], hi: g[g.length - 1], n: g.length, c: i + offset }));
-    return { classOf, ranges, stats: statsOf(sorted) };
+    const log = S.classLog && S.classMethod !== 'quantile';
+    const t = log ? Math.log10 : v => v, inv = log ? v => 10 ** v : v => v;
+    let uppers, bounds = null;
+    if (S.classMethod === 'equal') {
+        const lo = t(sorted[0]), hi = t(sorted[n - 1]), w = (hi - lo) / k || 1;
+        bounds = Array.from({ length: k + 1 }, (_, i) => inv(lo + w * i));
+        bounds[0] = sorted[0]; bounds[k] = sorted[n - 1];
+        uppers = bounds.slice(1);
+    } else if (S.classMethod === 'quantile') {
+        uppers = [...new Set(Array.from({ length: k }, (_, i) => sorted[Math.max(0, Math.ceil((i + 1) * n / k) - 1)]))];
+    } else {
+        const groups = ckmeans(sorted.map(t), k);   // slices of the transformed values, in order
+        let at = 0;
+        uppers = groups.map(g => { at += g.length; return sorted[at - 1]; });
+    }
+    const kk = uppers.length, offset = ramp().length - kk;   // few classes → use the darker end of the ramp
+    const classIdx = v => { const i = uppers.findIndex(u => v <= u); return i < 0 ? kk - 1 : i; };
+    const classOf = v => (v === null || !(v > 0)) ? -1 : classIdx(v) + offset;
+    // Each class's range: the values in it (equal width: its span, also when it's empty).
+    const members = uppers.map(() => []);
+    for (const v of sorted) members[classIdx(v)].push(v);
+    const ranges = members.map((g, i) => ({
+        lo: bounds ? bounds[i] : g[0], hi: bounds ? bounds[i + 1] : g[g.length - 1], n: g.length, c: i + offset,
+    })).filter(r => r.n || bounds);
+    return { classOf, ranges, stats: statsOf(sorted), method: S.classMethod, log };
 }
 
 // "Hide areas without data": areas no row was placed in are left off the map, the labels and the list.
@@ -1161,7 +1226,7 @@ function fmtShort(v, stat) {
 function isMoneyCol(col) {
     if (!S.src) return false;
     const memo = S.src._money || (S.src._money = new Map());
-    if (!memo.has(col)) memo.set(col, JoinKit.classifyColumns(S.src.rows, [col]).currencyCols.has(col));
+    if (!memo.has(col)) memo.set(col, JoinKit.classifyColumns(sampleRows(), [col]).currencyCols.has(col));
     return memo.get(col);
 }
 const fmtCol = (v, col) => fmtNumber(v, { money: isMoneyCol(col) });
@@ -1339,7 +1404,7 @@ function renderFormatFeatures() {
     $('row-color-hint').textContent = !rc ? 'Solid when placed in an area, hollow when not.'
         : rc.type === 'numeric' ? `A number: ${rc.colors.length} classes by natural breaks, on the ${rowRampPal().label.toLowerCase()} ramp so rows stand out from the areas.`
         : `${rc.cats.length} most common values${rc.otherN ? ', the rest as Other' : ''}.` + (rc.cats.length > 3 ? ' More than 3 colors can be hard to tell apart; hover names the value.' : '');
-    const nums = JoinKit.classifyColumns(S.src.rows, cols).numericCols.filter(c => !isIdColumn(c) && !isCoordColumn(c));
+    const nums = JoinKit.classifyColumns(sampleRows(), cols).numericCols.filter(c => !isIdColumn(c) && !isCoordColumn(c));
     $('row-size').innerHTML = `<option value="">Same size</option>` + nums.map(c => `<option value="${esc(c)}"${c === S.rowStyle.sizeBy ? ' selected' : ''}>${esc(c)}</option>`).join('');
     $('size-log').checked = !!S.rowStyle.sizeLog;
     $('size-log').disabled = !S.rowStyle.sizeBy;
@@ -1400,7 +1465,7 @@ function renderPanel() {
         if (loc) $('loc-n').textContent = `${loc.hits.toLocaleString()} of ${total.toLocaleString()} inside one`;
         $('loc-label').textContent = `Location (inside the ${oneArea()})`;
         const cols = S.candidates.filter(c => c.col !== LOCATION), shown = S.colKeys[S.layerId];
-        $('key-select').innerHTML = cols.map(c => `<option value="${esc(c.col)}"${c.col === shown ? ' selected' : ''}>${esc(c.col)}${c.hits ? ` — ${c.hits} of ${total} rows match` : ''}</option>`).join('')
+        $('key-select').innerHTML = cols.map(c => `<option value="${esc(c.col)}"${c.col === shown ? ' selected' : ''}>${esc(c.col)}${c.hits ? ` — ${c.approx ? 'about ' : ''}${c.hits.toLocaleString()} of ${total.toLocaleString()} rows match` : ''}</option>`).join('')
             + (shown ? '' : '<option value="" selected>— no column matches this layer —</option>');
         $('key-select').disabled = byLoc;
         $('key-row').classList.toggle('off', byLoc);
@@ -1505,7 +1570,7 @@ function renderLegend() {
     lg.innerHTML = legendHead() + `<h4>${esc(metricLabel())}</h4>` + [...(S.classes?.ranges || [])].reverse().map(r =>
         `<div class="row"><i style="background:${ramp()[r.c]}"></i><span>${r.lo === r.hi ? fmtShort(r.hi, S.metric) : `${fmtShort(r.lo, S.metric)} – ${fmtShort(r.hi, S.metric)}`}</span><span class="n">${r.n}</span></div>`).join('')
         + `<div class="row"><i class="clear"></i><span>${zeroLabel}${hidingEmpty() ? ' (hidden)' : ''}</span><span class="n">${nZero}</span></div>`
-        + `<div class="foot">Natural breaks · areas per class</div>` + rowLegendHTML();
+        + `<div class="foot">${CLASS_METHODS[S.classes?.method] || 'Natural breaks'}${S.classes?.log ? ' · log' : ''} · areas per class</div>` + rowLegendHTML();
 }
 
 function compactLegendHTML() {
@@ -1646,7 +1711,7 @@ function tableRowIdx() {
         idx = idx.filter(i => { const p = S.src.points?.[i]; return p && b.contains(p); });
     }
     if (T.sort) {
-        const c = T.sort, num = c !== AREA_SORT && JoinKit.classifyColumns(S.src.rows, [c]).numericCols.length > 0;
+        const c = T.sort, num = c !== AREA_SORT && JoinKit.classifyColumns(sampleRows(), [c]).numericCols.length > 0;
         const key = c === AREA_SORT ? i => (S.rowArea[i] != null ? areaName(S.rowArea[i]) || '' : '').toLowerCase()
             : i => { const v = S.src.rows[i][c]; return num ? JoinKit.parseNum(v) : JoinKit.cellText(v).toLowerCase(); };
         idx.sort((a, b) => { const x = key(a), y = key(b); return (x === null || x === '') - (y === null || y === '') || (x < y ? -T.dir : x > y ? T.dir : 0); });
@@ -2034,6 +2099,10 @@ function autoLabelBase() {
     S._medianArea = km2[km2.length >> 1];
     return Math.max(10, Math.min(15, 11.3 + 2.2 * Math.log10(S._medianArea)));
 }
+function renderClassControls() {
+    document.querySelectorAll('.class-seg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.method === S.classMethod));
+    document.querySelectorAll('.class-log').forEach(c => { c.checked = S.classLog; c.disabled = S.classMethod === 'quantile'; c.closest('label').title = S.classMethod === 'quantile' ? 'Quantiles split by rank, so a log scale changes nothing' : 'Classes on the logarithm of the values: for long tails'; });
+}
 function applyLabelSize() {
     const fixed = CONFIG.labelSizes[S.labelSize];
     const auto = autoLabelBase(), base = fixed ? fixed.areas : auto, hz = S.homeZoom;
@@ -2160,10 +2229,24 @@ function bbox(geom) {
 // ═════════════════════════════════════════════════════════════════════════
 // Loading and saving data
 // ═════════════════════════════════════════════════════════════════════════
+// Big files say what's happening as they load: reading (with how far), finding locations, placing rows.
 async function loadFile(file) {
+    const big = file.size > 5 * 1024 * 1024;
+    const mb = (file.size / 1048576).toFixed(file.size < 1e7 ? 1 : 0);
     try {
-        await useSource(await JoinerSources.readFile(file));
+        let last = 0;
+        const src = await JoinerSources.readFile(file, { onProgress: big ? (step, f, n) => {
+            if (Date.now() - last < 120 && f != null && f < 1) return;   // a few updates a second is plenty
+            last = Date.now();
+            if (step === 'read') toast(`Reading ${file.name}`, { busy: true, progress: f, sub: `${Math.round(f * 100)}% of ${mb} MB${n ? ` · ${n.toLocaleString()} rows` : ''}` });
+            else if (step === 'parse') toast(`Reading ${file.name}`, { busy: true, sub: `${mb} MB of JSON` });
+            else if (step === 'locate') toast(`Finding locations`, { busy: true, progress: f, sub: `${Math.round(f * 100)}%` });
+        } : undefined });
+        if (big) { toast(`Matching ${src.rows.length.toLocaleString()} rows`, { busy: true, sub: 'Getting the areas ready' }); await nextFrame(); }
+        await useSource(src);
+        if (big && !$('toast').querySelector('.toast-actions').childElementCount) toast(`Loaded ${src.rows.length.toLocaleString()} rows`, { sub: file.name, ms: 3000 });
     } catch (e) {
+        toast(null);
         alert(e.message);
         console.error(e);
     }
@@ -2196,6 +2279,9 @@ async function useSource(src, { keep = false } = {}) {
             if (st.pointSize && CONFIG.pointSizes[st.pointSize]) S.pointSize = st.pointSize;
             if (st.hexPointSize && CONFIG.pointSizes[st.hexPointSize]) S.hexPointSize = st.hexPointSize;
             if (st.pointStyle && CONFIG.pointStyles[st.pointStyle]) S.pointStyle = st.pointStyle;
+            if (CLASS_METHODS[st.classMethod]) S.classMethod = st.classMethod;
+            if (typeof st.classLog === 'boolean') S.classLog = st.classLog;
+            renderClassControls();
             if ('look' in st) S.fileLook = st.look && CONFIG.pointSizes[st.look.size] && CONFIG.pointStyles[st.look.style] ? { ...st.look } : null;
             if (st.hex) S.hex = { ...S.hex, ...st.hex };
             if (typeof st.hideEmpty === 'boolean') S.hideEmpty = st.hideEmpty;
@@ -2209,6 +2295,8 @@ async function useSource(src, { keep = false } = {}) {
         T.sort = null; if (!keep) T.pin = null;
         if (T.wanted && !T.open) setTableOpen(true);
         if (isHex(S.layerId)) { await setLayer(S.layerId); return; }   // the grid gains the file's cells
+        await placeRowsAsync(S.layerId);
+        if (src.rows.length >= 20000) { toast(`Matching ${src.rows.length.toLocaleString()} rows to ${shortLabel(S.layers.get(S.layerId))}`, { busy: true, sub: 'Counting and coloring' }); await nextFrame(); }
         recompute();
 }
 
@@ -2216,11 +2304,15 @@ async function useSource(src, { keep = false } = {}) {
 // Toast: what's happening (loading steps), what changed (area set switched), or a question.
 // ═════════════════════════════════════════════════════════════════════════
 let toastTimer = null;
-function toast(msg, { sub = '', busy = false, actions = [], ms = 0 } = {}) {
+// progress: 0–1 draws a bar under the message (null: no bar).
+function toast(msg, { sub = '', busy = false, actions = [], ms = 0, progress = null } = {}) {
     const el = $('toast');
     clearTimeout(toastTimer);
     if (!msg) { el.hidden = true; return; }
     el.classList.toggle('busy', busy);
+    const bar = el.querySelector('.toast-bar');
+    bar.hidden = progress == null;
+    if (progress != null) bar.firstElementChild.style.width = `${Math.round(progress * 100)}%`;
     el.querySelector('.toast-msg').textContent = msg;
     const subEl = el.querySelector('.toast-sub'); subEl.textContent = sub; subEl.hidden = !sub;
     const act = el.querySelector('.toast-actions');
@@ -2352,7 +2444,7 @@ function renderAirtable() {
 }
 
 function saveSnapshot() {
-    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, revealAll: S.revealAll, labelColor: S.labelColor, pointSize: S.pointSize, hexPointSize: S.hexPointSize, pointStyle: S.pointStyle, look: S.fileLook, hex: S.hex, areaOrder: S.areaOrder, hideEmpty: S.hideEmpty,
+    const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, revealAll: S.revealAll, labelColor: S.labelColor, classMethod: S.classMethod, classLog: S.classLog, pointSize: S.pointSize, hexPointSize: S.hexPointSize, pointStyle: S.pointStyle, look: S.fileLook, hex: S.hex, areaOrder: S.areaOrder, hideEmpty: S.hideEmpty,
         labels: { fields: S.labels, prefix: S.prefix, prefixZoom: S.prefixZoom } });
     const blob = new Blob([JSON.stringify(snap)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -2585,9 +2677,19 @@ function wireUI() {
         S.revealAll = b.dataset.reveal === 'all'; store.set('revealAll', S.revealAll);
         renderLabelControls(); updateLabels();
     };
+    // Classes: method and log, in the top section.
+    document.addEventListener('click', e => {
+        const b = e.target.closest('.class-seg button'); if (!b) return;
+        S.classMethod = b.dataset.method; store.set('classMethod', S.classMethod); recompute(); renderClassControls();
+    });
+    document.addEventListener('change', e => {
+        if (!e.target.matches('.class-log')) return;
+        S.classLog = e.target.checked; store.set('classLog', S.classLog); recompute(); renderClassControls();
+    });
+    renderClassControls();
     $('size-seg').onclick = e => {
         const b = e.target.closest('button'); if (!b) return;
-        S.labelSize = b.dataset.size; store.set('labelSize2', S.labelSize);
+        S.labelSize = b.dataset.size; store.set('labelSize3', S.labelSize);
         applyLabelSize(); renderLabelControls();
     };
     // Remember which panel cards are open.

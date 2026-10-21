@@ -2,6 +2,14 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v28
+- **Big files show progress as they load.** CSVs are read in 2 MB chunks with a bar (“Reading … 46% of 26 MB · 170,078 rows”), files of 20,000+ rows find their locations in chunks (“Finding locations”), and rows are placed in areas in chunks (“Placing rows in Supervisor District 140,000 of 366,984”), then “Counting and coloring” until the map has drawn. With 366,984 rows, reading takes about 1 s and placing about 0.4 s; the count itself (JoinKit's join) is most of the remaining ~3 s.
+- **Switching areas with a big file** shows the same steps: loading the areas, placing rows (with a bar), counting and coloring.
+- **Faster column checks on big files:** matching columns, number columns and money columns are judged from a sample (20,000 rows for match counts, shown as “about N of M rows match”; 5,000 for types).
+- **Classes for the area colors:** Natural breaks, Equal width or Quantiles, under Classes in the top section, plus **Log** (natural breaks and equal width on the logarithm of the values, for long tails). The legend's footnote names the method. Saved in snapshots.
+- **Area labels start Small;** the size-by-area option is now called **Dynamic** (bigger areas got bigger labels, which read as bigger values).
+- **Bigger fold triangles** on every folding heading.
+
 ## v27
 - **Cells that list several areas count in each.** A column where at least 5% of cells hold commas, semicolons, pipes or line breaks is split, and each part is matched (“Chinatown, Financial District, Nob Hill”). Clicking such a row in the table (or in an area's list) marks all its areas on the map and zooms to them when the row has no location; its card says “In 5 areas: …” and names any part that isn't an area (“Not on the map: Citywide”). The table's area column lists them all.
 - **Forgiving area names:** case, spaces and punctuation don't count (“Downtown / Civic Center”, “Downtown Civic Center”, “Sea Cliff”), each side of a slashed name matches it (“Treasure Island” → “Treasure Island/YBI”), and names of 8+ letters match one or two letters off (“Downton/Civic Center”, “Outer Susnet”). With SF Planning's notification list on Planning Neighborhood Groups, 303 of 317 rows place; Citywide (14) and South Bayshore (1) are left.

@@ -129,16 +129,75 @@ function detectGeometry(src) {
     }
 }
 
-async function readFile(file) {
-    const text = await file.text();
-    const isJSON = /\.(geo)?json$/i.test(file.name) || /^\s*[\[{]/.test(text);
-    return finishSource(isJSON ? parseJSON(text, file.name) : parseCSV(text, file.name));
+// onProgress(step, fraction): 'read' (CSV, by bytes parsed), 'parse' (JSON, no fraction),
+// 'locate' (finding each row's location). Big files yield between chunks so the page can paint.
+async function readFile(file, { onProgress = () => {} } = {}) {
+    const head = await file.slice(0, 64).text();
+    const isJSON = /\.(geo)?json$/i.test(file.name) || /^\s*[\[{]/.test(head);
+    if (isJSON) {
+        onProgress('parse', null);
+        await tick();
+        const text = await file.text();
+        return finishSource(parseJSON(text, file.name), { onProgress });
+    }
+    return finishSource(await parseCSVFile(file, onProgress), { onProgress });
+}
+const tick = () => new Promise(r => setTimeout(r, 0));
+
+// A CSV read in chunks straight from the file, reporting how far through it is.
+function parseCSVFile(file, onProgress) {
+    return new Promise((resolve, reject) => {
+        let headers = null;
+        const rows = [];
+        onProgress('read', 0);
+        Papa.parse(file, {
+            header: true, skipEmptyLines: 'greedy', transformHeader: h => h.trim(), chunkSize: 1024 * 1024 * 2,
+            chunk: res => {
+                if (!headers) headers = (res.meta.fields || []).filter(h => h !== '');
+                for (const r of res.data) { const o = {}; for (const h of headers) o[h] = r[h] ?? ''; rows.push(o); }
+                onProgress('read', Math.min(1, (res.meta.cursor || 0) / (file.size || 1)), rows.length);
+            },
+            complete: () => {
+                if (!headers?.length) return reject(new Error(`${file.name}: no header row found`));
+                resolve({ name: file.name, kind: 'csv', headers, rows });
+            },
+            error: e => reject(new Error(`${file.name}: ${e.message || e}`)),
+        });
+    });
 }
 
-// Shared by files and Airtable: find geometry, stamp the load time.
-function finishSource(src) {
+// Shared by files and Airtable: find geometry, stamp the load time. With onProgress (files), big
+// files find locations in chunks and say how far along they are; without it, all at once.
+function finishSource(src, { onProgress } = {}) {
     if (!src.rows.length) throw new Error(`${src.name}: no rows`);
+    if (onProgress && !src.geoms && src.rows.length > 20000) return finishSourceAsync(src, onProgress);
     detectGeometry(src);
+    return finishTail(src);
+}
+async function finishSourceAsync(src, onProgress) {
+    // Decide where locations are from a sample, then read every row's in chunks.
+    const sample = { rows: src.rows.filter((_, i) => i % Math.ceil(src.rows.length / 5000) === 0), headers: src.headers };
+    detectGeometry(sample);
+    if (sample.geoms) {
+        const make = geomMaker(sample, src.headers);
+        const geoms = new Array(src.rows.length), CH = 25000;
+        for (let i = 0; i < src.rows.length; i += CH) {
+            onProgress('locate', i / src.rows.length);
+            await tick();
+            for (let j = i; j < Math.min(src.rows.length, i + CH); j++) geoms[j] = make(src.rows[j]);
+        }
+        Object.assign(src, { geoms, geomFrom: sample.geomFrom, geomCols: sample.geomCols });
+    }
+    return finishTail(src);
+}
+// The per-row reader detectGeometry settled on for a sample.
+function geomMaker(sample) {
+    const [a, b] = sample.geomCols;
+    if (/^WKT/.test(sample.geomFrom)) return r => parseWKT(r[a]);
+    if (/^location/.test(sample.geomFrom)) return r => parseLatLonPair(r[a]) || parseObjectGeom(r[a]);
+    return r => { const lat = num(r[a]), lon = num(r[b]); return isFinite(lat) && isFinite(lon) && !(lat === 0 && lon === 0) ? { type: 'Point', coordinates: [lon, lat] } : null; };
+}
+function finishTail(src) {
     if (src.geoms && !src.geoms.some(Boolean)) { src.geoms = null; src.geomFrom = null; }
     src.loadedAt = new Date().toISOString();
     return src;

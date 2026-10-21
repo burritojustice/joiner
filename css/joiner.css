@@ -517,3 +517,13 @@ details.card[open] > summary::before, details.sub[open] > summary::before, .lege
 .hex-card > summary::before { content: '▸'; font-size: 11px; }
 .hex-card[open] > summary::before { content: '▾'; }
 details.join-card > summary.src-head::before, details.join-card[open] > summary.src-head::before { content: none; display: none; }
+/* v28: a progress bar in the toast */
+.toast-bar { height: 4px; border-radius: 2px; background: rgba(30,35,64,.12); margin-top: 6px; overflow: hidden; min-width: 200px; }
+.toast-bar i { display: block; height: 100%; width: 0; background: var(--grape); transition: width .15s; }
+/* v28: classes control in the top section */
+.class-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.class-row .check { margin-top: 0; font-size: 12.5px; }
+/* bigger fold triangles */
+details.card > summary::before, details.sub > summary::before, .src-title::before, .legend .lg-fold::before, .hex-card > summary::before { font-size: 15px; width: 15px; }
+.src-title::before { top: 1px; font-size: 16px; }
+.src-title { padding-left: 17px; }
