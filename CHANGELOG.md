@@ -2,6 +2,12 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v29
+- **Hovering a row lights all of its areas,** in the table, in an area's list and on the map, as clicking does (a planning row naming five neighborhoods lights five).
+- **Counting has progress too.** Big files (20,000+ rows) are counted in chunks with a bar (“Counting rows in ZIP Code 200,000 of 366,984”), then “Coloring …” until the map has drawn. The chunked count is one pass that places each row, adds its numbers to its areas' totals and tallies unmatched values; with 366,984 rows it takes about 0.4 s instead of ~3 s, so a 26 MB file loads in about 2.7 s. Smaller files count as before.
+- **Counts are kept** until the file, the set, the column or the hexagons change, so changing the statistic, the classes, log or colors doesn't count again. Classes and log just re-class the areas (a couple of milliseconds), so they don't need progress.
+- **Area outlines** (as in Selecter), in Format areas & map: Auto (as before), Area color, Ghost, Grey, White, Black or None, and Hair, Thin, Mid or Thick. Saved in snapshots.
+
 ## v28
 - **Big files show progress as they load.** CSVs are read in 2 MB chunks with a bar (“Reading … 46% of 26 MB · 170,078 rows”), files of 20,000+ rows find their locations in chunks (“Finding locations”), and rows are placed in areas in chunks (“Placing rows in Supervisor District 140,000 of 366,984”), then “Counting and coloring” until the map has drawn. With 366,984 rows, reading takes about 1 s and placing about 0.4 s; the count itself (JoinKit's join) is most of the remaining ~3 s.
 - **Switching areas with a big file** shows the same steps: loading the areas, placing rows (with a bar), counting and coloring.
