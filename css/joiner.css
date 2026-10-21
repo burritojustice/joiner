@@ -504,3 +504,16 @@ table.grid tbody tr.hl-area td { background: #FFF9E6; }
 .legend.compact { width: 270px; }
 .legend .lg-name { align-items: baseline; }
 .legend .lg-name span { font-size: 11px; }
+/* v27: one triangle for every folding heading (cards, sub-sections, the file title, the legend) */
+details.card > summary, details.sub > summary { list-style: none; }
+details.card > summary::-webkit-details-marker { display: none; }
+details.card > summary::before, details.sub > summary::before, .src-title::before, .legend .lg-fold::before {
+  content: '▸'; display: inline-block; width: 12px; font-size: 11px; line-height: 1; color: var(--ink-soft); font-weight: 400; letter-spacing: 0; }
+details.card[open] > summary::before, details.sub[open] > summary::before, .legend .lg-fold[aria-expanded="true"]::before { content: '▾'; }
+.join-card > summary.src-head::before { content: none; }
+.src-title::before { content: '▾'; position: absolute; left: 0; top: 5px; }
+.join-card:not([open]) .src-title::before { content: '▸'; }
+.src-title { padding-left: 13px; }
+.hex-card > summary::before { content: '▸'; font-size: 11px; }
+.hex-card[open] > summary::before { content: '▾'; }
+details.join-card > summary.src-head::before, details.join-card[open] > summary.src-head::before { content: none; display: none; }
