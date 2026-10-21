@@ -1,5 +1,5 @@
 {
-  "_doc": "Written by scripts/get_layers.mjs \u2014 do not edit by hand.",
+  "_doc": "Written by scripts/get_layers.mjs — do not edit by hand.",
   "portal": "https://data.sf.gov",
   "layers": [
     {
@@ -290,6 +290,271 @@
       "page": "https://data.sf.gov/Geographic-Locations-and-Boundaries/Analysis-Neighborhoods-2020-census-tracts-assigned/sevw-6tgi",
       "source": "file:f61bb599-Analysis_Neighborhoods_-_2020_census_tracts_assigned_to_neighborhoods_20261014.geojson",
       "retrieved": "2026-10-15"
+    },
+    {
+      "id": "bay_area_counties",
+      "label": "Bay Area Counties (9)",
+      "short": "Bay Area Counties",
+      "tab": "Other",
+      "file": "bay_area_counties.geojson",
+      "key": "county",
+      "name": "county",
+      "nameTemplate": "{county} County",
+      "match": {
+        "stripPrefix": "^(county of|city and county of)\\s*",
+        "caseInsensitive": true,
+        "collapseSpace": true,
+        "delimiter": ","
+      },
+      "regional": true,
+      "count": 9,
+      "bbox": [
+        -123.53438,
+        36.89307,
+        -121.20841,
+        38.86421
+      ],
+      "extent": [
+        -123.53438,
+        36.89307,
+        -121.20841,
+        38.86421
+      ],
+      "bytes": 292304,
+      "dataset": "wamw-vt4s",
+      "page": "https://data.sf.gov/Geographic-Locations-and-Boundaries/Bay-Area-County-Polygons/wamw-vt4s",
+      "source": "file:bay_counties.geojson",
+      "retrieved": "2026-10-21"
+    },
+    {
+      "id": "bay_area_zip_codes",
+      "label": "Bay Area ZIP Codes",
+      "short": "Bay Area ZIPs",
+      "tab": "Other",
+      "file": "bay_area_zip_codes.geojson",
+      "key": "zip",
+      "name": "zip",
+      "labelExtras": [
+        {
+          "id": "po_name",
+          "label": "Post office",
+          "prop": "po_name",
+          "hover": true,
+          "list": true
+        }
+      ],
+      "match": {
+        "delimiter": ","
+      },
+      "regional": true,
+      "count": 323,
+      "bbox": [
+        -123.67235,
+        36.60677,
+        -120.68913,
+        39.08279
+      ],
+      "extent": [
+        -123.67235,
+        36.60677,
+        -120.68913,
+        39.08279
+      ],
+      "bytes": 2259612,
+      "dataset": "4kz9-76pb",
+      "page": "https://data.sf.gov/dataset/Bay-Area-ZIP-Codes/4kz9-76pb",
+      "source": "file:bay_zips.geojson",
+      "retrieved": "2026-10-21"
+    },
+    {
+      "id": "election_precincts",
+      "label": "Election Precincts 2022 (514)",
+      "short": "Election Precincts",
+      "tab": "Other",
+      "file": "election_precincts.geojson",
+      "key": "prec_2022",
+      "name": "prec_2022",
+      "nameTemplate": "Precinct {prec_2022}",
+      "labelExtras": [
+        {
+          "id": "neigh22",
+          "label": "Neighborhood",
+          "prop": "neigh22",
+          "hover": true,
+          "list": true
+        }
+      ],
+      "match": {
+        "stripPrefix": "^(precinct|prec)\\s*",
+        "caseInsensitive": true,
+        "delimiter": ","
+      },
+      "count": 514,
+      "bbox": [
+        -122.51495,
+        37.70787,
+        -122.35697,
+        37.83232
+      ],
+      "extent": [
+        -122.51495,
+        37.70787,
+        -122.32792,
+        37.8632
+      ],
+      "bytes": 663445,
+      "dataset": "d6x4-hefw",
+      "page": "https://data.sf.gov/Geographic-Locations-and-Boundaries/Election-Precincts-Current-Defined-2022/d6x4-hefw",
+      "source": "file:Election_Precincts_-_Current,_Defined_2022_20261021.geojson",
+      "retrieved": "2026-10-21"
+    },
+    {
+      "id": "us_house_districts",
+      "label": "US House Districts",
+      "short": "US House",
+      "tab": "Other",
+      "file": "us_house_districts.geojson",
+      "key": "cong22",
+      "name": "cong22",
+      "nameTemplate": "Congressional District {cong22}",
+      "labelTemplate": "CA-{cong22}",
+      "match": {
+        "stripPrefix": "^(ca-?|cd-?|congressional district|us house district|district)\\s*",
+        "caseInsensitive": true,
+        "delimiter": ","
+      },
+      "dissolve": {
+        "from": "election_precincts",
+        "by": "cong22"
+      },
+      "count": 4,
+      "bbox": [
+        -122.51495,
+        37.70787,
+        -122.35697,
+        37.83232
+      ],
+      "extent": [
+        -122.51495,
+        37.70787,
+        -122.32792,
+        37.8632
+      ],
+      "bytes": 128827,
+      "page": "https://data.sf.gov/Geographic-Locations-and-Boundaries/Election-Precincts-Current-Defined-2022/d6x4-hefw",
+      "source": "election_precincts dissolved by cong22",
+      "retrieved": "2026-10-21"
+    },
+    {
+      "id": "state_senate_districts",
+      "label": "State Senate Districts",
+      "short": "State Senate",
+      "tab": "Other",
+      "file": "state_senate_districts.geojson",
+      "key": "sen22",
+      "name": "sen22",
+      "nameTemplate": "State Senate District {sen22}",
+      "labelTemplate": "SD{sen22}",
+      "match": {
+        "stripPrefix": "^(sd-?|senate district|state senate district|district)\\s*",
+        "caseInsensitive": true,
+        "delimiter": ","
+      },
+      "dissolve": {
+        "from": "election_precincts",
+        "by": "sen22"
+      },
+      "count": 3,
+      "bbox": [
+        -122.51495,
+        37.70787,
+        -122.35697,
+        37.83232
+      ],
+      "extent": [
+        -122.51495,
+        37.70787,
+        -122.32792,
+        37.8632
+      ],
+      "bytes": 117456,
+      "page": "https://data.sf.gov/Geographic-Locations-and-Boundaries/Election-Precincts-Current-Defined-2022/d6x4-hefw",
+      "source": "election_precincts dissolved by sen22",
+      "retrieved": "2026-10-21"
+    },
+    {
+      "id": "assembly_districts",
+      "label": "Assembly Districts",
+      "short": "Assembly",
+      "tab": "Other",
+      "file": "assembly_districts.geojson",
+      "key": "assemb22",
+      "name": "assemb22",
+      "nameTemplate": "Assembly District {assemb22}",
+      "labelTemplate": "AD{assemb22}",
+      "match": {
+        "stripPrefix": "^(ad-?|assembly district|district)\\s*",
+        "caseInsensitive": true,
+        "delimiter": ","
+      },
+      "dissolve": {
+        "from": "election_precincts",
+        "by": "assemb22"
+      },
+      "count": 4,
+      "bbox": [
+        -122.51495,
+        37.70787,
+        -122.35697,
+        37.83232
+      ],
+      "extent": [
+        -122.51495,
+        37.70787,
+        -122.32792,
+        37.8632
+      ],
+      "bytes": 144425,
+      "page": "https://data.sf.gov/Geographic-Locations-and-Boundaries/Election-Precincts-Current-Defined-2022/d6x4-hefw",
+      "source": "election_precincts dissolved by assemb22",
+      "retrieved": "2026-10-21"
+    },
+    {
+      "id": "bart_districts",
+      "label": "BART Board Districts",
+      "short": "BART Board",
+      "tab": "Other",
+      "file": "bart_districts.geojson",
+      "key": "bart22",
+      "name": "bart22",
+      "nameTemplate": "BART District {bart22}",
+      "labelTemplate": "B{bart22}",
+      "match": {
+        "stripPrefix": "^(bart district|district)\\s*",
+        "caseInsensitive": true,
+        "delimiter": ","
+      },
+      "dissolve": {
+        "from": "election_precincts",
+        "by": "bart22"
+      },
+      "count": 3,
+      "bbox": [
+        -122.51495,
+        37.70787,
+        -122.35697,
+        37.83232
+      ],
+      "extent": [
+        -122.51495,
+        37.70787,
+        -122.32792,
+        37.8632
+      ],
+      "bytes": 147601,
+      "page": "https://data.sf.gov/Geographic-Locations-and-Boundaries/Election-Precincts-Current-Defined-2022/d6x4-hefw",
+      "source": "election_precincts dissolved by bart22",
+      "retrieved": "2026-10-21"
     }
   ]
 }

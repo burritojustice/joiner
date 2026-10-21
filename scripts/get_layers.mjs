@@ -24,6 +24,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG = JSON.parse(fs.readFileSync(path.join(ROOT, 'config/layers.json'), 'utf8'));
@@ -109,6 +110,16 @@ async function load(layer) {
         console.log(`  reading ${files[layer.id]}`);
         return { gj: JSON.parse(fs.readFileSync(files[layer.id], 'utf8')), source: 'file:' + path.basename(files[layer.id]) };
     }
+    // Layers made by dissolving another layer by one of its properties (election precincts into
+    // US House, State Senate, Assembly and BART districts). The source layer is built first.
+    if (layer.dissolve) {
+        const { from, by } = layer.dissolve;
+        const src = path.join(OUT, `${from}.geojson`);
+        if (!fs.existsSync(src)) throw new Error(`build "${from}" first (dissolve source)`);
+        const { dissolve } = createRequire(import.meta.url)('../js/dissolve.js');
+        console.log(`  dissolving ${from} by ${by}`);
+        return { gj: dissolve(JSON.parse(fs.readFileSync(src, 'utf8')), by), source: `${from} dissolved by ${by}` };
+    }
     // Layers built from files already in the repo (e.g. Who's on First, from get_wof.mjs).
     if (layer.localFiles) {
         const features = layer.localFiles.flatMap(f => {
@@ -163,7 +174,8 @@ async function processLayer(layer) {
     console.log(`${layer.id} (${layer.dataset || "local files"})`);
     const { gj, source } = await load(layer);
     const { features, merged, warnings } = clean(layer, gj);
-    const { extent, view, offshore } = bboxes(features, CONFIG.mainlandBbox);
+    // Bay Area layers zoom to all of themselves; SF layers to SF's mainland.
+    const { extent, view, offshore } = bboxes(features, layer.regional ? [-180, -90, 180, 90] : CONFIG.mainlandBbox);
     const fc = {
         type: 'FeatureCollection',
         name: layer.id,
@@ -188,6 +200,8 @@ function manifestEntry(layer, fc, bytes, source) {
         ...(layer.labelTemplate ? { labelTemplate: layer.labelTemplate } : {}),
         ...(layer.labelExtras ? { labelExtras: layer.labelExtras } : {}),
         ...(layer.match && Object.keys(layer.match).length ? { match: layer.match } : {}),
+        ...(layer.regional ? { regional: true } : {}),
+        ...(layer.dissolve ? { dissolve: layer.dissolve } : {}),
         count: fc.features.length, bbox: fc.bbox, extent: fc.extent, bytes,
         ...(layer.dataset ? { dataset: layer.dataset } : {}), page: layer.page, source, retrieved: new Date().toISOString().slice(0, 10),
     };

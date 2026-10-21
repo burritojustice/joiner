@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v26';
+const _BUILD_VERSION = 'v27';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -150,7 +150,10 @@ async function boot() {
     // H3 hexagons: a generated layer over SF's land, at a resolution that follows the zoom or a fixed one.
     const hexMeta = { id: 'h3', tab: 'H3 hexbins', label: 'H3 hexagons', short: 'H3 hexbins', key: 'h3', name: 'name', hex: true, match: {} };
     if (window.h3) { S.layers.set('h3', hexMeta); S.tabs.push({ tab: hexMeta.tab, layers: [hexMeta] }); }
-    for (const t of S.tabs) S.tabChoice[t.tab] = (t.layers.find(l => l.default) || t.layers[0]).id;
+    // Other: layers with tab "Other" in the config, plus polygon files uploaded here. Always last.
+    const other = S.tabs.find(t => t.tab === OTHER) || { tab: OTHER, layers: [] };
+    S.tabs = [...S.tabs.filter(t => t !== other), other];
+    for (const t of S.tabs) S.tabChoice[t.tab] = (t.layers.find(l => l.default) || t.layers[0])?.id;
     const fromHash = new URLSearchParams(location.hash.slice(1)).get('layer');
     const first = S.layers.has(fromHash) ? fromHash : (S.manifest.layers.find(l => l.default) || S.manifest.layers[0]).id;
     S.tabChoice[S.layers.get(first).tab] = first;
@@ -174,7 +177,7 @@ async function boot() {
     if (lab) { S.labels = lab.fields ?? null; S.prefix = lab.prefix ?? true; S.prefixZoom = lab.prefixZoom != null ? Math.round(lab.prefixZoom) : null; }
 
     // One view for every boundary set, so switching tabs never moves the map.
-    const home = unionBbox(S.manifest.layers.map(l => l.bbox).filter(Boolean));
+    const home = unionBbox(S.manifest.layers.filter(l => !l.regional).map(l => l.bbox).filter(Boolean));
     map = new maplibregl.Map({ container: 'map', style: CONFIG.style, bounds: [[home[0], home[1]], [home[2], home[3]]],
         fitBoundsOptions: { padding: 24 }, attributionControl: { compact: true } });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
@@ -520,17 +523,27 @@ function applyPointStyle(color, glow) {
 // ═════════════════════════════════════════════════════════════════════════
 // Tabs and layers
 // ═════════════════════════════════════════════════════════════════════════
+const OTHER = 'Other', UPLOAD = '\u0000upload';
 function renderTabs() {
     const active = S.layers.get(S.layerId)?.tab;
     $('tabs').innerHTML = S.tabs.map(t => {
         const sel = t.tab === active;
-        if (t.layers.length < 2) return `<div class="tab" role="tab" tabindex="0" aria-selected="${sel}" data-tab="${esc(t.tab)}">${esc(t.tab)}</div>`;
+        const other = t.tab === OTHER;
+        if (t.layers.length < 2 && !other) return `<div class="tab" role="tab" tabindex="0" aria-selected="${sel}" data-tab="${esc(t.tab)}">${esc(t.tab)}</div>`;
         // A tab with several sets shows the chosen set's name and a ▾; the native select sits over it.
+        // Other says "Other" until one of its sets is showing, and ends with Upload.
         const choice = S.layers.get(S.tabChoice[t.tab]);
+        const opt = l => `<option value="${esc(l.id)}"${sel && l.id === choice?.id ? ' selected' : ''}>${esc(shortLabel(l))}</option>`;
+        const own = t.layers.filter(l => !l.uploaded), mine = t.layers.filter(l => l.uploaded);
+        const options = other
+            ? (sel ? '' : `<option value="" selected disabled>Other sets</option>`) + own.map(opt).join('')
+                + (mine.length ? `<optgroup label="Your files">${mine.map(opt).join('')}</optgroup>` : '')
+                + `<option value="${UPLOAD}">Upload polygons (GeoJSON)…</option>`
+            : t.layers.map(opt).join('');
+        const name = other && !sel ? OTHER : choice ? (choice.short || shortLabel(choice)) : OTHER;
         return `<div class="tab menu" role="tab" aria-selected="${sel}" data-tab="${esc(t.tab)}" title="${esc(t.tab)}: choose a set">
-            <span>${esc(choice.short || shortLabel(choice))}</span><span class="tri" aria-hidden="true">▾</span>
-            <select data-tab="${esc(t.tab)}" aria-label="${esc(t.tab)} set">${t.layers.map(l =>
-                `<option value="${l.id}"${l.id === choice.id ? ' selected' : ''}>${esc(shortLabel(l))}</option>`).join('')}</select></div>`;
+            <span>${esc(name)}</span><span class="tri" aria-hidden="true">▾</span>
+            <select data-tab="${esc(t.tab)}" aria-label="${esc(t.tab)} set">${options}</select></div>`;
     }).join('');
 }
 const shortLabel = l => l.label.replace(/\s*\(\d+\)$/, '');
@@ -653,6 +666,36 @@ function hexNames(features) {
     }
 }
 
+// A polygon GeoJSON from the user's computer, added to Other as a set to join to. The key is the
+// property that names each polygon: a name-like one with a different value for each, else any
+// such property, else the polygon's number.
+async function addPolygonLayer(file) {
+    let gj;
+    try { gj = JSON.parse(await file.text()); } catch { toast(`${file.name} isn’t JSON`, { ms: 5000 }); return; }
+    const feats = (gj.type === 'FeatureCollection' ? gj.features : gj.type === 'Feature' ? [gj] : [])
+        .filter(f => /^(Multi)?Polygon$/.test(f?.geometry?.type));
+    if (!feats.length) { toast(`${file.name} has no polygons`, { sub: 'Upload a GeoJSON file of areas (Polygon or MultiPolygon features).', ms: 6000 }); return; }
+    const props = [...new Set(feats.flatMap(f => Object.keys(f.properties || {})))].filter(k => !k.startsWith(':') && !k.startsWith('_'));
+    const unique = k => { const v = feats.map(f => f.properties?.[k]); return v.every(x => x !== null && x !== undefined && String(x).trim() !== '' && typeof x !== 'object') && new Set(v.map(String)).size === v.length; };
+    const nameLike = k => /(^|_)(name|label|title|nhood|neighbo|district|county|zip|zcta|geoid|code|id)(_|$)|name$/i.test(k);
+    const key = props.filter(unique).sort((a, b) => nameLike(b) - nameLike(a) || /name/i.test(b) - /name/i.test(a))[0] || null;
+    const base = file.name.replace(/\.(geo)?json$/i, '');
+    let id = 'upload_' + base.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 40), n = 2;
+    while (S.layers.has(id)) id = id.replace(/_\d+$/, '') + '_' + n++;
+    const features = feats.map((f, i) => {
+        const k = key ? String(f.properties[key]).trim() : String(i + 1);
+        return { type: 'Feature', id: k, properties: { ...(f.properties || {}), ...(key ? {} : { number: k }), _jid: k }, geometry: f.geometry };
+    });
+    const fc = { type: 'FeatureCollection', features };
+    const meta = { id, label: `${base} (${features.length})`, short: base, tab: OTHER, key: key || 'number', name: key || 'number',
+        match: { caseInsensitive: true, collapseSpace: true }, uploaded: true, bbox: bboxFC(fc) };
+    S.layers.set(id, meta); S.geo.set(id, fc);
+    const anchors = new Map(); features.forEach(f => anchors.set(f.id, focusOf(f.geometry, meta.bbox))); S.anchors.set(id, anchors);
+    S.tabs.find(t => t.tab === OTHER).layers.push(meta);
+    await setLayer(id);
+    toast(`Added ${base}: ${features.length.toLocaleString()} polygons`, { sub: key ? `Each is named by “${key}”, which rows can match.` : 'No property names each polygon, so they’re numbered.', ms: 6000 });
+}
+
 async function setLayer(id) {
     const meta = S.layers.get(id);
     S.layerId = id;
@@ -677,9 +720,15 @@ async function setLayer(id) {
     // new layer's colors were set in the same frame, wiping some of them (areas with rows left blank).
     if (S.selectedId !== null) map.setFeatureState({ source: 'bounds', id: S.selectedId }, { selected: false });
     if (S.hoverId !== null) map.setFeatureState({ source: 'bounds', id: S.hoverId }, { hover: false });
+    selectAlso([]);
     S.selectedId = null; S.hoverId = null; S.expanded = null; popup.remove();
     map.getSource('bounds').setData(fc);
     boundsKey = id + '|all|' + fc.features.length;
+    // Sets beyond SF (Bay Area, uploads): show all of the set; coming back to SF, return to the city.
+    const wasWide = S.wideView;
+    S.wideView = !!(meta.regional || meta.uploaded);
+    if (S.wideView) { const b = meta.bbox || bboxFC(fc); map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 30, duration: 600 }); }
+    else if (wasWide && !meta.hex) { const h = unionBbox(S.manifest.layers.filter(l => !l.regional).map(l => l.bbox).filter(Boolean)); map.fitBounds([[h[0], h[1]], [h[2], h[3]]], { padding: 24, duration: 600 }); }
     $('list-title').textContent = shortLabel(meta);
     recompute();
     // Keep the toast until the map has drawn the new hexagons (most of the wait is drawing, not counting).
@@ -737,12 +786,74 @@ function areasForRows(layerId) {
     }
     return S.areaOf.get(layerId);
 }
-function normalizerFor(meta) {
+// A layer's normalizer, made forgiving with its own names: case, spaces and punctuation don't
+// count ("Downtown / Civic Center", "Downtown Civic Center" and "Sea Cliff" all match), each side
+// of a slashed name matches it ("Treasure Island" → "Treasure Island/YBI"), and a misspelling one
+// or two letters off a single name matches it ("Downton/Civic Center", "Outer Susnet"); names under
+// 8 letters must match exactly.
+const loose = s => String(s).toLowerCase().normalize('NFKD').replace(/[^a-z0-9]/g, '');
+function editDistance(a, b, max) {
+    if (Math.abs(a.length - b.length) > max) return max + 1;
+    let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) {
+        const cur = [i]; let low = i;
+        for (let j = 1; j <= b.length; j++) { cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); low = Math.min(low, cur[j]); }
+        if (low > max) return max + 1;
+        prev = cur;
+    }
+    return prev[b.length];
+}
+const normCache = new WeakMap();   // feature collection → { layer id: normalizer }
+function normalizerFor(meta, fc = S.geo.get(meta.id)) {
     const m = meta.match || {};
-    return JoinKit.makeKeyNormalizer({
+    const base = JoinKit.makeKeyNormalizer({
         stripPrefix: m.stripPrefix ? new RegExp(m.stripPrefix, 'i') : undefined,
         caseInsensitive: !!m.caseInsensitive, collapseSpace: !!m.collapseSpace,
     });
+    if (!fc || meta.hex) return base;
+    const byFc = normCache.get(fc) || normCache.set(fc, {}).get(fc);
+    if (byFc[meta.id]) return byFc[meta.id];
+    const names = new Set(), canon = new Map(), parts = new Map();
+    for (const f of fc.features) {
+        const b = base(f.properties[meta.key]);
+        if (!b) continue;
+        names.add(b); canon.set(loose(b), b);
+        for (const p of String(b).split(/\s*[\/&]\s*|\s+and\s+/)) if (p !== b && loose(p).length >= 4) parts.set(loose(p), parts.has(loose(p)) ? null : b);
+    }
+    for (const [k, b] of parts) if (b && !canon.has(k)) canon.set(k, b);
+    const keys = [...canon.keys()].filter(k => /[a-z]/.test(k)), memo = new Map();
+    const norm = v => {
+        const b = base(v);
+        if (!b || names.has(b)) return b;
+        if (memo.has(b)) return memo.get(b);
+        const l = loose(b);
+        let out = canon.get(l);
+        if (out == null && /[a-z]/.test(l) && l.length >= 8) {   // short names are too close to each other ("Marin", "Marina")
+            const max = l.length >= 11 ? 2 : 1;
+            let best = null, bd = max + 1, tie = false;
+            for (const k of keys) { const d = editDistance(l, k, max); if (d < bd) { bd = d; best = k; tie = false; } else if (d === bd) tie = true; }
+            if (best && bd <= max && !tie) out = canon.get(best);
+        }
+        memo.set(b, out ?? b);
+        return out ?? b;
+    };
+    norm.names = names;
+    byFc[meta.id] = norm;
+    return norm;
+}
+// A column listing several areas in a cell ("Mission, South of Market"): when at least 5% of its
+// values hold a comma, semicolon, pipe or line break, each part counts. Slashes stay (they're in names).
+const MULTI = /\s*[,;|\n]\s*/;
+const delimCache = new WeakMap();   // source → { column: delimiter }
+function delimFor(col, meta = S.layers.get(S.layerId)) {
+    if (!S.src || !col || col === LOCATION) return meta.match?.delimiter;
+    const bySrc = delimCache.get(S.src) || delimCache.set(S.src, {}).get(S.src);
+    if (!(col in bySrc)) {
+        let filled = 0, multi = 0;
+        for (const r of S.src.rows.slice(0, 5000)) { const v = r[col]; if (v == null || v === '' || Array.isArray(v)) continue; filled++; if (/[,;|\n]/.test(String(v))) multi++; }
+        bySrc[col] = filled && multi / filled >= 0.05 ? MULTI : null;
+    }
+    return bySrc[col] || meta.match?.delimiter;
 }
 
 const rawValues = (row, col, delimiter) => {
@@ -753,7 +864,6 @@ const rawValues = (row, col, delimiter) => {
 // Every column scored by how many rows it would place on this layer.
 function keyCandidates(meta, fc, normalize) {
     const index = JoinKit.buildFeatureIndex(fc.features, meta.key, { normalize, idOf: f => f.id });
-    const delimiter = meta.match?.delimiter;
     const loc = [];
     if (S.src.points) {
         const areas = areasForRows(S.layerId);
@@ -763,7 +873,7 @@ function keyCandidates(meta, fc, normalize) {
     return [...loc, ...S.src.headers.filter(c => !(S.src.geomCols || []).includes(c)).map(col => {
         let hits = 0, filled = 0;
         for (const row of S.src.rows) {
-            const keys = JoinKit.rowKeys(row, col, normalize, delimiter);
+            const keys = JoinKit.rowKeys(row, col, normalize, delimFor(col, meta));
             if (!keys.length) continue;
             filled++;
             if (keys.some(k => index.has(k))) hits++;
@@ -814,9 +924,9 @@ async function matchByColumn(col) {
 function recompute() {
     const meta = S.layers.get(S.layerId);
     const fc = S.geo.get(S.layerId);
-    S.join = null; S.values = new Map(); S.classes = null; S.unmatched = [];
+    S.join = null; S.values = new Map(); S.classes = null; S.unmatched = []; S.rowAreas = null;
     if (S.src && fc) {
-        const normalize = normalizerFor(meta);
+        const normalize = normalizerFor(meta, fc);
         S.candidates = keyCandidates(meta, fc, normalize);
         let keyCol = S.keyCols[S.layerId];
         if (!keyCol || !S.candidates.some(c => c.col === keyCol)) keyCol = S.candidates[0]?.hits ? S.candidates[0].col : null;
@@ -835,18 +945,26 @@ function recompute() {
             S.join.keyCol = keyCol;
             S.join.numericCols = S.join.numericCols.filter(c => !(S.src.geomCols || []).includes(c));
             areas.forEach((a, i) => { S.rowArea[i] = a; });
+            S.rowAreas = null;
             const outside = S.src.points.filter((p, i) => p && areas[i] == null).length;
             S.unmatched = outside ? [{ label: 'Outside every area', n: outside }] : [];
             S.join.nullRows = S.src.points.filter(p => !p).length;
         } else if (keyCol) {
             S.keyCols[S.layerId] = keyCol;
-            const delimiter = meta.match?.delimiter;
+            const delimiter = delimFor(keyCol, meta);
             S.join = JoinKit.buildJoin({ rows: S.src.rows, headers: S.src.headers, keyCol, features: fc.features,
                 propKey: meta.key, normalize, delimiter, idOf: f => f.id });
             S.join.keyCol = keyCol;
             S.join.numericCols = S.join.numericCols.filter(c => !(S.src.geomCols || []).includes(c));
             const idx = S.rowIndex = new Map(S.src.rows.map((r, i) => [r, i]));
-            for (const [id, e] of Object.entries(S.join.byId)) for (const r of e.rows) { const i = idx.get(r); if (i != null && S.rowArea[i] == null) S.rowArea[i] = id; }
+            // Every area a row is in (several when its cell lists several), in the cell's order.
+            S.rowAreas = S.src.rows.map(() => []);
+            for (const [id, e] of Object.entries(S.join.byId)) for (const r of e.rows) { const i = idx.get(r); if (i != null && !S.rowAreas[i].includes(id)) S.rowAreas[i].push(id); }
+            const order = new Map(fc.features.map(f => [f.id, f]));
+            S.rowAreas.forEach((ids, i) => {
+                if (ids.length > 1) { const keys = JoinKit.rowKeys(S.src.rows[i], keyCol, normalize, delimiter); ids.sort((a, b) => keys.indexOf(normalize(order.get(a)?.properties[meta.key])) - keys.indexOf(normalize(order.get(b)?.properties[meta.key]))); }
+                S.rowArea[i] = ids[0] ?? null;
+            });
             // Unmatched values with row counts, labelled with the text as it appears in the data.
             const index = JoinKit.buildFeatureIndex(fc.features, meta.key, { normalize, idOf: f => f.id });
             const tally = new Map();
@@ -1291,11 +1409,11 @@ function renderPanel() {
             ? `Each row is placed in the ${meta.hex ? 'hexagon' : 'area'} that contains its location (${S.src.geomFrom}).`
                 + (S.src.geoms?.some(g => g && /LineString/.test(g.type)) ? ' Lines are placed, and counted, by their midpoint.' : '')
                 + ' Turn this off to match by a column.'
-            : `Compared with ${shortLabel(meta)} “${meta.key}”` + (meta.match?.delimiter ? `; cells with “${meta.match.delimiter}” count toward each value` : '') + '.';
+            : `Compared with ${shortLabel(meta)} “${meta.key}”` + (delimFor(S.join?.keyCol, meta) === MULTI ? '; cells listing several (split on commas, semicolons or line breaks) count toward each' : meta.match?.delimiter ? `; cells with “${meta.match.delimiter}” count toward each value` : '') + '.';
         $('metric-select').innerHTML = metricOptions().map(m => `<option value="${esc(m.value)}"${m.value === S.metric ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
         $('metric-select').disabled = !S.join;
         $('metric-hint').textContent = S.metric.startsWith('pct_') ? `Share of the total across all ${total.toLocaleString()} rows, including rows that matched no area.` +
-            (meta.match?.delimiter ? ' A row listed in two areas counts in both, so shares can add up to more than 100%.' : '') : '';
+            (delimFor(S.join?.keyCol, meta) ? ' A row listed in two areas counts in both, so shares can add up to more than 100%.' : '') : '';
 
         if (S.join) {
             const j = S.join, unmatchedRows = total - j.matchedRows - j.nullRows;
@@ -1374,7 +1492,7 @@ function itemsHTML(id) {
 
 // The legend folds to one bar per layer (the ▸ in its heading): the classes as equal blocks,
 // min and max at the ends, the median as a line and the mean as a diamond where they fall.
-const legendHead = () => `<button type="button" class="lg-fold" aria-expanded="${!S.legendCompact}" title="${S.legendCompact ? 'Show every class' : 'Fold to one bar per layer'}">${S.legendCompact ? '▸' : '▾'} Legend</button>`;
+const legendHead = () => `<button type="button" class="lg-fold" aria-expanded="${!S.legendCompact}" title="${S.legendCompact ? 'Show every class' : 'Fold to one bar per layer'}">Legend</button>`;
 function renderLegend() {
     const lg = $('legend');
     if (!S.src || (!S.join && !S.rowClasses && !S.rowSizes)) { lg.hidden = true; return; }
@@ -1522,7 +1640,7 @@ function setTableOpen(on) {
 function tableRowIdx() {
     const n = S.src?.rows.length || 0;
     let idx = [...Array(n).keys()];
-    if (T.filter === 'area') idx = S.selectedId == null ? [] : idx.filter(i => S.rowArea[i] === S.selectedId);
+    if (T.filter === 'area') idx = S.selectedId == null ? [] : idx.filter(i => areasOfRow(i).includes(S.selectedId));
     else if (T.filter === 'view') {
         const b = map.getBounds();
         idx = idx.filter(i => { const p = S.src.points?.[i]; return p && b.contains(p); });
@@ -1538,7 +1656,7 @@ function tableRowIdx() {
 function renderTable() {
     if (!T.open || !S.src) return;
     const cols = tableCols(), idx = tableRowIdx(), shown = T.shown = idx.slice(0, TABLE_MAX);
-    const area = i => S.rowArea[i] != null ? areaName(S.rowArea[i]) : '';
+    const area = i => areaNamesOf(i).join(', ');
     $('table-count').textContent = `${idx.length.toLocaleString()} of ${S.src.rows.length.toLocaleString()} rows`
         + (T.filter === 'area' ? (S.selectedId == null ? ' · click an area to show its rows' : ` in ${areaName(S.selectedId)}`) : T.filter === 'view' ? ' in view' : '')
         + (idx.length > TABLE_MAX ? ` · showing the first ${TABLE_MAX.toLocaleString()}` : '');
@@ -1571,7 +1689,7 @@ function tableAreaHover(id) {
     const grid = $('table-grid');
     grid.querySelectorAll('tr.hl-area').forEach(tr => tr.classList.remove('hl-area'));
     if (id == null) return;
-    for (const tr of grid.tBodies[0]?.rows || []) if (S.rowArea[+tr.dataset.row] === id) tr.classList.add('hl-area');
+    for (const tr of grid.tBodies[0]?.rows || []) if (areasOfRow(+tr.dataset.row).includes(id)) tr.classList.add('hl-area');
 }
 // A feature hovered on the map: highlight and reveal its row.
 let tableHoverRow = null;
@@ -1590,7 +1708,15 @@ function tableHover(i) {
     }
 }
 
+// A row listing several areas: the others are marked too (as selected), until the next selection.
+S.alsoSel = [];
+function selectAlso(ids) {
+    for (const id of S.alsoSel) if (id !== S.selectedId) map.setFeatureState({ source: 'bounds', id }, { selected: false });
+    S.alsoSel = ids.filter(id => id !== S.selectedId);
+    for (const id of S.alsoSel) map.setFeatureState({ source: 'bounds', id }, { selected: true });
+}
 function select(id, { lngLat, fromPopup = false, fly = false, noPopup = false } = {}) {
+    selectAlso([]);
     if (S.selectedId !== null) map.setFeatureState({ source: 'bounds', id: S.selectedId }, { selected: false });
     S.selectedId = id;
     document.querySelectorAll('#area-list li.selected').forEach(li => li.classList.remove('selected'));
@@ -1922,13 +2048,16 @@ function rowTitle(i) {
     const r = S.src.rows[i], col = rowLabelCol();
     return JoinKit.cellText(r[col]) || `Row ${i + 1}`;
 }
+// The areas a row is in: several when its cell lists several, else its one area.
+const areasOfRow = i => S.rowAreas?.[i] || (S.rowArea[i] != null ? [S.rowArea[i]] : []);
+const areaNamesOf = i => areasOfRow(i).map(areaName).filter(Boolean);
 function areaName(id) {
     const f = id != null && S.geo.get(S.layerId).features.find(f => f.id === id);
     return f ? nameOf(f) : null;
 }
 function showRowTip(point, i) {
-    const tip = $('tip'), a = areaName(S.rowArea[i]);
-    tip.innerHTML = `<b>${esc(rowTitle(i))}</b><div>${a ? esc(a) : 'Not placed in an area'}</div>`;
+    const tip = $('tip'), a = areaNamesOf(i);
+    tip.innerHTML = `<b>${esc(rowTitle(i))}</b><div>${a.length ? esc(a.length > 3 ? `${a.slice(0, 3).join(', ')} and ${a.length - 3} more` : a.join(', ')) : 'Not placed in an area'}</div>`;
     tip.style.left = point.x + 'px'; tip.style.top = point.y + 'px';
     tip.hidden = false;
 }
@@ -1994,10 +2123,16 @@ function openArea(id, { fly = true, toggle = false } = {}) {
 }
 
 function rowPopupHTML(i, { all = false } = {}) {
-    const r = S.src.rows[i], a = areaName(S.rowArea[i]);
+    const r = S.src.rows[i], names = areaNamesOf(i);
+    // A cell listing several areas: name them all (in a hover card, the first few), and any part that isn't one.
+    const meta = S.layers.get(S.layerId), keyCol = S.join?.keyCol, delim = keyCol && keyCol !== LOCATION && delimFor(keyCol, meta);
+    let off = [];
+    if (delim) { const norm = normalizerFor(meta); off = rawValues(r, keyCol, delim).map(v => String(v).trim()).filter(v => v && !norm.names?.has(norm(v))); }
+    const shown = all || names.length <= 4 ? names : [...names.slice(0, 3), `and ${names.length - 3} more`];
+    const a = names.length ? (names.length > 1 ? `In ${names.length} ${meta.hex ? 'hexagons' : 'areas'}: ` : 'In ') + shown.join(', ') : '';
     const fields = S.src.headers.filter(h => !h.startsWith('_') && JoinKit.cellText(r[h]) !== '' && !(S.src.geomCols || []).includes(h)).slice(0, all ? Infinity : 30);
     // Value first, field name under it (long names are cut short; the full name is in the tooltip).
-    return `<div class="pop"><h4>${esc(rowTitle(i))}</h4><div class="sub">${a ? `In ${esc(a)}` : 'Not placed in an area'}</div>
+    return `<div class="pop"><h4>${esc(rowTitle(i))}</h4><div class="sub">${a ? esc(a) : 'Not placed in an area'}${off.length ? `<br>Not on the map: ${esc(off.join(', '))}` : ''}</div>
         <dl class="fields">${fields.map(h => `<div><dd>${esc(cellShow(r[h]))}</dd><dt title="${esc(h)}">${esc(h)}</dt></div>`).join('')}</dl></div>`;
 }
 
@@ -2236,16 +2371,21 @@ function wireUI() {
         if (e.target.closest('.tab') && !S.showAreas) { S.showAreas = true; applyAreasVisible(); }
         if (e.target.closest('select')) return;
         const tab = e.target.closest('.tab')?.dataset.tab;
-        if (tab && S.layers.get(S.layerId).tab !== tab) setLayer(S.tabChoice[tab]);
+        if (tab && S.layers.get(S.layerId).tab !== tab && S.tabChoice[tab]) setLayer(S.tabChoice[tab]);
     });
     $('tabs').addEventListener('keydown', e => {
         if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('tab')) { e.preventDefault(); e.target.click(); }
     });
-    $('tabs').addEventListener('change', e => { if (e.target.matches('select')) setLayer(e.target.value); });
+    $('tabs').addEventListener('change', e => {
+        if (!e.target.matches('select')) return;
+        if (e.target.value === UPLOAD) { renderTabs(); $('poly-input').click(); return; }
+        setLayer(e.target.value);
+    });
+    $('poly-input').onchange = e => { const f = e.target.files[0]; if (f) addPolygonLayer(f); e.target.value = ''; };
     // Opening the menu on an inactive tab switches to that tab, even if the same set is picked again.
     $('tabs').addEventListener('mousedown', e => {
         const sel = e.target.closest('select');
-        if (sel && S.layers.get(S.layerId).tab !== sel.dataset.tab) setLayer(S.tabChoice[sel.dataset.tab]);
+        if (sel && sel.dataset.tab !== OTHER && S.layers.get(S.layerId).tab !== sel.dataset.tab) setLayer(S.tabChoice[sel.dataset.tab]);
     });
 
     $('load-btn').onclick = $('empty-load').onclick = () => $('file-input').click();
@@ -2394,7 +2534,12 @@ function wireUI() {
         // when it has a location, else to its area.
         const i = +tr.dataset.row, p = S.src.points?.[i];
         popup.remove();
-        if (S.rowArea[i] != null) openArea(S.rowArea[i], { fly: !p });
+        const ids = areasOfRow(i);
+        if (ids.length) openArea(ids[0], { fly: !p && ids.length === 1 });
+        if (ids.length > 1) {   // all of the row's areas marked, and in view when the row has no location
+            selectAlso(ids);
+            if (!p) { const an = S.anchors.get(S.layerId), b = unionBbox(ids.map(id => an.get(id)?.fit).filter(Boolean)); map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 60, maxZoom: 15, duration: 500 }); }
+        }
         if (p) map.flyTo({ center: p, zoom: isHex(S.layerId) ? map.getZoom() : Math.max(map.getZoom(), 15), duration: 600 });
         pinRowCard(i, document.querySelector(`#area-list .items li[data-row="${i}"]`));
     });
@@ -2459,9 +2604,10 @@ function wireUI() {
         if (item) {   // pin its card (click again to unpin); go to it when it has a location
             if (item.dataset.row === '') return;
             const i = +item.dataset.row;
-            if (cardPinned === i) { pinRowCard(null); return; }
+            if (cardPinned === i) { pinRowCard(null); selectAlso([]); return; }
             popup.remove();
             pinRowCard(i, item);
+            selectAlso(areasOfRow(i));   // a row listing several areas: mark the others too
             if (S.src.points?.[i]) map.flyTo({ center: S.src.points[i], zoom: isHex(S.layerId) ? map.getZoom() : Math.max(map.getZoom(), 15.5), duration: 600 });
             return;
         }

@@ -2,6 +2,15 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v27
+- **Cells that list several areas count in each.** A column where at least 5% of cells hold commas, semicolons, pipes or line breaks is split, and each part is matched (“Chinatown, Financial District, Nob Hill”). Clicking such a row in the table (or in an area's list) marks all its areas on the map and zooms to them when the row has no location; its card says “In 5 areas: …” and names any part that isn't an area (“Not on the map: Citywide”). The table's area column lists them all.
+- **Forgiving area names:** case, spaces and punctuation don't count (“Downtown / Civic Center”, “Downtown Civic Center”, “Sea Cliff”), each side of a slashed name matches it (“Treasure Island” → “Treasure Island/YBI”), and names of 8+ letters match one or two letters off (“Downton/Civic Center”, “Outer Susnet”). With SF Planning's notification list on Planning Neighborhood Groups, 303 of 317 rows place; Citywide (14) and South Bayshore (1) are left.
+- **An Other menu** at the end of the tabs: Bay Area Counties, Bay Area ZIP Codes, Election Precincts 2022, and US House, State Senate, Assembly and BART Board districts made from the precincts. Bay Area sets zoom out to show all of themselves; going back to an SF set returns to the city.
+- **Upload polygons:** Other › Upload polygons (GeoJSON)… adds your own areas for this session, named by a property with a different value for each polygon (a name-like one first), under “Your files”.
+- **Districts from precincts:** `dissolve: { from, by }` in `config/layers.json` builds a layer by merging the source's polygons that share a value (shared edges cancel, so the districts have clean outlines). `js/dissolve.js` does it, in `get_layers.mjs` now and in the browser later if we want it for uploads.
+- **Every folding heading has the same triangle:** cards, sub-sections, the file title and the legend.
+- Data: precincts from DataSF d6x4-hefw; Bay Area ZIPs from DataSF 4kz9-76pb (CSV export, simplified to ~10 m); Bay Area counties from the California county boundaries file (CDTFA), the nine Bay Area counties, simplified to ~20 m — swap in DataSF wamw-vt4s with `get_layers.mjs` when convenient.
+
 ## v26
 - **The legend folds to one bar per layer.** Click ▾ Legend to fold it (it remembers). Each layer (the areas' statistic, and the features when they're colored by a number) is one bar with an equal block per class, the min and max at its ends, the median as a line and the mean as a diamond where they fall in their class, labelled underneath (merged when they're close or the same). The heading line gives how many areas or hexagons have values and how many are empty; hover a bar for all four numbers. Features colored by categories show their colors as a short key. Click ▸ Legend to unfold.
 
