@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v24';
+const _BUILD_VERSION = 'v25';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -658,6 +658,12 @@ async function setLayer(id) {
     S.tabChoice[meta.tab] = id;
     history.replaceState(null, '', '#layer=' + id);
     renderTabs();
+    // Big files on hexagons take a moment: say what's happening, and let the toast paint first.
+    const busy = meta.hex && (S.src?.rows.length || 0) >= 3000;
+    if (busy) {
+        toast(`Counting ${S.src.rows.length.toLocaleString()} rows into hexagons`, { busy: true, sub: `Resolution ${hexResNow()}` });
+        await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+    }
     const fc = await loadGeo(id);
     renderHexControls();
     applyPointSize(); renderFormatFeatures();
@@ -675,6 +681,8 @@ async function setLayer(id) {
     boundsKey = id + '|all|' + fc.features.length;
     $('list-title').textContent = shortLabel(meta);
     recompute();
+    // Keep the toast until the map has drawn the new hexagons (most of the wait is drawing, not counting).
+    if (busy) map.once('idle', () => toast(null));
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -918,21 +926,37 @@ const metricLabel = () => statLabel(S.metric);
 
 // Natural breaks (Ckmeans, Wang & Song 2011): classes are built around gaps in the values,
 // so very different amounts don't share a color the way rank-based quantiles can force.
+// Values are first gathered into runs of equal values (counts are mostly 1, 2, 3…), and with more
+// than 1,500 distinct values into 1,500 runs of neighbors, so thousands of hexagons classify in
+// milliseconds instead of a second; each group is still a slice of the sorted values.
 function ckmeans(sorted, k) {
-    const n = sorted.length;
+    const N = sorted.length;
+    const runs = [];   // [start, end) in sorted
+    for (let i = 0; i < N;) { let j = i + 1; while (j < N && sorted[j] === sorted[i]) j++; runs.push([i, j]); i = j; }
+    const MAX = 1500;
+    const buckets = runs.length <= MAX ? runs : Array.from({ length: MAX }, (_, b) => {
+        const r0 = Math.floor(b * runs.length / MAX), r1 = Math.floor((b + 1) * runs.length / MAX) - 1;
+        return [runs[r0][0], runs[r1][1]];
+    });
+    const n = buckets.length;
+    k = Math.min(k, n);
+    const W = new Float64Array(n + 1), S1 = new Float64Array(n + 1), S2 = new Float64Array(n + 1);
+    buckets.forEach(([a, b], i) => {
+        let s1 = 0, s2 = 0;
+        for (let t = a; t < b; t++) { s1 += sorted[t]; s2 += sorted[t] * sorted[t]; }
+        W[i + 1] = W[i] + (b - a); S1[i + 1] = S1[i] + s1; S2[i + 1] = S2[i] + s2;
+    });
+    const ssd = (j, i) => { const w = W[i + 1] - W[j], s1 = S1[i + 1] - S1[j]; return S2[i + 1] - S2[j] - s1 * s1 / w; };
     const cost = Array.from({ length: k }, () => new Float64Array(n));
     const back = Array.from({ length: k }, () => new Int32Array(n));
-    const sum = new Float64Array(n + 1), sq = new Float64Array(n + 1);
-    for (let i = 0; i < n; i++) { sum[i + 1] = sum[i] + sorted[i]; sq[i + 1] = sq[i] + sorted[i] * sorted[i]; }
-    const ssd = (j, i) => { const m = i - j + 1, s = sum[i + 1] - sum[j]; return sq[i + 1] - sq[j] - s * s / m; };
-    for (let i = 0; i < n; i++) { cost[0][i] = ssd(0, i); back[0][i] = 0; }
+    for (let i = 0; i < n; i++) cost[0][i] = ssd(0, i);
     for (let c = 1; c < k; c++) for (let i = c; i < n; i++) {
         let best = Infinity, arg = c;
         for (let j = c; j <= i; j++) { const v = cost[c - 1][j - 1] + ssd(j, i); if (v < best) { best = v; arg = j; } }
         cost[c][i] = best; back[c][i] = arg;
     }
     const groups = []; let end = n - 1;
-    for (let c = k - 1; c >= 0; c--) { const start = back[c][end]; groups.unshift(sorted.slice(start, end + 1)); end = start - 1; }
+    for (let c = k - 1; c >= 0; c--) { const start = back[c][end]; groups.unshift(sorted.slice(buckets[start][0], buckets[end][1])); end = start - 1; }
     return groups;
 }
 
@@ -980,10 +1004,11 @@ const isMoney = stat => /^(sum|avg)_/.test(stat) && S.join?.currencyCols.has(sta
 // Numbers, as in Selecter: abbreviated values (1K, 1M, 1B, 1T) get one decimal below 100
 // of the unit and none above ($79.4K, $104K, 1.2M); plain values get two decimals below 1,
 // one below 100 and none above. Dollar amounts never show cents.
+const NF = [];   // number formats by decimals: toLocaleString builds one per call, slow over thousands of labels
 function fmtNumber(v, { money = false, abbrev = false, whole = false } = {}) {
     if (v === null || v === undefined || !isFinite(v)) return '—';
     const a = Math.abs(v), sign = v < 0 ? '-' : '';
-    const dec = (x, max) => x.toLocaleString('en-US', { maximumFractionDigits: max, minimumFractionDigits: 0 });
+    const dec = (x, max) => (NF[max] ||= new Intl.NumberFormat('en-US', { maximumFractionDigits: max, minimumFractionDigits: 0 })).format(x);
     let out;
     const unit = abbrev && [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']].find(([d]) => a >= d);
     if (unit) { const u = a / unit[0]; out = (u >= 100 ? String(Math.round(u)) : String(+u.toFixed(1))) + unit[1]; }
@@ -1101,7 +1126,7 @@ function updateLabels() {
     const anchors = S.anchors.get(S.layerId);
     const ranked = [...fc.features].sort((a, b) => anchors.get(b.id).area - anchors.get(a.id).area);
     const rank = new Map(ranked.map((f, i) => [f.id, i]));
-    const features = fc.features.filter(f => !isEmptyArea(f.id)).map(f => {
+    const features = fc.features.filter(f => !isEmptyArea(f.id) && !(meta.hex && !(S.values.get(f.id) > 0))).map(f => {   // empty hexagons have no label
         const texts = fields.map(fl => labelText(fl, f));
         const a = anchors.get(f.id).area * 111 * 88;
         const props = { _rank: rank.get(f.id), _ts: Math.max(0.85, Math.min(1.2, Math.sqrt(a / (S._medianArea || a)) ** 0.5)), ...labelColors(f.id) };
@@ -1294,6 +1319,7 @@ function renderPanel() {
     renderList();
 }
 
+const NAME_ORDER = new Intl.Collator('en', { numeric: true });   // one collator: localeCompare with options builds one per call
 function renderList() {
     const fc = S.geo.get(S.layerId);
     if (!fc) return;
@@ -1307,9 +1333,12 @@ function renderList() {
     if (meta.hex) list = showV ? rows.filter(r => r.v > 0) : [];
     else if (hidingEmpty()) list = rows.filter(r => !isEmptyArea(r.id));
     const max = Math.max(0, ...list.map(r => r.v || 0));
-    list.sort(S.sort === 'name' || !showV ? (a, b) => a.name.localeCompare(b.name, 'en', { numeric: true })
-        : (a, b) => (b.v ?? -Infinity) - (a.v ?? -Infinity) || a.name.localeCompare(b.name, 'en', { numeric: true }));
-    $('area-list').innerHTML = (meta.hex ? `<li class="note">${showV ? `${list.length.toLocaleString()} of ${rows.length.toLocaleString()} hexagons have rows` : `${rows.length.toLocaleString()} hexagons at resolution ${S.hexRes}`}</li>` : '') + list.map(r => {
+    list.sort(S.sort === 'name' || !showV ? (a, b) => NAME_ORDER.compare(a.name, b.name)
+        : (a, b) => (b.v ?? -Infinity) - (a.v ?? -Infinity) || NAME_ORDER.compare(a.name, b.name));
+    // Thousands of hexagons: list the first 500 (the open one always), and say so.
+    const LIST_MAX = 500, total = list.length;
+    if (meta.hex && total > LIST_MAX) { const open = list.find(r => r.id === S.expanded); list = list.slice(0, LIST_MAX); if (open && !list.includes(open)) list.push(open); }
+    $('area-list').innerHTML = (meta.hex ? `<li class="note">${showV ? `${total.toLocaleString()} of ${rows.length.toLocaleString()} hexagons have rows${total > LIST_MAX ? ` · first ${LIST_MAX} listed` : ''}` : `${rows.length.toLocaleString()} hexagons at resolution ${S.hexRes}`}</li>` : '') + list.map(r => {
         const c = S.classes ? S.classes.classOf(r.v) : -1;
         const w = max > 0 && r.v > 0 ? Math.max(2, r.v / max * 100) : 0;
         const open = showV && r.id === S.expanded;
@@ -1478,6 +1507,17 @@ function renderTable() {
     const grid = $('table-grid');
     grid.innerHTML = `<thead>${head}</thead><tbody>${body}</tbody>`;
 }
+// An area hovered in the list: tint its rows in the table.
+let tableAreaId = null;
+function tableAreaHover(id) {
+    if (id === tableAreaId) return;
+    tableAreaId = id;
+    if (!T.open) return;
+    const grid = $('table-grid');
+    grid.querySelectorAll('tr.hl-area').forEach(tr => tr.classList.remove('hl-area'));
+    if (id == null) return;
+    for (const tr of grid.tBodies[0]?.rows || []) if (S.rowArea[+tr.dataset.row] === id) tr.classList.add('hl-area');
+}
 // A feature hovered on the map: highlight and reveal its row.
 let tableHoverRow = null;
 function tableHover(i) {
@@ -1644,6 +1684,7 @@ function applyPointSize() {
     map.setPaintProperty('rows-hl-line', 'line-width', hlW(k));
 }
 
+let rowLayerKey = {};
 function updateRowLayer() {
     const src = map.getSource('rows');
     if (!src) return;
@@ -1651,6 +1692,11 @@ function updateRowLayer() {
     S.rowClasses = show ? computeRowClasses() : null;
     S.rowSizes = show ? computeRowSizes() : null;
     const k = i => S.rowClasses ? S.rowClasses.classOf(i) : 0;
+    // Switching hexagon levels re-runs this with the same rows; skip resending thousands of features
+    // when nothing they carry has changed (which rows are placed, their class and size).
+    const key = show ? JSON.stringify([S.rowStyle, S.palette]) + S.rowArea.map(a => a == null ? 0 : 1).join('') : '';
+    if (show && rowLayerKey.src === S.src && rowLayerKey.key === key) { applyPointSize(); applyPalette(); return; }
+    rowLayerKey = { src: S.src, key };
     const feats = [];
     if (show) S.src.geoms.forEach((g, i) => {
         if (!g) return;
@@ -1716,6 +1762,7 @@ function renderHexControls() {
     if (!on) return;
     const auto = S.hex.auto, bump = S.hex.bump || 0, zs = S.hex.zshift || 0, lat = viewLat(), cur = S.hexRes;
     $('hex-auto').setAttribute('aria-pressed', auto); $('hex-fixed').setAttribute('aria-pressed', !auto);
+    $('hex-sum').textContent = `${cur} · ${fmtSide(EDGE_M(cur))} sides`;
     // The level in use and the one either side. In Auto, each with the zooms where Auto picks it.
     const [lo, hi] = CONFIG.hexRange;
     const zoomsFor = r => {
@@ -2229,8 +2276,8 @@ function wireUI() {
         S.crowdK = 0; updateCrowd();
     };
     const setHex = h => { S.hex = { ...S.hex, ...h }; store.set('hex', S.hex); setLayer('h3'); };
-    $('hex-auto').onclick = () => setHex({ auto: true });
-    $('hex-fixed').onclick = () => setHex({ auto: false, res: S.hexRes });   // fix at the level in use
+    $('hex-auto').onclick = e => { e.preventDefault(); setHex({ auto: true }); };   // in the card's heading: don't fold it
+    $('hex-fixed').onclick = e => { e.preventDefault(); setHex({ auto: false, res: S.hexRes }); };   // fix at the level in use
     // − / +: bigger or smaller hexagons. In Auto they shift the zoom-to-resolution steps; fixed, they change the level.
     const hexStep = d => setHex(S.hex.auto ? { bump: Math.max(-3, Math.min(3, (S.hex.bump || 0) + d)) } : { res: clampRes(S.hexRes + d) });
     $('hex-coarser').onclick = () => hexStep(-1);
@@ -2378,8 +2425,11 @@ function wireUI() {
         const item = e.target.closest('.items li[data-row]');
         hlRows(item && item.dataset.row !== '' ? { row: +item.dataset.row } : null);
         showRowCard(item && item.dataset.row !== '' ? item : null);
+        // With the table open: the hovered row is highlighted there (and scrolled to); an area's rows are tinted.
+        tableHover(item && item.dataset.row !== '' ? +item.dataset.row : null);
+        tableAreaHover(item ? null : li.dataset.id);
     });
-    list.addEventListener('mouseleave', () => { setHover(null); hlRows(null); showRowCard(null); });
+    list.addEventListener('mouseleave', () => { setHover(null); hlRows(null); showRowCard(null); tableHover(null); tableAreaHover(null); });
     // The pinned card: hover it to scroll; ✕ or Esc closes it.
     $('rowcard').addEventListener('click', e => { if (e.target.closest('.card-x')) pinRowCard(null); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && cardPinned != null) pinRowCard(null); });

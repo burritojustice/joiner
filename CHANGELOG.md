@@ -2,6 +2,13 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v25
+- **Hexagons count faster with big files.** With 12,000 rows, switching levels spent 2–3 seconds in Joiner's own code; it's now 0.1–0.3 s. Natural breaks run on runs of equal values (and at most 1,500 groups of neighbors) instead of every hexagon, number formats and name sorting reuse one formatter, empty hexagons get no label, the features aren't resent when only the hexagons changed, and the list shows the first 500 hexagons (and says so). What's left is MapLibre drawing thousands of hexagons.
+- **A toast while counting:** files with 3,000 or more rows say “Counting 12,000 rows into hexagons” (with the resolution) until the map has drawn them.
+- **The H3 card folds** like the others, with Auto / Fixed in its heading; folded, it shows the level and side length.
+- **Hovering the area list highlights the table:** a row in an open area is highlighted in the table and scrolled to; an area tints its rows.
+- **A tighter top bar:** smaller tabs, toggles and file name (the version hides below 1440 px wide), so “H3 hexbins” fits, with room for another tab down to about 1280 px wide.
+
 ## v24
 - **White ring and white ghost:** click Ring or Ghost again to switch it to white, bright on dark bin colors; click again to go back. The chip turns dark to show it. Black ring and White ring are now called Black outline and White outline.
 - **H3 hexbins work anywhere,** not just San Francisco: every row with a location gets its hexagon, wherever it is. Auto now picks the resolution whose hexagons are closest to 32 pixels across at the map's zoom and latitude (the same steps as before in SF), and the range is 0–12, so a national or world view gets big hexagons.
