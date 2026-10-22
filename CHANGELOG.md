@@ -2,6 +2,10 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v32
+- **Joiner loads even when jsDelivr refuses JoinKit.** jsDelivr answered 403 for the newly pinned JoinKit commit (it can do that for a commit it hasn't fetched yet), so the page had no JoinKit and the map didn't load. Joiner now keeps a copy of the same commit in `js/vendor/joinkit.js` and loads it when the CDN fails. When the pin changes, update both (`git show <sha>:joinkit/joinkit.js > js/vendor/joinkit.js` in burritojustice/maplibre).
+- `scripts/get_layers.mjs` dissolves precincts with JoinKit's `dissolve` from that copy; `js/dissolve.js` is gone.
+
 ## v31
 - **New Protomaps API key** (6c8d7dd20c838f80), limited to https://civic-joy-fund.github.io. Local copies on localhost still work: Protomaps lets a valid key through from localhost.
 

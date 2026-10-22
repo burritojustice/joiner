@@ -116,7 +116,7 @@ async function load(layer) {
         const { from, by } = layer.dissolve;
         const src = path.join(OUT, `${from}.geojson`);
         if (!fs.existsSync(src)) throw new Error(`build "${from}" first (dissolve source)`);
-        const { dissolve } = createRequire(import.meta.url)('../js/dissolve.js');
+        const { dissolve } = createRequire(import.meta.url)('../js/vendor/joinkit.js');   // JoinKit 0.3, as the page uses
         console.log(`  dissolving ${from} by ${by}`);
         return { gj: dissolve(JSON.parse(fs.readFileSync(src, 'utf8')), by), source: `${from} dissolved by ${by}` };
     }
