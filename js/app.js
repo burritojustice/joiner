@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v32';
+const _BUILD_VERSION = 'v33';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -210,6 +210,9 @@ async function boot() {
     });
     await setLayer(first);
     renderAirtable();
+    // ?url= (Google Sheet, DataSF or any CSV/JSON link) loads that link; the link is shareable.
+    const linkParam = new URLSearchParams(location.search).get('url');
+    if (linkParam) { $('link-url').value = linkParam; $('link-card').open = true; loadLink(linkParam); }
     const atLink = AT() && AT().parseLink(new URLSearchParams(location.search).get('airtable'));
     if (atLink) {
         $('at-url').value = AT().linkFor(atLink);
@@ -886,6 +889,16 @@ function layerForColumn(col) {
 }
 // Matching by a column that names another kind of area: switch to that set and say so (with Undo).
 // For neighborhoods, ask which set unless one is already showing.
+// After a load that placed nothing here: if a column's name says which set it names (ZIP,
+// district, neighborhood…), match by it (switching sets, or asking which neighborhood set).
+// Returns true when it did.
+async function autoMatch() {
+    if (!S.src || (S.join && S.join.matchedRows)) return false;
+    const col = S.src.headers.find(h => { const w = layerForColumn(h); return w && (w === 'neighborhood' || S.layers.has(w)); });
+    if (!col) return false;
+    await matchByColumn(col);
+    return true;
+}
 async function matchByColumn(col) {
     const want = layerForColumn(col), cur = S.layers.get(S.layerId), from = S.layerId;
     const go = async id => {
@@ -1951,7 +1964,15 @@ function setFeaturesVisible(on) {
     updateRowLayer(); renderFormatFeatures(); syncBarToggles();
 }
 
+// A local file (or none) isn't a link: drop ?url= and ?airtable= so the address doesn't reload the old one.
+function dropSourceParams() {
+    const q = new URLSearchParams(location.search);
+    if (!q.has('url') && !q.has('airtable')) return;
+    q.delete('url'); q.delete('airtable');
+    history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
+}
 function clearFile() {
+    dropSourceParams();
     S.src = null; S.areaOf = new Map(); S.expanded = null; S.rowArea = []; pinRowCard(null);
     S.fileLook = null; if (S.autoHid) { S.autoHid = false; S.basemap.points = true; }
     S.keyCols = {}; S.colKeys = {}; S.metric = 'count'; S.rowStyle = { colorBy: '', labels: [], sizeBy: '', sizeLog: false };
@@ -2214,6 +2235,7 @@ function bbox(geom) {
 // ═════════════════════════════════════════════════════════════════════════
 // Big files say what's happening as they load: reading (with how far), finding locations, placing rows.
 async function loadFile(file) {
+    dropSourceParams();
     const big = file.size > 5 * 1024 * 1024;
     const mb = (file.size / 1048576).toFixed(file.size < 1e7 ? 1 : 0);
     try {
@@ -2227,6 +2249,7 @@ async function loadFile(file) {
         } : undefined });
         if (big) { toast(`Matching ${src.rows.length.toLocaleString()} rows`, { busy: true, sub: 'Getting the areas ready' }); await nextFrame(); }
         await useSource(src);
+        if (await autoMatch()) return;
         if (big && !$('toast').querySelector('.toast-actions').childElementCount) toast(`Loaded ${src.rows.length.toLocaleString()} rows`, { sub: file.name, ms: 3000 });
     } catch (e) {
         toast(null);
@@ -2313,6 +2336,44 @@ const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(
 // for once per tab and kept in sessionStorage.
 const AT = () => window.JoinerAirtable;
 let atBusy = false;
+// ── Links: Google Sheets, DataSF / Socrata, any CSV / JSON / GeoJSON URL ──
+function linkStatus(msg, kind = '') { const el = $('link-status'); el.textContent = msg; el.className = 'at-status ' + kind; }
+let linkBusy = false;
+async function loadLink(url) {
+    url = String(url || '').trim();
+    if (!url) { linkStatus('Paste a link to a CSV, a Google Sheet or a DataSF dataset.', 'err'); return; }
+    if (linkBusy) return;
+    let kind;
+    try { kind = JoinerSources.resolveLink(url).kind; } catch (e) { linkStatus(e.message, 'err'); return; }
+    linkBusy = true; $('link-load').disabled = true;
+    const what = kind === 'sheet' ? 'the Google Sheet' : kind === 'socrata' ? 'the dataset' : 'the link';
+    const mb = b => b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} kB`;
+    let last = 0;
+    const step = (msg, sub, progress = null) => { toast(msg, { busy: true, sub, progress }); linkStatus(msg); };
+    try {
+        step(`Loading ${what}…`, new URL(url).host);
+        const src = await JoinerSources.readURL(url, { onProgress: (st, info, n) => {
+            if (Date.now() - last < 120) return; last = Date.now();
+            if (st === 'fetch') step(`Loading ${what}…`, [info.page > 1 ? `page ${info.page}` : '', info.rows ? `${info.rows.toLocaleString()} rows so far` : '', info.bytes ? mb(info.bytes) : ''].filter(Boolean).join(' · ') || new URL(url).host);
+            else if (st === 'locate') step('Finding locations', `${Math.round(info * 100)}%`, info);
+        } });
+        step(`Matching ${src.rows.length.toLocaleString()} rows`, src.geomFrom ? `Using the ${src.geomFrom}` : 'Looking for a column that names areas');
+        await nextFrame();
+        const q = new URLSearchParams(location.search); q.set('url', url); q.delete('airtable');
+        history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash);
+        await useSource(src);
+        linkStatus('');
+        $('link-card').open = false;
+        if (await autoMatch()) return;
+        const placed = (S.rowArea || []).filter(a => a != null).length;
+        toast(`Loaded ${src.rows.length.toLocaleString()} rows from ${src.name}`, { sub: `${placed.toLocaleString()} placed in ${shortLabel(S.layers.get(S.layerId))}`, ms: 5000 });
+    } catch (e) {
+        toast(null);
+        linkStatus(/Failed to fetch|NetworkError|Load failed/i.test(e.message)
+            ? 'Couldn’t reach that link. The site may not let other pages read it (CORS), or it needs a login; download the file and load it instead.' : e.message, 'err');
+        console.error(e);
+    } finally { linkBusy = false; $('link-load').disabled = false; }
+}
 function atStatus(msg, kind = '') { const el = $('at-status'); el.textContent = msg; el.className = 'at-status ' + kind; }
 
 async function loadAirtable(link, { include = [], skipLinks = [], keep = false } = {}) {
@@ -2339,7 +2400,7 @@ async function loadAirtable(link, { include = [], skipLinks = [], keep = false }
         await nextFrame();
         const src = JoinerSources.finishSource(raw);
         AT().token.set(tok); $('at-token').value = '';
-        const q = new URLSearchParams(location.search); q.set('airtable', AT().linkFor(src.airtable));
+        const q = new URLSearchParams(location.search); q.set('airtable', AT().linkFor(src.airtable)); q.delete('url');
         history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash);
         step(`Placing ${src.rows.length.toLocaleString()} rows in ${shortLabel(S.layers.get(S.layerId))}…`, src.geomFrom ? `Using the ${src.geomFrom}` : 'Matching by column');
         await nextFrame();
@@ -2487,6 +2548,7 @@ function wireUI() {
     };
     $('clear-btn').onclick = clearFile;
     $('at-form').onsubmit = e => { e.preventDefault(); loadAirtable(AT().parseLink($('at-url').value)); };
+    $('link-form').onsubmit = e => { e.preventDefault(); loadLink($('link-url').value); };
     $('at-forget').onclick = () => { AT().token.set(''); AT().forgetCatalog(); $('at-browse').hidden = true; renderAirtable(); atStatus('Token forgotten.'); };
     // Read the bases and tables in the background as soon as there's a token: remembered, or pasted.
     if (AT().token.get()) startCatalog(AT().token.get());

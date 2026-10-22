@@ -166,6 +166,90 @@ function parseCSVFile(file, onProgress) {
     });
 }
 
+// ── links: Google Sheets, Socrata (DataSF), or any CSV / JSON / GeoJSON URL ──────────────────
+// What a pasted link points at, and the URL(s) to fetch. Sheets need sharing set to "Anyone with
+// the link"; the export URL is tried first, then the gviz CSV (which reads some mixed columns as
+// blank). Socrata resource and dataset links become the resource's JSON, all rows, page by page.
+const SOCRATA_ID = /^[a-z0-9]{4}-[a-z0-9]{4}$/;
+function resolveLink(input) {
+    let u;
+    try { u = new URL(String(input).trim()); } catch { throw new Error('That isn’t a link (it should start with https://).'); }
+    const gid = u.searchParams.get('gid') || (u.hash.match(/gid=(\d+)/) || [])[1] || '0';
+    let m = u.pathname.match(/^\/spreadsheets\/d\/e\/([\w-]+)/);
+    if (u.hostname === 'docs.google.com' && m)   // "Publish to web" link
+        return { kind: 'sheet', urls: [`https://docs.google.com/spreadsheets/d/e/${m[1]}/pub?output=csv&gid=${gid}`], format: 'csv', id: m[1], gid };
+    m = u.pathname.match(/^\/spreadsheets\/d\/([\w-]+)/);
+    if (u.hostname === 'docs.google.com' && m) return { kind: 'sheet', id: m[1], gid, format: 'csv', urls: [
+        `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv&gid=${gid}`,
+        `https://docs.google.com/spreadsheets/d/${m[1]}/gviz/tq?tqx=out:csv&gid=${gid}`] };
+    // Socrata: /resource/abcd-1234(.json|.csv|.geojson), or a dataset page ending in the id (or /about_data).
+    m = u.pathname.match(/\/resource\/([a-z0-9]{4}-[a-z0-9]{4})(\.(json|csv|geojson))?$/i);
+    const page = !m && u.pathname.split('/').filter(Boolean).filter(p => p !== 'about_data').pop();
+    const id = m ? m[1] : page && SOCRATA_ID.test(page) && /^data\.|\.gov$|socrata/.test(u.hostname) ? page : null;
+    if (id) {
+        const q = new URLSearchParams(m ? u.search : '');   // keep a resource link's own $where, $select…
+        return { kind: 'socrata', host: u.host, id, query: q, format: 'json',
+            meta: `https://${u.host}/api/views/${id}.json`, base: `https://${u.host}/resource/${id}.json` };
+    }
+    const ext = (u.pathname.match(/\.(csv|tsv|txt|json|geojson)$/i) || [])[1]?.toLowerCase();
+    return { kind: 'url', urls: [u.href], format: ext === 'json' || ext === 'geojson' ? 'json' : ext ? 'csv' : null };
+}
+
+// Fetch with how many bytes have come so far.
+async function fetchText(url, onBytes) {
+    const res = await fetch(url, { redirect: 'follow' });
+    if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
+    const type = res.headers.get('content-type') || '';
+    if (!res.body || !onBytes) return { text: await res.text(), type };
+    const reader = res.body.getReader(), chunks = [];
+    let n = 0;
+    for (;;) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); n += value.length; onBytes(n); }
+    return { text: new TextDecoder().decode(chunks.length === 1 ? chunks[0] : chunks.reduce((a, c) => { const b = new Uint8Array(a.length + c.length); b.set(a); b.set(c, a.length); return b; }, new Uint8Array())), type };
+}
+
+// onProgress(step, info): 'fetch' { bytes, page, rows }, then readFile's steps.
+async function readURL(input, { onProgress = () => {} } = {}) {
+    const link = resolveLink(input);
+    if (link.kind === 'socrata') {
+        // Its name, for the title (optional), then every row: Socrata gives 1,000 unless asked.
+        let name = link.id;
+        try { const m = await (await fetch(link.meta)).json(); if (m?.name) name = m.name; } catch { /* the id will do */ }
+        const LIMIT = 50000, rows = [];
+        const own = link.query.get('$limit');
+        for (let page = 1, offset = 0; ; page++) {
+            const q = new URLSearchParams(link.query);
+            if (!own) { q.set('$limit', LIMIT); q.set('$offset', offset); if (!q.has('$order')) q.set('$order', ':id'); }
+            onProgress('fetch', { page, rows: rows.length });
+            const { text } = await fetchText(`${link.base}?${q}`, b => onProgress('fetch', { page, rows: rows.length, bytes: b }));
+            const batch = JSON.parse(text);
+            if (!Array.isArray(batch)) throw new Error(batch?.message || 'Socrata didn’t return rows');
+            rows.push(...batch);
+            if (own || batch.length < LIMIT) break;
+            offset += LIMIT;
+        }
+        // Socrata's ":@computed_region_…" columns are its own area ids, not the data's.
+        const clean = rows.map(r => { const o = {}; for (const k in r) if (!k.startsWith(':')) o[k] = r[k]; return o; });
+        const src = { name, kind: 'socrata', headers: headersOf(clean), rows: clean, link: { url: String(input).trim(), host: link.host, id: link.id } };
+        return finishSource(src, { onProgress });
+    }
+    let got, lastErr;
+    for (const url of link.urls) {
+        try { got = await fetchText(url, b => onProgress('fetch', { bytes: b })); break; } catch (e) { lastErr = e; }
+    }
+    if (!got) {
+        if (link.kind === 'sheet') throw new Error('Couldn’t read that sheet. In Google Sheets, set Share › General access to “Anyone with the link” (Viewer), then try again.');
+        throw new Error(`Couldn’t load that link (${lastErr?.message || 'blocked'}). The site may not allow other pages to read it (CORS); downloading the file and loading it works instead.`);
+    }
+    const text = got.text;
+    if (link.kind === 'sheet' && /^\s*<!doctype html|^\s*<html/i.test(text)) throw new Error('That sheet isn’t shared publicly. In Google Sheets, set Share › General access to “Anyone with the link” (Viewer), then try again.');
+    const isJSON = link.format === 'json' || (!link.format && (/json/.test(got.type) || /^\s*[\[{]/.test(text)));
+    const name = link.kind === 'sheet' ? `Google Sheet${link.gid !== '0' ? ` (tab ${link.gid})` : ''}` : decodeURIComponent(new URL(link.urls[0]).pathname.split('/').pop() || new URL(link.urls[0]).host);
+    const src = isJSON ? parseJSON(text, name) : parseCSV(text, name);
+    if (link.kind === 'sheet') src.kind = 'sheet';
+    src.link = { url: String(input).trim() };
+    return finishSource(src, { onProgress });
+}
+
 // Shared by files and Airtable: find geometry, stamp the load time. With onProgress (files), big
 // files find locations in chunks and say how far along they are; without it, all at once.
 function finishSource(src, { onProgress } = {}) {
@@ -213,5 +297,5 @@ function makeSnapshot(src, settings) {
     };
 }
 
-window.JoinerSources = { readFile, finishSource, makeSnapshot, parseCSV, parseJSON, parseWKT, detectGeometry };
+window.JoinerSources = { readFile, readURL, resolveLink, finishSource, makeSnapshot, parseCSV, parseJSON, parseWKT, detectGeometry };
 })();

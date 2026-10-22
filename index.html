@@ -113,6 +113,19 @@
       <ol class="area-list" id="area-list"></ol>
     </section>
 
+    <details class="card at-card link-card" id="link-card">
+      <summary>From a link</summary>
+      <form id="link-form" autocomplete="off">
+        <div class="field">
+          <label for="link-url">CSV, Google Sheet or DataSF link</label>
+          <input id="link-url" type="text" inputmode="url" spellcheck="false" placeholder="https://docs.google.com/spreadsheets/d/… or https://data.sf.gov/…">
+        </div>
+        <p class="hint">Google Sheets: share with “Anyone with the link”. DataSF and other Socrata portals: a dataset or <code>/resource/</code> link loads every row. Any CSV, JSON or GeoJSON link works if its site allows it.</p>
+        <button class="btn" id="link-load" type="submit">Load link</button>
+        <p class="at-status" id="link-status" role="status"></p>
+      </form>
+    </details>
+
     <details class="card at-card" id="at-card">
       <summary>Airtable</summary>
       <form id="at-form" autocomplete="off">

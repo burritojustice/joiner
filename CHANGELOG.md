@@ -2,6 +2,14 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v33
+- **From a link:** a new card loads a Google Sheet, a DataSF (or any Socrata) dataset, or any CSV, JSON or GeoJSON URL, then joins it like a file.
+  - **Google Sheets:** an edit or share link (the tab in `gid` is kept) or a “Publish to web” link. The sheet must be shared with “Anyone with the link”; if it isn't, Joiner says so. It reads the CSV export, falling back to the gviz CSV.
+  - **Socrata:** a `/resource/<id>.json` (or `.csv`, `.geojson`) link or a dataset page (`…/<id>`, `…/<id>/about_data`) loads every row, 50,000 at a time (Socrata sends only 1,000 unless asked), named from the dataset's title. A resource link's own `$where`, `$select`, `$limit` are kept. Socrata's `:@computed_region_…` columns are dropped. Point columns like `the_geom` are found as locations.
+  - **Other links** load when the site allows other pages to read them (CORS); when it doesn't, Joiner suggests downloading the file instead.
+  - Progress in the toast (pages, rows, size). The link goes in the address as `?url=…`, so the page can be shared and reopens with the data; loading a file or clearing removes it.
+- **After loading, a column that names areas is used** when nothing was placed in the current set: a “Neighborhood” column asks which neighborhood set, a ZIP or district column switches to that set (as choosing it under Match rows by already did). For files and links.
+
 ## v32
 - **Joiner loads even when jsDelivr refuses JoinKit.** jsDelivr answered 403 for the newly pinned JoinKit commit (it can do that for a commit it hasn't fetched yet), so the page had no JoinKit and the map didn't load. Joiner now keeps a copy of the same commit in `js/vendor/joinkit.js` and loads it when the CDN fails. When the pin changes, update both (`git show <sha>:joinkit/joinkit.js > js/vendor/joinkit.js` in burritojustice/maplibre).
 - `scripts/get_layers.mjs` dissolves precincts with JoinKit's `dissolve` from that copy; `js/dissolve.js` is gone.
