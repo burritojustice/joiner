@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v33';
+const _BUILD_VERSION = 'v34';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -140,6 +140,7 @@ let map, popup;
 async function boot() {
     console.log(`[joiner] ${_BUILD_VERSION}`);
     $('version').textContent = _BUILD_VERSION;
+    document.querySelector('.brand').title = `Civic Joy Fund · Joiner ${_BUILD_VERSION}`;
     S.manifest = await (await fetch(CONFIG.manifest)).json();
     for (const l of S.manifest.layers) {
         S.layers.set(l.id, l);
@@ -212,7 +213,7 @@ async function boot() {
     renderAirtable();
     // ?url= (Google Sheet, DataSF or any CSV/JSON link) loads that link; the link is shareable.
     const linkParam = new URLSearchParams(location.search).get('url');
-    if (linkParam) { $('link-url').value = linkParam; $('link-card').open = true; loadLink(linkParam); }
+    if (linkParam) { $('link-url').value = linkParam; loadLink(linkParam); }
     const atLink = AT() && AT().parseLink(new URLSearchParams(location.search).get('airtable'));
     if (atLink) {
         $('at-url').value = AT().linkFor(atLink);
@@ -583,12 +584,18 @@ const viewLat = () => map.getCenter().lat;
 const hexResNow = () => S.hex.auto ? clampRes(hexAutoBase(map.getZoom() + (S.hex.zshift || 0), viewLat()) + (S.hex.bump || 0)) : clampRes(S.hex.res);
 // The set that names hexagons ("Mission #82c7") and, where the data overlaps it, fills the grid
 // with its empty hexagons. '' for none: only hexagons with rows, named by code.
-const hexNameSet = () => S.hex.names === undefined ? 'analysis_neighborhoods' : S.layers.has(S.hex.names) ? S.hex.names : '';
+// Auto (the default): neighborhoods, or counties once hexagons are bigger than a typical neighborhood (level 7, sides 1.4 km, and up).
+const HEX_COUNTY_RES = 7;
+const hexNameSet = () => {
+    const n = S.hex.names;
+    if (n === undefined || n === 'auto') return S.hexRes <= HEX_COUNTY_RES && S.layers.has('bay_area_counties') ? 'bay_area_counties' : 'analysis_neighborhoods';
+    return S.layers.has(n) ? n : '';
+};
 S.hexCache = new Map();   // resolution|set → { fc, land, src }
 // Cells covering the naming set (for SF, the analysis neighborhoods), plus the cell of every row
 // from the loaded file, anywhere.
 async function loadHex() {
-    const res = S.hexRes = hexResNow(), set = hexNameSet();
+    const res = S.hexRes = hexResNow(), set = hexNameSet();   // (hexNameSet reads S.hexRes)
     const setMeta = set ? S.layers.get(set) : null, land = set ? await loadGeo(set) : null;
     // Cover the set only when there's no file or the file has rows inside the set's bounds.
     const sb = land && bboxFC(land);
@@ -2009,8 +2016,10 @@ function renderHexControls() {
     // Names
     document.querySelectorAll('[data-hlabel]').forEach(b => b.setAttribute('aria-pressed', (S.hex.label || 'friendly') === b.dataset.hlabel));
     const set = hexNameSet();
-    $('hex-set').innerHTML = `<option value=""${set ? '' : ' selected'}>Named by: nothing (code only)</option>`
-        + [...S.layers.values()].filter(l => !l.hex).map(l => `<option value="${esc(l.id)}"${l.id === set ? ' selected' : ''}>Named by: ${esc(shortLabel(l))}</option>`).join('');
+    const autoNames = S.hex.names === undefined || S.hex.names === 'auto';
+    $('hex-set').innerHTML = `<option value="auto"${autoNames ? ' selected' : ''}>Named by: Auto (${esc(shortLabel(S.layers.get(set) || { label: 'neighborhoods' }))} now)</option>`
+        + `<option value=""${!autoNames && !set ? ' selected' : ''}>Named by: nothing (code only)</option>`
+        + [...S.layers.values()].filter(l => !l.hex).map(l => `<option value="${esc(l.id)}"${!autoNames && l.id === set ? ' selected' : ''}>Named by: ${esc(shortLabel(l))}</option>`).join('');
     $('hex-set').disabled = S.hex.label === 'h3';
     const hc = S.hexCover || {};
     $('hex-names-hint').textContent = S.hex.label === 'h3' ? 'Each hexagon’s full H3 index.'
@@ -2363,12 +2372,13 @@ async function loadLink(url) {
         history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash);
         await useSource(src);
         linkStatus('');
-        $('link-card').open = false;
+        if ($('load-dialog').open) $('load-dialog').close();
         if (await autoMatch()) return;
         const placed = (S.rowArea || []).filter(a => a != null).length;
         toast(`Loaded ${src.rows.length.toLocaleString()} rows from ${src.name}`, { sub: `${placed.toLocaleString()} placed in ${shortLabel(S.layers.get(S.layerId))}`, ms: 5000 });
     } catch (e) {
         toast(null);
+        if (!$('load-dialog').open) $('load-dialog').showModal();
         linkStatus(/Failed to fetch|NetworkError|Load failed/i.test(e.message)
             ? 'Couldn’t reach that link. The site may not let other pages read it (CORS), or it needs a login; download the file and load it instead.' : e.message, 'err');
         console.error(e);
@@ -2438,9 +2448,9 @@ function renderBrowse(c, refreshing) {
 }
 function startCatalog(tok, { force = false } = {}) {
     if (!tok) return;
-    const { catalog, refreshing } = AT().catalog(tok, { force, onUpdate: c => renderBrowse(c, !!atCatalogBusy) });
+    const { catalog, refreshing } = AT().catalog(tok, { force, onUpdate: c => { renderBrowse(c, !!atCatalogBusy); renderAtSum(); } });
     atCatalogBusy = refreshing;
-    refreshing?.then(c => { atCatalogBusy = null; renderBrowse(c, false); }, e => { atCatalogBusy = null; if (!$('at-browse').hidden && !AT().readCatalog(tok)) $('at-browse').innerHTML = `<p class="hint err">${esc(e.message)}</p>`; });
+    refreshing?.then(c => { atCatalogBusy = null; renderBrowse(c, false); renderAtSum(); }, e => { atCatalogBusy = null; if (!$('at-browse').hidden && !AT().readCatalog(tok)) $('at-browse').innerHTML = `<p class="hint err">${esc(e.message)}</p>`; });
     return catalog;
 }
 let atCatalogBusy = null;
@@ -2460,7 +2470,16 @@ function browseAirtable() {
     };
 }
 
+// Folded, the Airtable heading says what the saved token can open: "token: 3 bases, 14 tables".
+function renderAtSum() {
+    const tok = AT()?.token.get(), c = tok && AT().readCatalog(tok);
+    if (!tok) { $('at-sum').textContent = ''; return; }
+    if (!c) { $('at-sum').textContent = 'token saved'; return; }
+    const tables = c.bases.reduce((n, b) => n + (b.tables?.length || 0), 0), pending = c.bases.some(b => !b.tables && !b.error);
+    $('at-sum').textContent = `token: ${c.bases.length} base${c.bases.length === 1 ? '' : 's'}, ${tables}${pending ? '+' : ''} table${tables === 1 ? '' : 's'}`;
+}
 function renderAirtable() {
+    renderAtSum();
     const hasTok = !!AT()?.token.get();
     $('at-token-row').hidden = hasTok;
     $('at-remembered').hidden = !hasTok;
@@ -2523,7 +2542,13 @@ function wireUI() {
         if (sel && sel.dataset.tab !== OTHER && S.layers.get(S.layerId).tab !== sel.dataset.tab) setLayer(S.tabChoice[sel.dataset.tab]);
     });
 
-    $('load-btn').onclick = $('empty-load').onclick = () => $('file-input').click();
+    // Load data: a dialog with Open a file… and a link field.
+    const openLoad = focusLink => { linkStatus(''); $('load-dialog').showModal(); if (focusLink) $('link-url').focus(); };
+    $('load-btn').onclick = () => openLoad(false);
+    $('empty-load').onclick = () => $('file-input').click();
+    $('empty-link').onclick = () => openLoad(true);
+    $('ld-file').onclick = () => { $('load-dialog').close(); $('file-input').click(); };
+    $('load-dialog').addEventListener('click', e => { if (e.target === $('load-dialog')) $('load-dialog').close(); });   // click outside
     $('file-input').onchange = e => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ''; };
     $('save-btn').onclick = saveSnapshot;
 

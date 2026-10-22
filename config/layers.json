@@ -182,7 +182,7 @@
     {
       "id": "census_tracts",
       "label": "Census Tracts 2020",
-      "tab": "Census Tract",
+      "tab": "Other",
       "dataset": "sevw-6tgi",
       "page": "https://data.sf.gov/Geographic-Locations-and-Boundaries/Analysis-Neighborhoods-2020-census-tracts-assigned/sevw-6tgi",
       "key": "geoid",
