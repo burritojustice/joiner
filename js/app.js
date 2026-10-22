@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v31';
+const _BUILD_VERSION = 'v32';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
