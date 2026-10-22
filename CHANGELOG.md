@@ -2,6 +2,15 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v34
+- **Load data opens a dialog:** Open a file…, or paste a link (Google Sheet, DataSF, CSV/JSON URL). The From a link card is gone; a failed link reopens the dialog with the reason. The help card's “choose a file” still opens the file picker, and its new link line opens the dialog.
+- **Census Tracts are in Other.**
+- **Hexagon names follow the zoom:** Named by Auto (the default) uses Analysis Neighborhoods, and Bay Area Counties once hexagons are bigger than a neighborhood (level 7, 1.4 km sides, and up): “San Francisco County #830821”. The menu says which it's using.
+- **Menu tabs show the set's full name** (“Planning Neighborhoods”, no “…”).
+- **Hover the Joiner logo for the version.**
+- **Folded, the Airtable heading shows the saved token's reach:** “token: 3 bases, 12 tables” (a + while bases are still being read).
+- **The help card lists sources in a new order:** a CSV naming areas, GeoJSON or a located CSV, Airtable, a link, a snapshot.
+
 ## v33
 - **From a link:** a new card loads a Google Sheet, a DataSF (or any Socrata) dataset, or any CSV, JSON or GeoJSON URL, then joins it like a file.
   - **Google Sheets:** an edit or share link (the tab in `gid` is kept) or a “Publish to web” link. The sheet must be shared with “Anyone with the link”; if it isn't, Joiner says so. It reads the CSV export, falling back to the gviz CSV.

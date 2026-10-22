@@ -255,7 +255,7 @@
     {
       "id": "census_tracts",
       "label": "Census Tracts 2020",
-      "tab": "Census Tract",
+      "tab": "Other",
       "file": "census_tracts.geojson",
       "key": "geoid",
       "name": "name",

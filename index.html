@@ -72,9 +72,10 @@
       <h2>Map your data</h2>
       <p>Drop a CSV or JSON file anywhere on the page, or <button class="linkish" id="empty-load" type="button">choose a file</button>.</p>
       <ul>
-        <li><b>CSV</b> exported from Airtable or a spreadsheet</li>
-        <li><b>Airtable</b> — paste a view link under <b>Airtable</b> below, or load the <code>records</code> JSON from the API</li>
+        <li><b>CSV</b> with a column that names areas (district, ZIP, neighborhood)</li>
         <li><b>GeoJSON</b>, or a CSV with WKT or latitude/longitude columns — rows are drawn on the map and can be placed by location</li>
+        <li><b>Airtable</b> — paste a view link under <b>Airtable</b> below, or load the <code>records</code> JSON from the API</li>
+        <li><b>A link</b> to an online CSV, a DataSF dataset or a shared Google Sheet — <button class="linkish" id="empty-link" type="button">paste a link</button></li>
         <li><b>Joiner snapshot</b> saved from this page</li>
       </ul>
       <p class="hint">Rows are matched to the boundaries chosen above by district, ZIP, neighborhood or census tract. Nothing leaves your browser.</p>
@@ -113,21 +114,8 @@
       <ol class="area-list" id="area-list"></ol>
     </section>
 
-    <details class="card at-card link-card" id="link-card">
-      <summary>From a link</summary>
-      <form id="link-form" autocomplete="off">
-        <div class="field">
-          <label for="link-url">CSV, Google Sheet or DataSF link</label>
-          <input id="link-url" type="text" inputmode="url" spellcheck="false" placeholder="https://docs.google.com/spreadsheets/d/… or https://data.sf.gov/…">
-        </div>
-        <p class="hint">Google Sheets: share with “Anyone with the link”. DataSF and other Socrata portals: a dataset or <code>/resource/</code> link loads every row. Any CSV, JSON or GeoJSON link works if its site allows it.</p>
-        <button class="btn" id="link-load" type="submit">Load link</button>
-        <p class="at-status" id="link-status" role="status"></p>
-      </form>
-    </details>
-
     <details class="card at-card" id="at-card">
-      <summary>Airtable</summary>
+      <summary>Airtable <span class="n" id="at-sum"></span></summary>
       <form id="at-form" autocomplete="off">
         <div class="field">
           <label for="at-url">View link</label>
@@ -288,6 +276,22 @@
       <button type="button" class="toast-x" aria-label="Dismiss">✕</button>
     </div>
   </main>
+  <!-- Load data: a file from this computer, or a link -->
+  <dialog class="load-dialog" id="load-dialog" aria-labelledby="load-title">
+    <form method="dialog" class="ld-close"><button class="toast-x" aria-label="Close">✕</button></form>
+    <h3 id="load-title">Load data</h3>
+    <button class="btn" id="ld-file" type="button">Open a file…</button>
+    <p class="hint">CSV, JSON, GeoJSON or a Joiner snapshot. You can also drop a file anywhere on the page.</p>
+    <form id="link-form" autocomplete="off">
+      <label for="link-url" class="lab">Or from a link</label>
+      <div class="ld-row">
+        <input id="link-url" type="text" inputmode="url" spellcheck="false" placeholder="https://docs.google.com/spreadsheets/d/… or https://data.sf.gov/…">
+        <button class="btn" id="link-load" type="submit">Load</button>
+      </div>
+      <p class="hint">Google Sheets: share with “Anyone with the link”. DataSF and other Socrata portals: a dataset or <code>/resource/</code> link loads every row. Any CSV, JSON or GeoJSON link works if its site allows it.</p>
+      <p class="at-status" id="link-status" role="status"></p>
+    </form>
+  </dialog>
 </div>
 
 <script src="https://unpkg.com/maplibre-gl@5.16.0/dist/maplibre-gl.js"></script>
