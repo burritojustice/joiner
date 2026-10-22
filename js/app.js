@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v29';
+const _BUILD_VERSION = 'v30';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -572,16 +572,10 @@ const isHex = id => !!S.layers.get(id)?.hex;
 const clampRes = r => Math.max(CONFIG.hexRange[0], Math.min(CONFIG.hexRange[1], r));
 // Hexagon width in pixels: flat side to flat side, at a zoom and latitude (512px tiles).
 const EDGE_M = r => h3.getHexagonEdgeLengthAvg(r, 'm');
-const mPerPx = (z, lat) => 78271.517 * Math.cos(lat * Math.PI / 180) / 2 ** z;
-const hexPx = (r, z, lat) => Math.sqrt(3) * EDGE_M(r) / mPerPx(z, lat);
-// Auto, before the − / + steps: the resolution closest (on a log scale) to the target width.
-function hexAutoBase(z, lat) {
-    let best = 0, d = Infinity;
-    for (let r = 0; r <= 15; r++) { const e = Math.abs(Math.log(hexPx(r, z, lat) / CONFIG.hexTargetPx)); if (e < d) { d = e; best = r; } }
-    return best;
-}
-// The zoom (with the ½ shift) where Auto moves from base resolution r to r + 1.
-const hexSwitchZoom = (r, lat) => Math.log2(CONFIG.hexTargetPx * mPerPx(0, lat) / Math.sqrt(3 * EDGE_M(r) * EDGE_M(r + 1)));
+// Auto (JoinKit.hex): the resolution whose hexagons are closest to hexTargetPx across at this zoom
+// and latitude; hexSwitchZoom: where it moves from base level r to r + 1.
+const hexAutoBase = (z, lat) => JoinKit.hex.autoResolution(h3, z, lat, { targetPx: CONFIG.hexTargetPx });
+const hexSwitchZoom = (r, lat) => JoinKit.hex.switchZoom(h3, r, lat, { targetPx: CONFIG.hexTargetPx });
 const viewLat = () => map.getCenter().lat;
 const hexResNow = () => S.hex.auto ? clampRes(hexAutoBase(map.getZoom() + (S.hex.zshift || 0), viewLat()) + (S.hex.bump || 0)) : clampRes(S.hex.res);
 // The set that names hexagons ("Mission #82c7") and, where the data overlaps it, fills the grid
@@ -657,14 +651,9 @@ async function loadHex() {
 function bboxFC(fc) { return unionBbox(fc.features.map(f => bbox(f.geometry))); }
 const bboxArea = b => { if (!b) return 0; const mid = (b[1] + b[3]) / 2; return (b[2] - b[0]) * 111320 * Math.cos(mid * Math.PI / 180) * (b[3] - b[1]) * 110540; };
 function hexNames(features) {
-    const ids = features.map(f => f.id);
-    let pre = ids[0]?.length || 0;
-    for (const id of ids) { let k = 0; while (k < pre && id[k] === ids[0][k]) k++; pre = k; }
+    const codes = JoinKit.hex.shortCodes(h3, features.map(f => f.id));   // "#82c7": without the shared digits and unused f's
     for (const f of features) {
-        // Finer levels a hexagon doesn't use fill whole hex digits with f's: a fixed number per resolution,
-        // so every code here is the same length.
-        const tail = Math.floor(3 * (15 - h3.getResolution(f.id)) / 4);
-        const code = '#' + (f.id.slice(Math.min(pre, f.id.length - tail - 1), f.id.length - tail));
+        const code = codes.get(f.id);
         f.properties.code = code;
         // Friendly: "Mission #82c7" (or just the code with no naming set); H3: the full index.
         f.properties.name = S.hex.label === 'h3' ? f.id : f.properties.hood ? `${f.properties.hood} ${code}` : code;
@@ -793,8 +782,9 @@ async function placeRowsAsync(layerId) {
         const ids = new Set(S.geo.get(layerId).features.map(f => f.id));
         locate = slice => slice.map(p => { if (!p) return null; const c = h3.latLngToCell(p[1], p[0], S.hexRes); return ids.has(c) ? c : null; });
     } else {
-        const index = JoinKit.buildPolygonIndex(S.geo.get(layerId).features, { idOf: f => f.id });
-        locate = slice => index.locateAll(slice);
+        S.areaOf.set(layerId, await JoinKit.assignPointsToPolygonsChunked(pts, S.geo.get(layerId).features, { idOf: f => f.id, yieldFn: nextFrame,
+            onProgress: (i, t) => toast(`Placing rows in ${label}`, { busy: true, progress: i / t, sub: `${i.toLocaleString()} of ${t.toLocaleString()}` }) }));
+        return;
     }
     for (let i = 0; i < n; i += CH) {
         toast(`Placing rows in ${label}`, { busy: true, progress: i / n, sub: `${i.toLocaleString()} of ${n.toLocaleString()}` });
@@ -814,23 +804,10 @@ function areasForRows(layerId) {
     }
     return S.areaOf.get(layerId);
 }
-// A layer's normalizer, made forgiving with its own names: case, spaces and punctuation don't
-// count ("Downtown / Civic Center", "Downtown Civic Center" and "Sea Cliff" all match), each side
-// of a slashed name matches it ("Treasure Island" → "Treasure Island/YBI"), and a misspelling one
-// or two letters off a single name matches it ("Downton/Civic Center", "Outer Susnet"); names under
-// 8 letters must match exactly.
-const loose = s => String(s).toLowerCase().normalize('NFKD').replace(/[^a-z0-9]/g, '');
-function editDistance(a, b, max) {
-    if (Math.abs(a.length - b.length) > max) return max + 1;
-    let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
-    for (let i = 1; i <= a.length; i++) {
-        const cur = [i]; let low = i;
-        for (let j = 1; j <= b.length; j++) { cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); low = Math.min(low, cur[j]); }
-        if (low > max) return max + 1;
-        prev = cur;
-    }
-    return prev[b.length];
-}
+// A layer's normalizer, made forgiving with its own names (JoinKit.makeLooseNormalizer): case,
+// spaces and punctuation don't count ("Downtown / Civic Center", "Sea Cliff"), each side of a
+// slashed name matches it ("Treasure Island" → "Treasure Island/YBI"), and names of 8+ letters
+// match one or two letters off ("Downton/Civic Center", "Outer Susnet").
 const normCache = new WeakMap();   // feature collection → { layer id: normalizer }
 function normalizerFor(meta, fc = S.geo.get(meta.id)) {
     const m = meta.match || {};
@@ -840,47 +817,16 @@ function normalizerFor(meta, fc = S.geo.get(meta.id)) {
     });
     if (!fc || meta.hex) return base;
     const byFc = normCache.get(fc) || normCache.set(fc, {}).get(fc);
-    if (byFc[meta.id]) return byFc[meta.id];
-    const names = new Set(), canon = new Map(), parts = new Map();
-    for (const f of fc.features) {
-        const b = base(f.properties[meta.key]);
-        if (!b) continue;
-        names.add(b); canon.set(loose(b), b);
-        for (const p of String(b).split(/\s*[\/&]\s*|\s+and\s+/)) if (p !== b && loose(p).length >= 4) parts.set(loose(p), parts.has(loose(p)) ? null : b);
-    }
-    for (const [k, b] of parts) if (b && !canon.has(k)) canon.set(k, b);
-    const keys = [...canon.keys()].filter(k => /[a-z]/.test(k)), memo = new Map();
-    const norm = v => {
-        const b = base(v);
-        if (!b || names.has(b)) return b;
-        if (memo.has(b)) return memo.get(b);
-        const l = loose(b);
-        let out = canon.get(l);
-        if (out == null && /[a-z]/.test(l) && l.length >= 8) {   // short names are too close to each other ("Marin", "Marina")
-            const max = l.length >= 11 ? 2 : 1;
-            let best = null, bd = max + 1, tie = false;
-            for (const k of keys) { const d = editDistance(l, k, max); if (d < bd) { bd = d; best = k; tie = false; } else if (d === bd) tie = true; }
-            if (best && bd <= max && !tie) out = canon.get(best);
-        }
-        memo.set(b, out ?? b);
-        return out ?? b;
-    };
-    norm.names = names;
-    byFc[meta.id] = norm;
-    return norm;
+    return byFc[meta.id] ||= JoinKit.makeLooseNormalizer(fc.features.map(f => f.properties[meta.key]), base);
 }
 // A column listing several areas in a cell ("Mission, South of Market"): when at least 5% of its
 // values hold a comma, semicolon, pipe or line break, each part counts. Slashes stay (they're in names).
-const MULTI = /\s*[,;|\n]\s*/;
+const MULTI = JoinKit.MULTI_DELIMITER;
 const delimCache = new WeakMap();   // source → { column: delimiter }
 function delimFor(col, meta = S.layers.get(S.layerId)) {
     if (!S.src || !col || col === LOCATION) return meta.match?.delimiter;
     const bySrc = delimCache.get(S.src) || delimCache.set(S.src, {}).get(S.src);
-    if (!(col in bySrc)) {
-        let filled = 0, multi = 0;
-        for (const r of S.src.rows.slice(0, 5000)) { const v = r[col]; if (v == null || v === '' || Array.isArray(v)) continue; filled++; if (/[,;|\n]/.test(String(v))) multi++; }
-        bySrc[col] = filled && multi / filled >= 0.05 ? MULTI : null;
-    }
+    if (!(col in bySrc)) bySrc[col] = JoinKit.detectDelimiter(S.src.rows, col);
     return bySrc[col] || meta.match?.delimiter;
 }
 
@@ -896,7 +842,7 @@ function sampleRows(n = 5000) {
     const rows = S.src.rows;
     if (rows.length <= n) return rows;
     const byN = sampleCache.get(S.src) || sampleCache.set(S.src, {}).get(S.src);
-    return byN[n] ||= Array.from({ length: n }, (_, i) => rows[Math.floor(i * rows.length / n)]);
+    return byN[n] ||= JoinKit.sampleRows(rows, n);
 }
 // Every column scored by how many rows it would place on this layer (in a big file, from 20,000
 // rows spread through it, scaled up).
@@ -1055,66 +1001,24 @@ function joinNow(meta, fc, keyCol, normalize) {
     return out;
 }
 
-// The same join for big files, in chunks with a progress bar: one pass that places each row,
-// adds its numbers to its areas' sums, and tallies values that match no area. Column types come
-// from a sample. Gives counts, totals, averages and shares, which is what the map uses.
+// The same join for big files (JoinKit.buildJoinChunked): one pass in chunks with a progress bar
+// that places each row, adds its numbers to its areas' totals and tallies unmatched values.
 async function joinInChunks(meta, fc, keyCol, normalize) {
-    const rows = S.src.rows, n = rows.length, geomCols = S.src.geomCols || [];
-    const types = JoinKit.classifyColumns(sampleRows(), S.src.headers, { exclude: [keyCol] });
-    const numericCols = types.numericCols.filter(c => !geomCols.includes(c));
-    const byId = {}, tally = new Map(), totals = numericCols.map(() => 0);
-    const rowArea = new Array(n).fill(null);
-    let matchedRows = 0, nullRows = 0, rowAreas = null, areas = null, index = null, delimiter;
-    if (keyCol === LOCATION) areas = areasForRows(S.layerId);
-    else { delimiter = delimFor(keyCol, meta); index = JoinKit.buildFeatureIndex(fc.features, meta.key, { normalize, idOf: f => f.id }); rowAreas = new Array(n); }
-    const label = meta.hex ? 'hexagons' : shortLabel(meta), CH = 20000, m = numericCols.length;
-    const nums = new Array(m);
-    for (let i0 = 0; i0 < n; i0 += CH) {
-        toast(`Counting rows in ${label}`, { busy: true, progress: i0 / n, sub: `${i0.toLocaleString()} of ${n.toLocaleString()}` });
-        await nextFrame();
-        for (let i = i0; i < Math.min(n, i0 + CH); i++) {
-            const row = rows[i];
-            let ids;
-            if (areas) { if (areas[i] == null) continue; ids = [areas[i]]; }
-            else {
-                ids = []; let any = false;
-                for (const raw of rawValues(row, keyCol, delimiter)) {
-                    const k = normalize(raw); if (!k) continue; any = true;
-                    const hit = index.get(k);
-                    if (!hit) { const t = tally.get(k) || tally.set(k, { label: String(JoinKit.cellText(raw)).trim(), n: 0 }).get(k); t.n++; continue; }
-                    for (const id of hit) if (!ids.includes(id)) ids.push(id);
-                }
-                rowAreas[i] = ids;
-                if (!any) { nullRows++; continue; }
-            }
-            if (!ids.length) continue;
-            matchedRows++; rowArea[i] = ids[0];
-            for (let j = 0; j < m; j++) { const v = JoinKit.parseNum(row[numericCols[j]]); nums[j] = v; if (v !== null) totals[j] += v; }
-            for (const id of ids) {
-                const e = byId[id] || (byId[id] = { rows: [], agg: { count: 0 }, s: new Float64Array(m), c: new Uint32Array(m) });
-                e.rows.push(row); e.agg.count++;
-                for (let j = 0; j < m; j++) if (nums[j] !== null) { e.s[j] += nums[j]; e.c[j]++; }
-            }
-        }
-    }
-    for (const e of Object.values(byId)) {
-        numericCols.forEach((col, j) => {
-            const has = e.c[j] > 0;
-            e.agg['count_' + col] = e.c[j];
-            e.agg['sum_' + col] = has ? e.s[j] : null;
-            e.agg['avg_' + col] = has ? e.s[j] / e.c[j] : null;
-            if (totals[j] > 0) e.agg['pct_' + col] = has ? e.s[j] / totals[j] * 100 : null;
-        });
-        delete e.s; delete e.c;
-    }
-    let unmatched;
-    if (areas) {
-        const outside = S.src.points.filter((p, i) => p && areas[i] == null).length;
-        nullRows = S.src.points.filter(p => !p).length;
+    const label = meta.hex ? 'hexagons' : shortLabel(meta), loc = keyCol === LOCATION;
+    const j = await JoinKit.buildJoinChunked({
+        rows: S.src.rows, headers: S.src.headers, features: fc.features, idOf: f => f.id, exclude: S.src.geomCols || [],
+        ...(loc ? { areaOf: areasForRows(S.layerId) } : { keyCol, propKey: meta.key, normalize, delimiter: delimFor(keyCol, meta) }),
+        yieldFn: nextFrame,
+        onProgress: (done, total) => toast(`Counting rows in ${label}`, { busy: true, progress: done / total, sub: `${done.toLocaleString()} of ${total.toLocaleString()}` }),
+    });
+    const join = { keyCol, byId: j.byId, numericCols: j.numericCols, currencyCols: j.currencyCols, matchedRows: j.matchedRows, nullRows: j.nullRows };
+    let unmatched = j.unmatched;
+    if (loc) {
+        const areas = areasForRows(S.layerId), outside = S.src.points.filter((p, i) => p && areas[i] == null).length;
+        join.nullRows = S.src.points.filter(p => !p).length;
         unmatched = outside ? [{ label: 'Outside every area', n: outside }] : [];
-    } else unmatched = [...tally.values()].sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
-    const join = { keyCol, byId, numericCols, currencyCols: types.currencyCols, matchedRows, nullRows, headers: S.src.headers, rows };
-    return { join, rowArea, rowAreas, unmatched, rowIndex: rowIndexOf(S.src) };
+    }
+    return { join, rowArea: j.rowArea, rowAreas: j.rowAreas, unmatched, rowIndex: rowIndexOf(S.src) };
 }
 const rowIndexCache = new WeakMap();
 const rowIndexOf = src => rowIndexCache.get(src) || rowIndexCache.set(src, new Map(src.rows.map((r, i) => [r, i]))).get(src);
@@ -1196,48 +1100,6 @@ const isCoordColumn = col => /^(lat|lng|lon|long|latitude|longitude|x|y|point_?[
 const statLabel = s => metricOptions().find(m => m.value === s)?.label || s;
 const metricLabel = () => statLabel(S.metric);
 
-// Natural breaks (Ckmeans, Wang & Song 2011): classes are built around gaps in the values,
-// so very different amounts don't share a color the way rank-based quantiles can force.
-// Values are first gathered into runs of equal values (counts are mostly 1, 2, 3…), and with more
-// than 1,500 distinct values into 1,500 runs of neighbors, so thousands of hexagons classify in
-// milliseconds instead of a second; each group is still a slice of the sorted values.
-function ckmeans(sorted, k) {
-    const N = sorted.length;
-    const runs = [];   // [start, end) in sorted
-    for (let i = 0; i < N;) { let j = i + 1; while (j < N && sorted[j] === sorted[i]) j++; runs.push([i, j]); i = j; }
-    const MAX = 1500;
-    const buckets = runs.length <= MAX ? runs : Array.from({ length: MAX }, (_, b) => {
-        const r0 = Math.floor(b * runs.length / MAX), r1 = Math.floor((b + 1) * runs.length / MAX) - 1;
-        return [runs[r0][0], runs[r1][1]];
-    });
-    const n = buckets.length;
-    k = Math.min(k, n);
-    const W = new Float64Array(n + 1), S1 = new Float64Array(n + 1), S2 = new Float64Array(n + 1);
-    buckets.forEach(([a, b], i) => {
-        let s1 = 0, s2 = 0;
-        for (let t = a; t < b; t++) { s1 += sorted[t]; s2 += sorted[t] * sorted[t]; }
-        W[i + 1] = W[i] + (b - a); S1[i + 1] = S1[i] + s1; S2[i + 1] = S2[i] + s2;
-    });
-    const ssd = (j, i) => { const w = W[i + 1] - W[j], s1 = S1[i + 1] - S1[j]; return S2[i + 1] - S2[j] - s1 * s1 / w; };
-    const cost = Array.from({ length: k }, () => new Float64Array(n));
-    const back = Array.from({ length: k }, () => new Int32Array(n));
-    for (let i = 0; i < n; i++) cost[0][i] = ssd(0, i);
-    for (let c = 1; c < k; c++) for (let i = c; i < n; i++) {
-        let best = Infinity, arg = c;
-        for (let j = c; j <= i; j++) { const v = cost[c - 1][j - 1] + ssd(j, i); if (v < best) { best = v; arg = j; } }
-        cost[c][i] = best; back[c][i] = arg;
-    }
-    const groups = []; let end = n - 1;
-    for (let c = k - 1; c >= 0; c--) { const start = back[c][end]; groups.unshift(sorted.slice(buckets[start][0], buckets[end][1])); end = start - 1; }
-    return groups;
-}
-
-// Min, max, median and mean of sorted values, for the compact legend.
-function statsOf(sorted) {
-    const n = sorted.length, mid = n >> 1;
-    return { n, min: sorted[0], max: sorted[n - 1], median: n % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2,
-        mean: sorted.reduce((a, b) => a + b, 0) / n };
-}
 // Classes for the area colors: natural breaks (around gaps in the values), equal width (the same
 // span of values each) or quantiles (the same number of areas each); with Log, natural breaks and
 // equal width work on the values' logarithms, so a long tail doesn't squeeze everything else into
@@ -1245,33 +1107,10 @@ function statsOf(sorted) {
 const CLASS_METHODS = { jenks: 'Natural breaks', equal: 'Equal width', quantile: 'Quantiles' };
 function classify(vals) {
     if (!vals.length) return null;
-    const sorted = [...vals].sort((a, b) => a - b), n = sorted.length;
-    const k = Math.min(ramp().length, new Set(sorted).size);
-    const log = S.classLog && S.classMethod !== 'quantile';
-    const t = log ? Math.log10 : v => v, inv = log ? v => 10 ** v : v => v;
-    let uppers, bounds = null;
-    if (S.classMethod === 'equal') {
-        const lo = t(sorted[0]), hi = t(sorted[n - 1]), w = (hi - lo) / k || 1;
-        bounds = Array.from({ length: k + 1 }, (_, i) => inv(lo + w * i));
-        bounds[0] = sorted[0]; bounds[k] = sorted[n - 1];
-        uppers = bounds.slice(1);
-    } else if (S.classMethod === 'quantile') {
-        uppers = [...new Set(Array.from({ length: k }, (_, i) => sorted[Math.max(0, Math.ceil((i + 1) * n / k) - 1)]))];
-    } else {
-        const groups = ckmeans(sorted.map(t), k);   // slices of the transformed values, in order
-        let at = 0;
-        uppers = groups.map(g => { at += g.length; return sorted[at - 1]; });
-    }
-    const kk = uppers.length, offset = ramp().length - kk;   // few classes → use the darker end of the ramp
-    const classIdx = v => { const i = uppers.findIndex(u => v <= u); return i < 0 ? kk - 1 : i; };
-    const classOf = v => (v === null || !(v > 0)) ? -1 : classIdx(v) + offset;
-    // Each class's range: the values in it (equal width: its span, also when it's empty).
-    const members = uppers.map(() => []);
-    for (const v of sorted) members[classIdx(v)].push(v);
-    const ranges = members.map((g, i) => ({
-        lo: bounds ? bounds[i] : g[0], hi: bounds ? bounds[i + 1] : g[g.length - 1], n: g.length, c: i + offset,
-    })).filter(r => r.n || bounds);
-    return { classOf, ranges, stats: statsOf(sorted), method: S.classMethod, log };
+    const cb = JoinKit.classBreaks(vals, { method: S.classMethod, k: ramp().length, log: S.classLog });
+    const offset = ramp().length - cb.k;   // few classes → use the darker end of the ramp
+    return { classOf: v => (v === null || !(v > 0)) ? -1 : cb.classOf(v) + offset,
+        ranges: cb.ranges.map(r => ({ ...r, c: r.cls + offset })), stats: cb.stats, method: cb.method, log: cb.log };
 }
 
 // "Hide areas without data": areas no row was placed in are left off the map, the labels and the list.
@@ -1978,9 +1817,9 @@ function computeRowClasses() {
         const sorted = vals.filter(v => v !== null).sort((a, b) => a - b);
         if (!sorted.length) return null;
         const ramp = rowRamp(), k = Math.min(ramp.length, new Set(sorted).size);
-        const groups = ckmeans(sorted, k), uppers = groups.map(g => g[g.length - 1]);
+        const groups = JoinKit.ckmeans(sorted, k), uppers = groups.map(g => g[g.length - 1]);
         const colors = ramp.slice(ramp.length - k);
-        return { type: 'numeric', col, colors, stats: statsOf(sorted),
+        return { type: 'numeric', col, colors, stats: JoinKit.summaryStats(sorted),
             ranges: groups.map((g, i) => ({ lo: g[0], hi: g[g.length - 1], n: g.length, color: colors[i] })),
             none: vals.filter(v => v === null).length,
             classOf: i => { const v = vals[i]; if (v === null) return -1; const j = uppers.findIndex(u => v <= u); return j < 0 ? k - 1 : j; } };
@@ -2922,6 +2761,6 @@ function labelStyle(o = {}) {
         note: 'Halos stop growing past about a quarter of the text size (MapLibre’s glyph buffer).' };
 }
 
-window.Joiner = { version: _BUILD_VERSION, state: S, table: T, loadFile, ckmeans, labelStyle, get map() { return map; } };   // for debugging in the console
+window.Joiner = { version: _BUILD_VERSION, state: S, table: T, loadFile, labelStyle, get map() { return map; } };   // for debugging in the console
 boot().catch(e => { console.error(e); alert('Joiner failed to start: ' + e.message); });
 })();
