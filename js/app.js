@@ -4,12 +4,12 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v30';
+const _BUILD_VERSION = 'v31';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
     boundaries: 'data/boundaries/',
-    style: 'https://api.protomaps.com/styles/v5/white/en.json?key=ffc24a4325d458ce',
+    style: 'https://api.protomaps.com/styles/v5/white/en.json?key=6c8d7dd20c838f80',
     // Area palettes, light→dark, each paired with a row color that stands out against it.
     // Checked with the dataviz palette validator: lightness steps and the row/area pairing.
     palettes: {
