@@ -2,6 +2,9 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v31
+- **New Protomaps API key** (6c8d7dd20c838f80), limited to https://civic-joy-fund.github.io. Local copies on localhost still work: Protomaps lets a valid key through from localhost.
+
 ## v30
 - **JoinKit 0.3.0** (burritojustice/maplibre#16), pinned at 4851893. Joiner's recent additions now live in JoinKit, shared with Selecter, with tests: the chunked join with progress (`buildJoinChunked`) and chunked point-in-polygon (`assignPointsToPolygonsChunked`); classes (`classBreaks`: natural breaks, equal width, quantiles, log; the fast `ckmeans`; `summaryStats`); forgiving names (`makeLooseNormalizer`) and list columns (`detectDelimiter`); hexbin helpers (`JoinKit.hex`: auto resolution, switch zooms, short codes, cover, which take h3-js as an argument); and `dissolve`. Joiner calls them instead of its own copies; behavior is the same.
 - **Shares of a column's total count every row in big files** too (as for smaller files): the chunked join had summed only the placed rows.
