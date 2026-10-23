@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v35';
+const _BUILD_VERSION = 'v36';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -957,6 +957,7 @@ function recompute() {
         const key = keyCol && joinKey(meta, fc, keyCol);
         const res = !keyCol ? null : joined?.key === key ? joined : (joined = { key, ...joinNow(meta, fc, keyCol, normalize) });
         if (res) { S.join = res.join; S.rowArea = res.rowArea; S.rowAreas = res.rowAreas; S.unmatched = res.unmatched; S.rowIndex = res.rowIndex; }
+        if (res && S.mapMask) S.join = maskJoin(res.join, res.rowIndex);   // Map these rows only
         updateRowLayer();
         if (!metricOptions().some(m => m.value === S.metric)) S.metric = 'count';
         for (const f of fc.features) S.values.set(f.id, statFor(f.id, S.metric));
@@ -1452,10 +1453,10 @@ function renderPanel() {
             (delimFor(S.join?.keyCol, meta) ? ' A row listed in two areas counts in both, so shares can add up to more than 100%.' : '') : '';
 
         if (S.join) {
-            const j = S.join, unmatchedRows = total - j.matchedRows - j.nullRows;
-            const pct = Math.round(j.matchedRows / total * 100);
+            const j = S.join, base = j.masked ?? total, unmatchedRows = base - j.matchedRows - j.nullRows;   // masked: of the matching rows
+            const pct = base ? Math.round(j.matchedRows / base * 100) : 0;
             const areas = Object.keys(j.byId).length, nAreas = S.geo.get(S.layerId).features.length;
-            $('match-summary').innerHTML = `<b>${j.matchedRows.toLocaleString()}</b> of ${total.toLocaleString()} rows placed (${pct}%) in <b>${areas}</b> of ${nAreas} areas
+            $('match-summary').innerHTML = (j.masked != null ? `<span class="hint mask-note">Map: the ${j.masked.toLocaleString()} rows matching the table’s search and filters</span>` : '') + `<b>${j.matchedRows.toLocaleString()}</b> of ${(j.masked ?? total).toLocaleString()} rows placed (${pct}%) in <b>${areas}</b> of ${nAreas} areas
                 <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
                 <span class="hint">${unmatchedRows ? (j.keyCol === LOCATION ? `${unmatchedRows} rows are outside every area` : `${unmatchedRows} rows have a value that matches no area`) : 'Every row placed'}${j.nullRows ? ` · ${j.nullRows} rows have ${j.keyCol === LOCATION ? 'no location' : 'a blank value'}` : ''}</span>`;
             const nEmpty = nAreas - areas;
@@ -1658,7 +1659,7 @@ const TABLE_MAX = 1000;
 // Below the map (height defaults to about three rows) or beside it (width). The area and name
 // columns stay put while scrolling sideways.
 const T = { open: false, filter: 'all', sort: null, dir: 1, dock: 'bottom', height: 160, width: 460, pin: null, shown: [],
-    search: '', conds: [], mode: 'and' };   // search text; filters { col, op, value }; rows must match all (and) or any (or)
+    search: '', conds: [], mode: 'and', mapOnly: false };   // mapOnly: the map counts and draws only matching rows   // search text; filters { col, op, value }; rows must match all (and) or any (or)
 const AREA_SORT = '__area';
 const saveTablePrefs = () => store.set('tableDock', { open: T.open, dock: T.dock, height: T.height, width: T.width });
 function applyTableDock() {
@@ -1761,6 +1762,50 @@ function renderTableFilters() {
     $('tf-mode').hidden = T.conds.length < 2;
     $('tf-mode').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === T.mode));
     $('tf-clear').hidden = !T.conds.length && !T.search;
+    const active = activeFilters();
+    $('tf-map').hidden = !active && !T.mapOnly;
+    $('tf-map').setAttribute('aria-pressed', T.mapOnly);
+    // With Map these rows only on, the map follows the search and filters (after a pause in typing).
+    const sig = T.mapOnly && active ? JSON.stringify([T.search, T.conds, T.mode]) : '';
+    if (sig !== mapFilterSig) { mapFilterSig = sig; clearTimeout(mapFilterTimer); mapFilterTimer = setTimeout(applyMapFilter, 300); }
+}
+const activeFilters = () => !!(T.search.trim() || T.conds.some(f => f.op === 'in' ? f.value.length : f.value.some(x => x !== '' && x != null)));
+let mapFilterSig = '', mapFilterTimer = null;
+// The rows the map counts: those matching the table's search and filters (not its All / Selected
+// area / In view choice), when Map these rows only is on.
+async function applyMapFilter() {
+    const on = T.mapOnly && activeFilters() && S.src;
+    if (!on && !S.mapMask) return;
+    if (on) {
+        const n = S.src.rows.length, mask = new Uint8Array(n);
+        for (const i of searchAndFilter([...Array(n).keys()])) mask[i] = 1;
+        S.mapMask = mask;
+    } else S.mapMask = null;
+    if (S.src.rows.length >= 20000) { toast(on ? 'Counting the matching rows' : 'Counting every row', { busy: true }); await nextFrame(); }
+    recompute();
+    if (S.src.rows.length >= 20000) map.once('idle', () => toast(null));
+}
+// The join narrowed to the mask: each area keeps its matching rows, and its count, sums,
+// averages and shares (of the matching rows' totals) are worked out again.
+const maskCache = new WeakMap();
+function maskJoin(join, rowIndex) {
+    const mask = S.mapMask, by = maskCache.get(join);
+    if (by?.mask === mask) return by.out;
+    const keep = r => mask[rowIndex.get(r)] === 1;
+    const byId = {};
+    for (const [id, e] of Object.entries(join.byId)) {
+        const rows = e.rows.filter(keep);
+        if (rows.length) byId[id] = { rows, agg: JoinKit.computeAgg(rows, join.numericCols, []) };
+    }
+    const totals = {};
+    for (const c of join.numericCols) { let t = 0; S.src.rows.forEach((r, i) => { if (mask[i]) { const v = JoinKit.parseNum(r[c]); if (v !== null) t += v; } }); totals[c] = t; }
+    for (const e of Object.values(byId)) for (const c of join.numericCols) { const v = e.agg['sum_' + c]; if (totals[c] > 0) e.agg['pct_' + c] = v == null ? null : v / totals[c] * 100; }
+    let matched = 0, nulls = 0;
+    S.rowArea.forEach((a, i) => { if (!mask[i]) return; if (a != null) matched++; });
+    for (let i = 0; i < mask.length; i++) if (mask[i] && (join.keyCol === LOCATION ? !S.src.points?.[i] : false)) nulls++;
+    const out = { ...join, byId, matchedRows: matched, nullRows: nulls, masked: mask.reduce((a, b) => a + b, 0) };
+    maskCache.set(join, { mask, out });
+    return out;
 }
 // The editor for one filter, under the tools row.
 function editFilter(k) {
@@ -1781,9 +1826,19 @@ function editFilter(k) {
     }
     pop.innerHTML = `<div class="tf-row"><select class="tf-col" aria-label="Column">${cols}</select><button type="button" class="btn tf-done">Done</button></div>${body}`;
     pop.hidden = false; pop.dataset.k = k;
+    placeFilterPop();
+}
+// The editor floats over the map, just above the tools row (beside the map: just below it).
+function placeFilterPop() {
+    const pop = $('tf-pop'); if (pop.hidden) return;
+    const r = document.querySelector('.table-tools').getBoundingClientRect();
+    pop.style.left = `${Math.max(8, r.left + 12)}px`;
+    if (T.dock === 'side') { pop.style.top = `${r.bottom + 4}px`; pop.style.bottom = 'auto'; }
+    else { pop.style.bottom = `${window.innerHeight - r.top + 6}px`; pop.style.top = 'auto'; }
 }
 function wireTableFilters() {
     let t = null;
+    window.addEventListener('resize', placeFilterPop);
     $('table-search').addEventListener('input', e => { clearTimeout(t); t = setTimeout(() => { T.search = e.target.value; renderTable(); }, 150); });
     const newFilter = () => {
         const c = filterCols().find(c => !isNumCol(c)) || filterCols()[0];
@@ -1792,6 +1847,7 @@ function wireTableFilters() {
     };
     $('tf-add').onclick = newFilter;
     $('tf-clear').onclick = () => { T.conds = []; T.search = ''; $('table-search').value = ''; $('tf-pop').hidden = true; renderTable(); };
+    $('tf-map').onclick = () => { T.mapOnly = !T.mapOnly; renderTableFilters(); };
     $('tf-mode').onclick = e => { const b = e.target.closest('button'); if (!b) return; T.mode = b.dataset.mode; renderTable(); };
     $('tf-chips').onclick = e => {
         const x = e.target.closest('.tf-x'), ed = e.target.closest('.tf-edit');
@@ -2044,12 +2100,12 @@ function updateRowLayer() {
     const k = i => S.rowClasses ? S.rowClasses.classOf(i) : 0;
     // Switching hexagon levels re-runs this with the same rows; skip resending thousands of features
     // when nothing they carry has changed (which rows are placed, their class and size).
-    const key = show ? JSON.stringify([S.rowStyle, S.palette]) + S.rowArea.map(a => a == null ? 0 : 1).join('') : '';
+    const key = show ? JSON.stringify([S.rowStyle, S.palette, tokOf(S.mapMask)]) + S.rowArea.map(a => a == null ? 0 : 1).join('') : '';
     if (show && rowLayerKey.src === S.src && rowLayerKey.key === key) { applyPointSize(); applyPalette(); return; }
     rowLayerKey = { src: S.src, key };
     const feats = [];
     if (show) S.src.geoms.forEach((g, i) => {
-        if (!g) return;
+        if (!g || (S.mapMask && !S.mapMask[i])) return;   // Map these rows only
         const props = { _i: i, _in: S.rowArea[i] != null, _k: k(i), _s: sizeOf(i), _mid: false };
         feats.push({ type: 'Feature', geometry: g, properties: props });
         // Zoomed out, a line shows as a dot at its midpoint.
@@ -2431,7 +2487,7 @@ async function useSource(src, { keep = false } = {}) {
             if (st.labels) { S.labels = st.labels.fields ?? null; S.prefix = st.labels.prefix ?? S.prefix; S.prefixZoom = st.labels.prefixZoom ?? S.prefixZoom; }
             if (st.layerId && S.layers.has(st.layerId) && st.layerId !== S.layerId) { await setLayer(st.layerId); return; }
         }
-        T.sort = null; if (!keep) { T.pin = null; T.search = ''; T.conds = []; $('table-search').value = ''; }
+        T.sort = null; if (!keep) { T.pin = null; T.search = ''; T.conds = []; T.mapOnly = false; S.mapMask = null; mapFilterSig = ''; $('table-search').value = ''; }
         if (T.wanted && !T.open) setTableOpen(true);
         if (isHex(S.layerId)) { await setLayer(S.layerId); return; }   // the grid gains the file's cells
         await refresh();
