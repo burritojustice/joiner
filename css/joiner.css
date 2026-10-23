@@ -577,3 +577,8 @@ details.card > summary::before, details.sub > summary::before, .src-title::befor
 .tf-pop .tf-vals .check span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tf-pop .tf-vals .n { color: var(--ink-soft); font-size: 12px; font-variant-numeric: tabular-nums; }
 .tf-pop .tf-vals label[hidden] { display: none; }
+/* v36: the filter editor floats over the map */
+.tf-pop { position: fixed; margin: 0; z-index: 30; width: min(420px, calc(100vw - 32px)); max-width: none; box-sizing: border-box; }
+.tf-pop .tf-vals { max-height: min(260px, 40vh); }
+#tf-map { margin-left: auto; }
+.mask-note { display: block; margin-bottom: 4px; color: var(--grape); font-weight: 600; }
