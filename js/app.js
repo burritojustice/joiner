@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v34';
+const _BUILD_VERSION = 'v35';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -1657,7 +1657,8 @@ function setHover(id) {
 const TABLE_MAX = 1000;
 // Below the map (height defaults to about three rows) or beside it (width). The area and name
 // columns stay put while scrolling sideways.
-const T = { open: false, filter: 'all', sort: null, dir: 1, dock: 'bottom', height: 160, width: 460, pin: null, shown: [] };
+const T = { open: false, filter: 'all', sort: null, dir: 1, dock: 'bottom', height: 160, width: 460, pin: null, shown: [],
+    search: '', conds: [], mode: 'and' };   // search text; filters { col, op, value }; rows must match all (and) or any (or)
 const AREA_SORT = '__area';
 const saveTablePrefs = () => store.set('tableDock', { open: T.open, dock: T.dock, height: T.height, width: T.width });
 function applyTableDock() {
@@ -1691,6 +1692,7 @@ function tableRowIdx() {
         const b = map.getBounds();
         idx = idx.filter(i => { const p = S.src.points?.[i]; return p && b.contains(p); });
     }
+    idx = searchAndFilter(idx);
     if (T.sort) {
         const c = T.sort, num = c !== AREA_SORT && JoinKit.classifyColumns(sampleRows(), [c]).numericCols.length > 0;
         const key = c === AREA_SORT ? i => (S.rowArea[i] != null ? areaName(S.rowArea[i]) || '' : '').toLowerCase()
@@ -1699,11 +1701,132 @@ function tableRowIdx() {
     }
     return idx;
 }
+// ── Table search and filters ──
+// Search: rows with the text in any shown column (or the area name). Filters: a category column
+// "is any of" some values (each part of a cell listing several counts), or a number column >, <
+// or from–to; rows match all of them or any of them.
+const filterCols = () => [AREA_SORT, ...tableCols()];
+const colTitle = c => c === AREA_SORT ? shortLabel(S.layers.get(S.layerId)) : c;
+const numCache = new WeakMap();
+function isNumCol(c) {
+    if (c === AREA_SORT || !S.src) return false;
+    const by = numCache.get(S.src) || numCache.set(S.src, {}).get(S.src);
+    // Numbers to compare: 90% of filled cells parse, and it isn't an id or code (ZIP, CNN). Years count.
+    if (!(c in by)) {
+        let filled = 0, ok = 0;
+        for (const r of sampleRows()) { const v = r[c]; if (v === '' || v == null) continue; filled++; if (JoinKit.parseNum(v) !== null) ok++; }
+        by[c] = filled > 0 && ok / filled >= 0.9 && (!isIdColumn(c) || /\byear\b/i.test(c));
+    }
+    return by[c];
+}
+// A row's values in a column: its areas' names, the parts of a list cell, or the cell.
+function valuesOf(i, c) {
+    if (c === AREA_SORT) return areaNamesOf(i);
+    const v = S.src.rows[i][c], d = delimFor(c);
+    return (Array.isArray(v) || d) ? JoinKit.cellValues(v, d).map(x => String(JoinKit.cellText(x)).trim()).filter(Boolean) : [String(JoinKit.cellText(v)).trim()].filter(Boolean);
+}
+function condMatches(i, f) {
+    if (f.op === 'in') { const vs = valuesOf(i, f.col); return f.value.length ? vs.some(v => f.value.includes(v)) : true; }
+    const n = JoinKit.parseNum(S.src.rows[i][f.col]);
+    if (n === null) return false;
+    const [a, b] = f.value.map(x => x === '' || x == null ? null : Number(x));
+    if (f.op === '>') return a === null || n > a;
+    if (f.op === '<') return a === null || n < a;
+    return (a === null || n >= a) && (b === null || n <= b);   // from–to
+}
+const searchCache = new WeakMap();   // source → lowercased text of each row
+function searchAndFilter(idx) {
+    const conds = T.conds.filter(f => f.op === 'in' ? f.value.length : f.value.some(x => x !== '' && x != null));
+    const q = T.search.trim().toLowerCase();
+    if (!q && !conds.length) return idx;
+    let text = null;
+    if (q) {
+        text = searchCache.get(S.src);
+        if (!text) { const cols = tableCols(); text = S.src.rows.map(r => cols.map(c => cellShow(r[c])).join('\u0001').toLowerCase()); searchCache.set(S.src, text); }
+    }
+    const words = q.split(/\s+/).filter(Boolean);
+    return idx.filter(i => {
+        if (words.length && !words.every(w => text[i].includes(w) || areaNamesOf(i).some(a => a.toLowerCase().includes(w)))) return false;
+        if (!conds.length) return true;
+        return T.mode === 'or' ? conds.some(f => condMatches(i, f)) : conds.every(f => condMatches(i, f));
+    });
+}
+const fmtFilter = f => {
+    if (f.op === 'in') return `${colTitle(f.col)}: ${f.value.length ? (f.value.length <= 2 ? f.value.join(', ') : `${f.value.slice(0, 2).join(', ')} +${f.value.length - 2}`) : 'any'}`;
+    const [a, b] = f.value;
+    return `${colTitle(f.col)} ${f.op === '>' ? `> ${a ?? ''}` : f.op === '<' ? `< ${a ?? ''}` : `${a || '…'} – ${b || '…'}`}`;
+};
+function renderTableFilters() {
+    $('tf-chips').innerHTML = T.conds.map((f, k) => `<span class="tf-chip" data-k="${k}"><button type="button" class="tf-edit" data-k="${k}">${esc(fmtFilter(f))}</button><button type="button" class="tf-x" data-k="${k}" aria-label="Remove filter">✕</button></span>`).join('');
+    $('tf-mode').hidden = T.conds.length < 2;
+    $('tf-mode').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === T.mode));
+    $('tf-clear').hidden = !T.conds.length && !T.search;
+}
+// The editor for one filter, under the tools row.
+function editFilter(k) {
+    const f = T.conds[k], pop = $('tf-pop'), num = isNumCol(f.col);
+    const cols = filterCols().map(c => `<option value="${esc(c)}"${c === f.col ? ' selected' : ''}>${esc(colTitle(c))}${isNumCol(c) ? ' (number)' : ''}</option>`).join('');
+    let body;
+    if (num) {
+        body = `<div class="seg mini tf-ops">${[['>', '>'], ['<', '<'], ['between', 'from – to']].map(([o, l]) => `<button type="button" data-op="${o}" aria-pressed="${f.op === o}">${l}</button>`).join('')}</div>
+            <div class="tf-nums"><input type="number" step="any" data-i="0" value="${esc(f.value[0] ?? '')}" placeholder="${f.op === 'between' ? 'from' : 'value'}">${f.op === 'between' ? `<span>–</span><input type="number" step="any" data-i="1" value="${esc(f.value[1] ?? '')}" placeholder="to">` : ''}</div>`;
+    } else {
+        // Values with how many rows have each (all rows, so the counts don't move as filters change).
+        const counts = new Map(), n = S.src.rows.length;
+        for (let i = 0; i < n; i++) for (const v of new Set(valuesOf(i, f.col))) counts.set(v, (counts.get(v) || 0) + 1);
+        const vals = [...counts].sort((a, b) => b[1] - a[1] || NAME_ORDER.compare(a[0], b[0]));
+        body = `<input type="search" class="tf-find" placeholder="Find a value">
+            <div class="tf-vals">${vals.slice(0, 500).map(([v, c]) => `<label class="check"><input type="checkbox" value="${esc(v)}"${f.value.includes(v) ? ' checked' : ''}> <span>${esc(v)}</span> <span class="n">${c.toLocaleString()}</span></label>`).join('')}
+            ${vals.length > 500 ? `<p class="hint">and ${(vals.length - 500).toLocaleString()} more values: use Search for those</p>` : ''}</div>`;
+    }
+    pop.innerHTML = `<div class="tf-row"><select class="tf-col" aria-label="Column">${cols}</select><button type="button" class="btn tf-done">Done</button></div>${body}`;
+    pop.hidden = false; pop.dataset.k = k;
+}
+function wireTableFilters() {
+    let t = null;
+    $('table-search').addEventListener('input', e => { clearTimeout(t); t = setTimeout(() => { T.search = e.target.value; renderTable(); }, 150); });
+    const newFilter = () => {
+        const c = filterCols().find(c => !isNumCol(c)) || filterCols()[0];
+        T.conds.push(isNumCol(c) ? { col: c, op: '>', value: [''] } : { col: c, op: 'in', value: [] });
+        renderTableFilters(); editFilter(T.conds.length - 1);
+    };
+    $('tf-add').onclick = newFilter;
+    $('tf-clear').onclick = () => { T.conds = []; T.search = ''; $('table-search').value = ''; $('tf-pop').hidden = true; renderTable(); };
+    $('tf-mode').onclick = e => { const b = e.target.closest('button'); if (!b) return; T.mode = b.dataset.mode; renderTable(); };
+    $('tf-chips').onclick = e => {
+        const x = e.target.closest('.tf-x'), ed = e.target.closest('.tf-edit');
+        if (x) { T.conds.splice(+x.dataset.k, 1); $('tf-pop').hidden = true; renderTable(); }
+        else if (ed) editFilter(+ed.dataset.k);
+    };
+    const pop = $('tf-pop'), cur = () => T.conds[+pop.dataset.k];
+    pop.addEventListener('change', e => {
+        const f = cur(); if (!f) return;
+        if (e.target.matches('.tf-col')) {
+            const c = e.target.value;
+            T.conds[+pop.dataset.k] = isNumCol(c) ? { col: c, op: '>', value: [''] } : { col: c, op: 'in', value: [] };
+            editFilter(+pop.dataset.k); renderTable(); return;
+        }
+        if (e.target.matches('.tf-vals input')) { f.value = [...pop.querySelectorAll('.tf-vals input:checked')].map(x => x.value); renderTable(); }
+    });
+    pop.addEventListener('input', e => {
+        const f = cur(); if (!f) return;
+        if (e.target.matches('.tf-nums input')) { f.value[+e.target.dataset.i] = e.target.value; clearTimeout(t); t = setTimeout(renderTable, 150); }
+        if (e.target.matches('.tf-find')) { const q = e.target.value.toLowerCase(); pop.querySelectorAll('.tf-vals label').forEach(l => { l.hidden = q && !l.textContent.toLowerCase().includes(q); }); }
+    });
+    pop.addEventListener('click', e => {
+        const f = cur(); if (!f) return;
+        const op = e.target.closest('.tf-ops button');
+        if (op) { f.op = op.dataset.op; f.value = f.op === 'between' ? [f.value[0] ?? '', ''] : [f.value[0] ?? '']; editFilter(+pop.dataset.k); renderTable(); }
+        if (e.target.closest('.tf-done')) { pop.hidden = true; if (f.op === 'in' ? !f.value.length : !f.value.some(x => x !== '')) T.conds.splice(+pop.dataset.k, 1); renderTable(); }
+    });
+}
 function renderTable() {
     if (!T.open || !S.src) return;
     const cols = tableCols(), idx = tableRowIdx(), shown = T.shown = idx.slice(0, TABLE_MAX);
     const area = i => areaNamesOf(i).join(', ');
+    renderTableFilters();
     $('table-count').textContent = `${idx.length.toLocaleString()} of ${S.src.rows.length.toLocaleString()} rows`
+        + (T.search || T.conds.length ? ' match' : '')
         + (T.filter === 'area' ? (S.selectedId == null ? ' · click an area to show its rows' : ` in ${areaName(S.selectedId)}`) : T.filter === 'view' ? ' in view' : '')
         + (idx.length > TABLE_MAX ? ` · showing the first ${TABLE_MAX.toLocaleString()}` : '');
     $('table-filter').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.filter === T.filter));
@@ -2308,7 +2431,7 @@ async function useSource(src, { keep = false } = {}) {
             if (st.labels) { S.labels = st.labels.fields ?? null; S.prefix = st.labels.prefix ?? S.prefix; S.prefixZoom = st.labels.prefixZoom ?? S.prefixZoom; }
             if (st.layerId && S.layers.has(st.layerId) && st.layerId !== S.layerId) { await setLayer(st.layerId); return; }
         }
-        T.sort = null; if (!keep) T.pin = null;
+        T.sort = null; if (!keep) { T.pin = null; T.search = ''; T.conds = []; $('table-search').value = ''; }
         if (T.wanted && !T.open) setTableOpen(true);
         if (isHex(S.layerId)) { await setLayer(S.layerId); return; }   // the grid gains the file's cells
         await refresh();
@@ -2683,6 +2806,7 @@ function wireUI() {
     $('dock-seg').onclick = e => { const b = e.target.closest('button'); if (!b) return; T.dock = b.dataset.dock; applyTableDock(); saveTablePrefs(); renderTable(); };
     $('table-toggle').onclick = () => setTableOpen(!T.open);
     $('table-close').onclick = () => setTableOpen(false);
+    wireTableFilters();
     $('table-filter').onclick = e => { const b = e.target.closest('button'); if (!b) return; T.filter = b.dataset.filter; renderTable(); };
     map.on('moveend', () => { if (T.filter === 'view') renderTable(); updateCrowd(); });
     $('table-grid').addEventListener('click', e => {
