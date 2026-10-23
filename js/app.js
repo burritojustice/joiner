@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v36';
+const _BUILD_VERSION = 'v37';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -1882,7 +1882,7 @@ function renderTable() {
     const area = i => areaNamesOf(i).join(', ');
     renderTableFilters();
     $('table-count').textContent = `${idx.length.toLocaleString()} of ${S.src.rows.length.toLocaleString()} rows`
-        + (T.search || T.conds.length ? ' match' : '')
+
         + (T.filter === 'area' ? (S.selectedId == null ? ' · click an area to show its rows' : ` in ${areaName(S.selectedId)}`) : T.filter === 'view' ? ' in view' : '')
         + (idx.length > TABLE_MAX ? ` · showing the first ${TABLE_MAX.toLocaleString()}` : '');
     $('table-filter').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.filter === T.filter));

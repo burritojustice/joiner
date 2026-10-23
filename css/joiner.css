@@ -582,3 +582,30 @@ details.card > summary::before, details.sub > summary::before, .src-title::befor
 .tf-pop .tf-vals { max-height: min(260px, 40vh); }
 #tf-map { margin-left: auto; }
 .mask-note { display: block; margin-bottom: 4px; color: var(--grape); font-weight: 600; }
+/* v37: search and filters share the header row (bottom dock); their own row beside the map */
+.table-head .hint { flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.table-head .table-tools { flex: 1 1 320px; min-width: 0; padding: 0; }
+.table-tools input[type=search] { width: 150px; padding: 3px 8px; }
+.side-dock .table-head .table-tools { order: 10; flex-basis: 100%; }
+.side-dock .table-head .hint { white-space: normal; }
+#dock-seg button { padding: 3px 7px; display: inline-flex; align-items: center; }
+#dock-seg svg { width: 16px; height: 16px; display: block; }
+.table-head .table-tools { flex-wrap: nowrap; }
+.table-head .tf-chips { display: flex; gap: 6px; flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.table-head .tf-chips::-webkit-scrollbar { display: none; }
+.table-head .tf-chip { flex: none; }
+.table-head .tf-chip .tf-edit { max-width: 200px; }
+.table-head .table-tools > * { flex-shrink: 0; }
+.table-head .table-tools > .tf-chips { flex-shrink: 1; }
+#tf-map { margin-left: 0; white-space: nowrap; }
+.side-dock .table-head .table-tools { flex-wrap: wrap; }
+/* the header row: count, then search and filters (as much room as they need), then the right-hand group,
+   which moves to a second line only when the drawer is too narrow */
+.table-head .table-tools { flex: 0 1 auto; }
+.table-head .tf-chips { min-width: 90px; }
+.table-head .th-right { display: flex; align-items: center; gap: 10px; margin-left: auto; flex-shrink: 0; }
+.side-dock .table-head .th-right { margin-left: 0; }
+.table-head .tf-chip .tf-edit { max-width: 160px; }
+.table-head { gap: 8px; }
+.table-head .table-tools { gap: 6px; }
+.table-head .table-tools input[type=search] { width: 130px; }

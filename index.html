@@ -259,21 +259,23 @@
       <div class="table-grip" id="table-grip" title="Drag to resize"></div>
       <div class="table-head">
         <b>Rows</b> <span class="hint" id="table-count"></span>
-        <div class="seg" id="table-filter" role="group" aria-label="Which rows">
-          <button type="button" data-filter="all">All</button><button type="button" data-filter="area">Selected area</button><button type="button" data-filter="view">In view</button>
+        <div class="table-tools">
+          <input type="search" id="table-search" placeholder="Search rows" aria-label="Search rows" spellcheck="false">
+          <div class="tf-chips" id="tf-chips"></div>
+          <button type="button" class="linkish" id="tf-add">+ Filter</button>
+          <div class="seg mini" id="tf-mode" role="group" aria-label="Rows must match" hidden><button type="button" data-mode="and" title="Rows that match every filter">All</button><button type="button" data-mode="or" title="Rows that match any filter">Any</button></div>
+          <button type="button" class="linkish" id="tf-clear" hidden>Clear</button>
+          <button type="button" class="tog" id="tf-map" aria-pressed="false" hidden title="Count and draw only the rows that match the search and filters"><i aria-hidden="true"></i>Map only these</button>
         </div>
-        <div class="seg" id="dock-seg" role="group" aria-label="Where the table goes">
-          <button type="button" data-dock="bottom" title="Below the map">Bottom</button><button type="button" data-dock="side" title="Beside the map">Side</button>
+        <div class="th-right">
+          <div class="seg" id="table-filter" role="group" aria-label="Which rows">
+            <button type="button" data-filter="all" title="Every row">All</button><button type="button" data-filter="area" title="Rows in the selected area">Area</button><button type="button" data-filter="view" title="Rows on the map in view">In view</button>
+          </div>
+          <div class="seg" id="dock-seg" role="group" aria-label="Where the table goes">
+            <button type="button" data-dock="bottom" title="Dock below the map" aria-label="Dock below the map"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="2.2" y="9" width="11.6" height="3.8" fill="currentColor"/></svg></button><button type="button" data-dock="side" title="Dock beside the map" aria-label="Dock beside the map"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="9.5" y="3.2" width="4.3" height="9.6" fill="currentColor"/></svg></button>
+          </div>
+          <button class="chip-x" id="table-close" type="button" title="Close the table" aria-label="Close the table">✕</button>
         </div>
-        <button class="chip-x" id="table-close" type="button" title="Close the table" aria-label="Close the table">✕</button>
-      </div>
-      <div class="table-tools">
-        <input type="search" id="table-search" placeholder="Search rows" aria-label="Search rows" spellcheck="false">
-        <div class="tf-chips" id="tf-chips"></div>
-        <button type="button" class="linkish" id="tf-add">+ Filter</button>
-        <div class="seg mini" id="tf-mode" role="group" aria-label="Rows must match" hidden><button type="button" data-mode="and" title="Rows that match every filter">All</button><button type="button" data-mode="or" title="Rows that match any filter">Any</button></div>
-        <button type="button" class="linkish" id="tf-clear" hidden>Clear</button>
-        <button type="button" class="tog" id="tf-map" aria-pressed="false" hidden title="Count and draw only the rows that match the search and filters"><i aria-hidden="true"></i>Map these rows only</button>
       </div>
       <div class="tf-pop" id="tf-pop" hidden></div>
       <div class="table-scroll"><table class="grid" id="table-grid"></table></div>
