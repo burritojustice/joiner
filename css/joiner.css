@@ -554,3 +554,26 @@ details.card > summary::before, details.sub > summary::before, .src-title::befor
 .load-dialog input:focus { outline: 2px solid var(--grape); outline-offset: 0; border-color: transparent; }
 .at-card > summary .n { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 12.5px; margin-left: 4px; }
 .at-card[open] > summary .n { display: none; }
+/* v35: table search and filters */
+.table-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 12px 6px; font-size: 13px; flex-shrink: 0; }
+.table-tools input[type=search] { font: inherit; font-size: 13px; padding: 4px 8px; border: 1.5px solid var(--line); border-radius: 999px; width: 180px; }
+.table-tools input[type=search]:focus, .tf-pop input:focus, .tf-pop select:focus { outline: 2px solid var(--grape); outline-offset: 0; border-color: transparent; }
+.tf-chips { display: contents; }
+.tf-chip { display: inline-flex; align-items: center; border: 1.5px solid var(--ink); border-radius: 999px; background: #eef0fb; }
+.tf-chip button { all: unset; cursor: pointer; font-size: 12.5px; padding: 2px 4px 2px 10px; }
+.tf-chip .tf-edit { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tf-chip .tf-x { padding: 2px 9px 2px 4px; color: var(--ink-soft); }
+.tf-chip .tf-x:hover { color: var(--ink); }
+.tf-pop { position: relative; margin: 0 12px 6px; padding: 10px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--card); box-shadow: 0 4px 14px rgba(30,35,64,.12); max-width: 420px; flex-shrink: 0; }
+.tf-pop .tf-row { display: flex; gap: 8px; align-items: center; }
+.tf-pop select { flex: 1; font: inherit; font-size: 13px; padding: 4px 6px; border: 1.5px solid var(--line); border-radius: 8px; }
+.tf-pop .btn { padding: 4px 12px; font-size: 13px; }
+.tf-pop .tf-ops { margin-top: 8px; }
+.tf-pop .tf-nums { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+.tf-pop .tf-nums input { width: 110px; font: inherit; font-size: 13px; padding: 4px 6px; border: 1.5px solid var(--line); border-radius: 8px; }
+.tf-pop .tf-find { margin-top: 8px; width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 4px 8px; border: 1.5px solid var(--line); border-radius: 8px; }
+.tf-pop .tf-vals { max-height: 180px; overflow: auto; margin-top: 6px; }
+.tf-pop .tf-vals .check { margin-top: 2px; font-size: 13px; flex-wrap: nowrap; }
+.tf-pop .tf-vals .check span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tf-pop .tf-vals .n { color: var(--ink-soft); font-size: 12px; font-variant-numeric: tabular-nums; }
+.tf-pop .tf-vals label[hidden] { display: none; }

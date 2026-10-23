@@ -2,6 +2,14 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v35
+- **Search the table:** a box above the rows keeps those with every word somewhere in a shown column or the area name.
+- **Filters:** + Filter adds one; its chip opens an editor.
+  - **Category columns** (and the area column): tick the values to keep, with how many rows have each and a box to find one. Each part of a list cell counts (“Mission, Bernal Heights” matches Mission).
+  - **Number columns** (90% of cells are numbers; years count, ZIPs and other codes don't): **>**, **<** or **from – to**; leave a side empty for an open range.
+  - With two or more filters, **All / Any** says whether rows must match every filter or one of them. **Clear** removes the search and the filters; loading another file does too.
+- Filters and search work with All / Selected area / In view, and with sorting. They narrow the table only; the map still counts every row.
+
 ## v34
 - **Load data opens a dialog:** Open a file…, or paste a link (Google Sheet, DataSF, CSV/JSON URL). The From a link card is gone; a failed link reopens the dialog with the reason. The help card's “choose a file” still opens the file picker, and its new link line opens the dialog.
 - **Census Tracts are in Other.**

@@ -267,6 +267,14 @@
         </div>
         <button class="chip-x" id="table-close" type="button" title="Close the table" aria-label="Close the table">✕</button>
       </div>
+      <div class="table-tools">
+        <input type="search" id="table-search" placeholder="Search rows" aria-label="Search rows" spellcheck="false">
+        <div class="tf-chips" id="tf-chips"></div>
+        <button type="button" class="linkish" id="tf-add">+ Filter</button>
+        <div class="seg mini" id="tf-mode" role="group" aria-label="Rows must match" hidden><button type="button" data-mode="and" title="Rows that match every filter">All</button><button type="button" data-mode="or" title="Rows that match any filter">Any</button></div>
+        <button type="button" class="linkish" id="tf-clear" hidden>Clear</button>
+      </div>
+      <div class="tf-pop" id="tf-pop" hidden></div>
       <div class="table-scroll"><table class="grid" id="table-grid"></table></div>
     </section>
     <div class="drop" id="drop" hidden><div>Drop to load</div></div>
