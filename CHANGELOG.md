@@ -2,6 +2,11 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v37
+- **One header row for the table** (below the map): the count, search, filter chips, + Filter, Clear and Map only these sit with All / Area / In view, the dock buttons and ✕. Filter chips stay on that row and scroll sideways when there are many. On narrow screens the right-hand group drops to a second line; beside the map, search and filters get their own lines as before.
+- **Dock buttons are icons,** as in a browser's developer tools: a window with a bar along the bottom, or along the right.
+- Shorter labels: **Area** (was Selected area), **Map only these**; the count reads “44 of 317 rows”.
+
 ## v36
 - **The filter editor opens upward, over the map** (with the table beside the map, it opens just below the tools row), so it no longer pushes the rows down.
 - **Map these rows only:** with a search or filter set, this button makes the map count and draw only the matching rows: area counts, totals, averages and shares (of the matching rows' totals), the list, the legend and the features. It follows the search and filters as they change; the summary says “Map: the N rows matching the table's search and filters”. Turn it off (or clear the filters) for every row again. The table's All / Selected area / In view choice doesn't affect the map.
