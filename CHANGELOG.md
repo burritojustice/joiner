@@ -2,6 +2,11 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v38
+- **Filter chips show the value first:** “**Mission, Bayview** · NEIGHBORHOOD OF INTEREST”. The column name is faded and is what gets cut when space is short; hover a chip for the whole filter (“NEIGHBORHOOD OF INTEREST is Mission or Bayview”).
+- **The filter editor's column menu stays inside the editor,** however long the column names; long names are shortened in the menu, with the full name on hover.
+- **Text with commas isn't split into values** in a filter's list: a column is treated as a list only when its parts also appear on their own in other cells (or it's the column rows are matched by), so “Yes, a merchants group” stays one value.
+
 ## v37
 - **One header row for the table** (below the map): the count, search, filter chips, + Filter, Clear and Map only these sit with All / Area / In view, the dock buttons and ✕. Filter chips stay on that row and scroll sideways when there are many. On narrow screens the right-hand group drops to a second line; beside the map, search and filters get their own lines as before.
 - **Dock buttons are icons,** as in a browser's developer tools: a window with a bar along the bottom, or along the right.

@@ -609,3 +609,13 @@ details.card > summary::before, details.sub > summary::before, .src-title::befor
 .table-head { gap: 8px; }
 .table-head .table-tools { gap: 6px; }
 .table-head .table-tools input[type=search] { width: 130px; }
+/* v38: chips show the value first; the column name is faded and cut first */
+.tf-chip .tf-edit { display: inline-flex; min-width: 0; max-width: 220px; overflow: hidden; }
+.table-head .tf-chip .tf-edit { max-width: 200px; }
+.tf-chip .tf-v { font-weight: 600; white-space: nowrap; flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.tf-chip .tf-k { color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* the column menu stays inside the editor, however long the names */
+.tf-pop .tf-row { min-width: 0; }
+.tf-pop .tf-row select { flex: 1 1 0; min-width: 0; width: 0; max-width: 100%; text-overflow: ellipsis; }
+.tf-pop .tf-row .btn { flex: none; }
+.tf-chip .tf-k { max-width: 110px; }
