@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v37';
+const _BUILD_VERSION = 'v38';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -1720,10 +1720,28 @@ function isNumCol(c) {
     }
     return by[c];
 }
+// Is a column a list ("Mission, Bayview") or text with commas in it ("Yes, a merchants group")?
+// A list's parts also turn up on their own in other cells; most of a sentence's don't.
+const listCache = new WeakMap();
+function isListCol(c) {
+    if (!delimFor(c)) return false;
+    const by = listCache.get(S.src) || listCache.set(S.src, {}).get(S.src);
+    if (!(c in by)) {
+        const whole = new Set(), parts = new Set();
+        for (const r of sampleRows()) {
+            const v = r[c]; if (v == null || v === '' || Array.isArray(v)) continue;
+            const t = String(v).trim();
+            if (/[,;|\n]/.test(t)) t.split(JoinKit.MULTI_DELIMITER).forEach(p => p && parts.add(p.trim().toLowerCase())); else whole.add(t.toLowerCase());
+        }
+        const seen = [...parts].filter(p => whole.has(p)).length;
+        by[c] = c === S.join?.keyCol || (parts.size > 0 && seen / parts.size >= 0.5);
+    }
+    return by[c];
+}
 // A row's values in a column: its areas' names, the parts of a list cell, or the cell.
 function valuesOf(i, c) {
     if (c === AREA_SORT) return areaNamesOf(i);
-    const v = S.src.rows[i][c], d = delimFor(c);
+    const v = S.src.rows[i][c], d = isListCol(c) ? delimFor(c) : null;
     return (Array.isArray(v) || d) ? JoinKit.cellValues(v, d).map(x => String(JoinKit.cellText(x)).trim()).filter(Boolean) : [String(JoinKit.cellText(v)).trim()].filter(Boolean);
 }
 function condMatches(i, f) {
@@ -1752,13 +1770,19 @@ function searchAndFilter(idx) {
         return T.mode === 'or' ? conds.some(f => condMatches(i, f)) : conds.every(f => condMatches(i, f));
     });
 }
-const fmtFilter = f => {
-    if (f.op === 'in') return `${colTitle(f.col)}: ${f.value.length ? (f.value.length <= 2 ? f.value.join(', ') : `${f.value.slice(0, 2).join(', ')} +${f.value.length - 2}`) : 'any'}`;
+// A filter in words: its value ("Mission, Bayview +2", "> 800", "100 – 200") and the whole thing
+// for the chip's tooltip ("NEIGHBORHOOD OF INTEREST is Mission or Bayview").
+const filterValue = f => {
+    if (f.op === 'in') return f.value.length ? (f.value.length <= 2 ? f.value.join(', ') : `${f.value.slice(0, 2).join(', ')} +${f.value.length - 2}`) : 'any';
     const [a, b] = f.value;
-    return `${colTitle(f.col)} ${f.op === '>' ? `> ${a ?? ''}` : f.op === '<' ? `< ${a ?? ''}` : `${a || '…'} – ${b || '…'}`}`;
+    return f.op === '>' ? `> ${a ?? ''}` : f.op === '<' ? `< ${a ?? ''}` : `${a || '…'} – ${b || '…'}`;
 };
+const filterWords = f => f.op === 'in'
+    ? `${colTitle(f.col)} is ${f.value.length ? f.value.join(' or ') : 'anything'}`
+    : `${colTitle(f.col)} ${f.op === 'between' ? `from ${f.value[0] || '…'} to ${f.value[1] || '…'}` : `${f.op} ${f.value[0] ?? ''}`}`;
 function renderTableFilters() {
-    $('tf-chips').innerHTML = T.conds.map((f, k) => `<span class="tf-chip" data-k="${k}"><button type="button" class="tf-edit" data-k="${k}">${esc(fmtFilter(f))}</button><button type="button" class="tf-x" data-k="${k}" aria-label="Remove filter">✕</button></span>`).join('');
+    // The value first, the column after it (faded, and cut first when the chip is full).
+    $('tf-chips').innerHTML = T.conds.map((f, k) => `<span class="tf-chip" data-k="${k}"><button type="button" class="tf-edit" data-k="${k}" title="${esc(filterWords(f))} (click to change)"><span class="tf-v">${esc(filterValue(f))}</span><span class="tf-k"> · ${esc(colTitle(f.col))}</span></button><button type="button" class="tf-x" data-k="${k}" aria-label="Remove filter">✕</button></span>`).join('');
     $('tf-mode').hidden = T.conds.length < 2;
     $('tf-mode').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === T.mode));
     $('tf-clear').hidden = !T.conds.length && !T.search;
@@ -1810,7 +1834,9 @@ function maskJoin(join, rowIndex) {
 // The editor for one filter, under the tools row.
 function editFilter(k) {
     const f = T.conds[k], pop = $('tf-pop'), num = isNumCol(f.col);
-    const cols = filterCols().map(c => `<option value="${esc(c)}"${c === f.col ? ' selected' : ''}>${esc(colTitle(c))}${isNumCol(c) ? ' (number)' : ''}</option>`).join('');
+    // Long column names are shortened in the menu (the full name is the option's title).
+    const short = t => t.length > 48 ? t.slice(0, 46).trimEnd() + '…' : t;
+    const cols = filterCols().map(c => `<option value="${esc(c)}" title="${esc(colTitle(c))}"${c === f.col ? ' selected' : ''}>${esc(short(colTitle(c)))}${isNumCol(c) ? ' (number)' : ''}</option>`).join('');
     let body;
     if (num) {
         body = `<div class="seg mini tf-ops">${[['>', '>'], ['<', '<'], ['between', 'from – to']].map(([o, l]) => `<button type="button" data-op="${o}" aria-pressed="${f.op === o}">${l}</button>`).join('')}</div>
