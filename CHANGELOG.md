@@ -2,6 +2,9 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v40
+- **Upload polygons works in Safari.** Safari only opens a file picker from a click, not from choosing a menu item, so Other › Upload polygons (GeoJSON)… now opens a small dialog with a **Choose a GeoJSON file…** button (in every browser).
+
 ## v39
 - **Fixed: Other › Upload polygons (GeoJSON)… didn't open the file picker.** The menu option's value started with a NUL character, which browsers replace when reading HTML, so choosing it tried to open a set that doesn't exist (and hovering the map then failed too). It now opens the picker. Choosing anything that isn't a set is ignored, and the map's hover tooltip no longer fails when the set is missing.
 
