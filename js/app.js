@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v39';
+const _BUILD_VERSION = 'v40';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -2739,9 +2739,12 @@ function wireUI() {
     });
     $('tabs').addEventListener('change', e => {
         if (!e.target.matches('select')) return;
-        if (e.target.value === UPLOAD) { renderTabs(); $('poly-input').click(); return; }
+        // Safari opens a file picker only from a click, so Upload opens a small dialog with a button.
+        if (e.target.value === UPLOAD) { renderTabs(); $('poly-dialog').showModal(); return; }
         setLayer(e.target.value);
     });
+    $('poly-choose').onclick = () => { $('poly-dialog').close(); $('poly-input').click(); };
+    $('poly-dialog').addEventListener('click', e => { if (e.target === $('poly-dialog')) $('poly-dialog').close(); });
     $('poly-input').onchange = e => { const f = e.target.files[0]; if (f) addPolygonLayer(f); e.target.value = ''; };
     // Opening the menu on an inactive tab switches to that tab, even if the same set is picked again.
     $('tabs').addEventListener('mousedown', e => {

@@ -287,6 +287,13 @@
       <button type="button" class="toast-x" aria-label="Dismiss">✕</button>
     </div>
   </main>
+  <!-- Upload polygons: a click here opens the file picker (Safari only allows that from a click, not from a menu change) -->
+  <dialog class="load-dialog" id="poly-dialog" aria-labelledby="poly-title">
+    <form method="dialog" class="ld-close"><button class="toast-x" aria-label="Close">✕</button></form>
+    <h3 id="poly-title">Upload polygons</h3>
+    <button class="btn" id="poly-choose" type="button">Choose a GeoJSON file…</button>
+    <p class="hint">Areas to join to, for this session: a GeoJSON file of Polygon or MultiPolygon features. Each area is named by a property with a different value for each one (a name-like one first). It's added to Other, under “Your files”.</p>
+  </dialog>
   <!-- Load data: a file from this computer, or a link -->
   <dialog class="load-dialog" id="load-dialog" aria-labelledby="load-title">
     <form method="dialog" class="ld-close"><button class="toast-x" aria-label="Close">✕</button></form>
