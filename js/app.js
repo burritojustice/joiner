@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v40';
+const _BUILD_VERSION = 'v41';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -369,15 +369,18 @@ function addMapLayers() {
     // Lines from the file draw from linesFromZoom; zoomed out, each line is a dot at its midpoint.
     map.addLayer({ id: 'rows-line-glow', type: 'line', source: 'rows', filter: ['all', ['!', isPt], ['!', isLine]], paint: { 'line-width': 6, 'line-blur': 2.5, 'line-opacity': 0.9 } });
     // Lines: a dark casing under a colored core.
-    map.addLayer({ id: 'rows-sline-casing', type: 'line', source: 'rows', minzoom: CONFIG.linesFromZoom, filter: isLine,
+    map.addLayer({ id: 'rows-sline-casing', type: 'line', source: 'rows', minzoom: CONFIG.linesFromZoom, filter: ['all', isLine, ['get', '_in']],   // placed lines only
         layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': CONFIG.hover.ring, 'line-width': lineW(1.55), 'line-opacity': 0.85 } });
     map.addLayer({ id: 'rows-line', type: 'line', source: 'rows', filter: ['all', ['!', isPt], ['!', isLine], ['get', '_in']], paint: { 'line-width': 2.5, 'line-opacity': 0.9 } });
     map.addLayer({ id: 'rows-line-out', type: 'line', source: 'rows', filter: ['all', ['!', isPt], ['!', isLine], ['!', ['get', '_in']]],
         paint: { 'line-width': 2.5, 'line-opacity': 0.9, 'line-dasharray': [2, 2] } });
     map.addLayer({ id: 'rows-sline', type: 'line', source: 'rows', minzoom: CONFIG.linesFromZoom, filter: ['all', isLine, ['get', '_in']],
         layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-width': lineW(1), 'line-opacity': 0.95 } });
+    // Lines outside every area are hollow, as points are: the color as an outline, a white core.
     map.addLayer({ id: 'rows-sline-out', type: 'line', source: 'rows', minzoom: CONFIG.linesFromZoom, filter: ['all', isLine, ['!', ['get', '_in']]],
-        paint: { 'line-width': lineW(1), 'line-opacity': 0.95, 'line-dasharray': [1.2, 0.8] } });
+        layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-width': lineW(1), 'line-opacity': 0.95 } });
+    map.addLayer({ id: 'rows-sline-out-core', type: 'line', source: 'rows', minzoom: CONFIG.linesFromZoom, filter: ['all', isLine, ['!', ['get', '_in']]],
+        layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': lineW(0.45), 'line-opacity': 0.95 } });
     // Points, and line midpoints below linesFromZoom (features with _mid).
     map.addLayer({ id: 'rows-mid', type: 'circle', source: 'rows', maxzoom: CONFIG.linesFromZoom, filter: ['get', '_mid'],
         paint: { 'circle-opacity': 1 } });
@@ -523,6 +526,9 @@ function applyPointStyle(color, glow) {
         map.setPaintProperty(id, 'line-color', style === 'bw' ? '#1e1e1e' : white ? '#ffffff' : color);
         map.setPaintProperty(id, 'line-opacity', ghost ? 0.35 : 0.95);
     }
+    // The hollow core of lines outside every area: white, or dark when the lines themselves are white.
+    map.setPaintProperty('rows-sline-out-core', 'line-color', white ? 'rgba(30,35,64,0.7)' : '#ffffff');
+    map.setPaintProperty('rows-sline-out-core', 'line-opacity', ghost ? 0.35 : 0.95);
     map.setPaintProperty('rows-sline-casing', 'line-color', style === 'black' ? '#1e1e1e' : style === 'white' || style === 'bw' ? '#ffffff' : glow);
     map.setPaintProperty('rows-sline-casing', 'line-opacity', ghost || pin || style.startsWith('ring') ? 0 : 0.85);
     map.setPaintProperty('rows-line-glow', 'line-opacity', ghost || pin ? 0 : 0.9);
@@ -794,8 +800,9 @@ async function placeRowsAsync(layerId) {
         const ids = new Set(S.geo.get(layerId).features.map(f => f.id));
         locate = slice => slice.map(p => { if (!p) return null; const c = h3.latLngToCell(p[1], p[0], S.hexRes); return ids.has(c) ? c : null; });
     } else {
-        S.areaOf.set(layerId, await JoinKit.assignPointsToPolygonsChunked(pts, S.geo.get(layerId).features, { idOf: f => f.id, yieldFn: nextFrame,
-            onProgress: (i, t) => toast(`Placing rows in ${label}`, { busy: true, progress: i / t, sub: `${i.toLocaleString()} of ${t.toLocaleString()}` }) }));
+        const placed = await JoinKit.assignPointsToPolygonsChunked(pts, S.geo.get(layerId).features, { idOf: f => f.id, yieldFn: nextFrame,
+            onProgress: (i, t) => toast(`Placing rows in ${label}`, { busy: true, progress: i / t, sub: `${i.toLocaleString()} of ${t.toLocaleString()}` }) });
+        S.areaOf.set(layerId, placeLines(placed, locatorFor(layerId)));
         return;
     }
     for (let i = 0; i < n; i += CH) {
@@ -804,15 +811,55 @@ async function placeRowsAsync(layerId) {
         const got = locate(pts.slice(i, i + CH));
         for (let j = 0; j < got.length; j++) out[i + j] = got[j];
     }
-    S.areaOf.set(layerId, out);
+    S.areaOf.set(layerId, placeLines(out, locatorFor(layerId)));
+}
+// Where one point is, on a layer: its hexagon, or the polygon containing it.
+function locatorFor(layerId) {
+    if (isHex(layerId)) {
+        const ids = new Set(S.geo.get(layerId).features.map(f => f.id));
+        return p => { if (!p) return null; const c = h3.latLngToCell(p[1], p[0], S.hexRes); return ids.has(c) ? c : null; };
+    }
+    const index = JoinKit.buildPolygonIndex(S.geo.get(layerId).features, { idOf: f => f.id });
+    return p => p ? index.locate(p) : null;
+}
+// Eleven points spread evenly along a line (all its parts), by length.
+function lineSamples(g) {
+    const parts = g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates
+        : g.type === 'GeometryCollection' ? g.geometries.filter(x => /LineString$/.test(x.type)).flatMap(x => x.type === 'LineString' ? [x.coordinates] : x.coordinates) : [];
+    const segs = [];
+    let total = 0;
+    for (const c of parts) for (let i = 1; i < c.length; i++) { const d = Math.hypot((c[i][0] - c[i - 1][0]) * 0.79, c[i][1] - c[i - 1][1]); if (d) { segs.push([c[i - 1], c[i], total, d]); total += d; } }
+    if (!total) return [];
+    const out = [];
+    for (let k = 0; k < 11; k++) {
+        const at = (k + 0.5) / 11 * total;
+        const s = segs.find(([, , from, d]) => at <= from + d) || segs[segs.length - 1];
+        const t = (at - s[2]) / s[3];
+        out.push([s[0][0] + (s[1][0] - s[0][0]) * t, s[0][1] + (s[1][1] - s[0][1]) * t]);
+    }
+    return out;
+}
+// Lines go to the area holding most of their length, so a segment partly inside an area counts
+// there even when its middle is outside, and one split between two areas counts once, in the
+// one with more of it (ties: where its middle is). Points keep the area they're in.
+function placeLines(out, locate) {
+    const geoms = S.src.geoms;
+    if (!geoms) return out;
+    geoms.forEach((g, i) => {
+        if (!g || !/LineString$|GeometryCollection/.test(g.type)) return;
+        const tally = new Map();
+        for (const p of lineSamples(g)) { const a = locate(p); if (a != null) tally.set(a, (tally.get(a) || 0) + 1); }
+        if (!tally.size) return;
+        let best = out[i], n = best != null ? tally.get(best) || 0 : -1;
+        for (const [a, c] of tally) if (c > n) { best = a; n = c; }
+        out[i] = best;
+    });
+    return out;
 }
 function areasForRows(layerId) {
     if (!S.areaOf.has(layerId)) {
-        const pts = S.src.points;
-        if (isHex(layerId)) {
-            const ids = new Set(S.geo.get(layerId).features.map(f => f.id));
-            S.areaOf.set(layerId, pts.map(p => { if (!p) return null; const c = h3.latLngToCell(p[1], p[0], S.hexRes); return ids.has(c) ? c : null; }));
-        } else S.areaOf.set(layerId, JoinKit.assignPointsToPolygons(pts, S.geo.get(layerId).features, { idOf: f => f.id }));
+        const locate = locatorFor(layerId);
+        S.areaOf.set(layerId, placeLines(S.src.points.map(locate), locate));
     }
     return S.areaOf.get(layerId);
 }
@@ -1446,7 +1493,7 @@ function renderPanel() {
         const meta = S.layers.get(S.layerId);
         $('key-hint').textContent = byLoc
             ? `Each row is placed in the ${meta.hex ? 'hexagon' : 'area'} that contains its location (${S.src.geomFrom}).`
-                + (S.src.geoms?.some(g => g && /LineString/.test(g.type)) ? ' Lines are placed, and counted, by their midpoint.' : '')
+                + (S.src.geoms?.some(g => g && /LineString/.test(g.type)) ? ' A line counts once, in the area holding most of its length.' : '')
                 + ' Turn this off to match by a column.'
             : `Compared with ${shortLabel(meta)} “${meta.key}”` + (delimFor(S.join?.keyCol, meta) === MULTI ? '; cells listing several (split on commas, semicolons or line breaks) count toward each' : meta.match?.delimiter ? `; cells with “${meta.match.delimiter}” count toward each value` : '') + '.';
         $('metric-select').innerHTML = metricOptions().map(m => `<option value="${esc(m.value)}"${m.value === S.metric ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
@@ -2112,6 +2159,7 @@ function applyPointSize() {
     const k = (CONFIG.lineSizes[sizeNow()] || 1) * Math.sqrt(S.crowdK);
     map.setPaintProperty('rows-sline-casing', 'line-width', lineW(1.55 * k));
     for (const id of ['rows-sline', 'rows-sline-out']) map.setPaintProperty(id, 'line-width', lineW(k));
+    map.setPaintProperty('rows-sline-out-core', 'line-width', lineW(0.45 * k));
     for (const id of ['rows-line', 'rows-line-out']) map.setPaintProperty(id, 'line-width', 2.5 * k);
     map.setPaintProperty('rows-line-glow', 'line-width', 6 * k);
     map.setPaintProperty('rows-hl-casing', 'line-width', hlW(1.6 * k));
