@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v38';
+const _BUILD_VERSION = 'v39';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -532,7 +532,8 @@ function applyPointStyle(color, glow) {
 // ═════════════════════════════════════════════════════════════════════════
 // Tabs and layers
 // ═════════════════════════════════════════════════════════════════════════
-const OTHER = 'Other', UPLOAD = '\u0000upload';
+// UPLOAD is an option value, so no control characters: HTML turns a NUL into U+FFFD and it never matched.
+const OTHER = 'Other', UPLOAD = '__upload__';
 function renderTabs() {
     const active = S.layers.get(S.layerId)?.tab;
     $('tabs').innerHTML = S.tabs.map(t => {
@@ -702,6 +703,7 @@ async function addPolygonLayer(file) {
 
 async function setLayer(id) {
     const meta = S.layers.get(id);
+    if (!meta) return;   // not a set (a menu's placeholder, say)
     S.layerId = id;
     S.tabChoice[meta.tab] = id;
     history.replaceState(null, '', '#layer=' + id);
@@ -1606,7 +1608,7 @@ function sizeLegendHTML() {
 }
 
 function showTip(point, id) {
-    const f = S.geo.get(S.layerId).features.find(f => f.id === id);
+    const f = S.geo.get(S.layerId)?.features.find(f => f.id === id);
     if (!f) return;
     const tip = $('tip');
     const extras = extrasWith('hover').map(x => [x.label, extraValue(x, f, { short: false })]).filter(([, v]) => v);
