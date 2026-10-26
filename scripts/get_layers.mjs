@@ -154,7 +154,7 @@ function clean(layer, gj) {
             continue;
         }
         const kept = {};
-        for (const k of layer.keep) if (props[k] !== undefined && props[k] !== null && props[k] !== '') kept[k] = typeof props[k] === 'string' ? props[k].trim() : props[k];
+        for (const k of layer.keep) if (props[k] !== undefined && props[k] !== null && props[k] !== '') kept[k] = typeof props[k] === 'string' ? props[k].trim().replace(/^(\d{4}-\d\d-\d\d)T00:00:00(\.000)?$/, '$1') : props[k];
         byKey.set(key, { type: 'Feature', id: key, properties: kept, geometry: { type: 'MultiPolygon', coordinates: polys }, _parts: 1 });
     }
     const merged = [...byKey.values()].filter(f => f._parts > 1).map(f => `${f.id}×${f._parts}`);
