@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v41';
+const _BUILD_VERSION = 'v42';
 
 const CONFIG = {
     manifest: 'data/boundaries/index.json',
@@ -870,13 +870,20 @@ function areasForRows(layerId) {
 const normCache = new WeakMap();   // feature collection → { layer id: normalizer }
 function normalizerFor(meta, fc = S.geo.get(meta.id)) {
     const m = meta.match || {};
-    const base = JoinKit.makeKeyNormalizer({
+    const key = JoinKit.makeKeyNormalizer({
         stripPrefix: m.stripPrefix ? new RegExp(m.stripPrefix, 'i') : undefined,
         caseInsensitive: !!m.caseInsensitive, collapseSpace: !!m.collapseSpace,
     });
+    // stripSuffix drops a shared ending ("… Cultural District") on both sides, so "Japantown" matches.
+    const suffix = m.stripSuffix ? new RegExp(m.stripSuffix, 'i') : null;
+    const base = suffix ? v => key(v == null ? v : String(v).replace(suffix, '')) : key;
     if (!fc || meta.hex) return base;
     const byFc = normCache.get(fc) || normCache.set(fc, {}).get(fc);
-    return byFc[meta.id] ||= JoinKit.makeLooseNormalizer(fc.features.map(f => f.properties[meta.key]), base);
+    if (byFc[meta.id]) return byFc[meta.id];
+    const loose = JoinKit.makeLooseNormalizer(fc.features.map(f => f.properties[meta.key]), base);
+    // aliases: other names people use for an area ("Calle 24" → "Calle 24 Latino Cultural District").
+    const al = new Map(Object.entries(m.aliases || {}).map(([a, c]) => [JoinKit.looseKey(base(a)), loose(c)]));
+    return byFc[meta.id] = !al.size ? loose : v => { const b = base(v); return (b && al.get(JoinKit.looseKey(b))) ?? loose(v); };
 }
 // A column listing several areas in a cell ("Mission, South of Market"): when at least 5% of its
 // values hold a comma, semicolon, pipe or line break, each part counts. Slashes stay (they're in names).

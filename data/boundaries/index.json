@@ -292,6 +292,57 @@
       "retrieved": "2026-10-15"
     },
     {
+      "id": "cultural_districts",
+      "label": "Cultural Districts (10)",
+      "short": "Cultural Districts",
+      "tab": "Other",
+      "file": "cultural_districts.geojson",
+      "key": "district_name",
+      "name": "district_name",
+      "labelExtras": [
+        {
+          "id": "designated",
+          "label": "Designated",
+          "prop": "designation_date",
+          "hover": true
+        }
+      ],
+      "match": {
+        "stripSuffix": "\\s*(arts\\s*(&|and)\\s*)?cultural\\s+district$",
+        "caseInsensitive": true,
+        "collapseSpace": true,
+        "delimiter": ",",
+        "aliases": {
+          "Calle 24": "Calle 24 Latino Cultural District",
+          "SoMa Pilipinas": "SoMa Pilipinas Filipino Cultural District",
+          "Filipino Cultural District": "SoMa Pilipinas Filipino Cultural District",
+          "Castro": "Castro LGBTQ Cultural District",
+          "Leather": "Leather & LGBTQ Cultural District",
+          "Sunset Chinese": "Sunset Chinese Cultural District",
+          "Compton's Transgender": "Transgender Cultural District",
+          "African American Arts": "African American Arts & Cultural District"
+        }
+      },
+      "count": 10,
+      "bbox": [
+        -122.51034,
+        37.70468,
+        -122.35691,
+        37.79628
+      ],
+      "extent": [
+        -122.51034,
+        37.70468,
+        -122.35691,
+        37.79628
+      ],
+      "bytes": 58117,
+      "dataset": "5xmc-5bjj",
+      "page": "https://data.sf.gov/Culture-and-Recreation/Cultural-Districts/5xmc-5bjj",
+      "source": "file:e2eb62c5-Cultural_Districts_20261025.geojson",
+      "retrieved": "2026-10-26"
+    },
+    {
       "id": "bay_area_counties",
       "label": "Bay Area Counties (9)",
       "short": "Bay Area Counties",

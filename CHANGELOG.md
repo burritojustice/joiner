@@ -2,6 +2,11 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v42
+- **Cultural Districts in Other:** San Francisco's 10 Cultural Districts (DataSF, exported 2026-10-25), with each district's designation date on hover. Rows match by district name, and short names work too: "Japantown", "Calle 24", "SoMa Pilipinas", "Castro", "Leather".
+- **A `reference/` folder for public contact lists,** starting with `reference/cultural-districts/contacts.csv`: one row per district, ready to fill in with the lead organization, website, public email and phone, and where each came from. Its README says how to add and check contacts. These are plain files, so other groups can use them without Airtable.
+- Dates from DataSF read as dates (2018-12-11), not timestamps.
+
 ## v41
 - **Lines outside every area are hollow:** the line's color as an outline with a white core, as points outside are, in place of the dashes (which looked choppy on short street segments, over a solid casing). Placed lines keep their casing; outside ones have none.
 - **Lines that are partly inside an area count there.** A line goes to the area holding the most of its length (checked at 11 points along it), so a segment that pokes into an area counts even when its middle is outside, and one split between two areas counts once, in the area with more of it (a tie goes to where its middle is). Before, only the midpoint decided. Points are placed as before. The Match rows by hint says so.

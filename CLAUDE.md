@@ -4,7 +4,7 @@ Notes for Claude working on Joiner. What the project is, how changes ship, and t
 
 ## What Joiner is
 
-A MapLibre map for Civic Joy Fund. It joins rows from CSV, JSON or GeoJSON files, Airtable views, Google Sheets, DataSF/Socrata datasets and other CSV links to polygon sets: SF districts, ZIPs, neighborhood sets, census tracts, H3 hexbins, Bay Area counties and ZIPs, election precincts and the districts made from them, and polygons the user uploads. Areas are colored by count, total, average or share, and rows with locations are drawn as features.
+A MapLibre map for Civic Joy Fund. It joins rows from CSV, JSON or GeoJSON files, Airtable views, Google Sheets, DataSF/Socrata datasets and other CSV links to polygon sets: SF districts, ZIPs, neighborhood sets, census tracts, H3 hexbins, Bay Area counties and ZIPs, Cultural Districts, election precincts and the districts made from them, and polygons the user uploads. Areas are colored by count, total, average or share, and rows with locations are drawn as features.
 
 - Live at https://civic-joy-fund.github.io/joiner/ (GitHub Pages, served from `main`).
 - Plain HTML, CSS and JS. No build step, no modules, no npm dependencies in the page.
@@ -24,6 +24,7 @@ A MapLibre map for Civic Joy Fund. It joins rows from CSV, JSON or GeoJSON files
 | `config/layers.json` | The polygon sets: join key, name, label templates, `match` rules, `tab`, `regional`, `dissolve` |
 | `data/boundaries/` | Cleaned GeoJSON for each layer, plus `index.json` (the manifest the page reads). Committed; never fetched from DataSF at runtime |
 | `scripts/get_layers.mjs` | Builds `data/boundaries/` from DataSF, from local files (`--file id=path`), or by dissolving another layer |
+| `reference/` | Public, city-published lists that go with layers (Cultural Districts contacts), one folder per list with a README |
 | `CHANGELOG.md` | One section per version, newest first |
 
 ### Key functions in `js/app.js`
@@ -75,6 +76,7 @@ The join logic lives in [burritojustice/maplibre](https://github.com/burritojust
   - The Bay Area counties came from a California county boundaries file (the nine counties, simplified to about 20 m), not DataSF `wamw-vt4s`.
   - The Bay Area ZIPs came from the DataSF CSV export (simplified to about 10 m).
   - The precincts came from DataSF `d6x4-hefw`.
+  - The Cultural Districts came from a DataSF export of `5xmc-5bjj` (2026-10-25). Their `match` uses `stripSuffix` (drops "Cultural District") and `aliases` ("Calle 24", "SoMa Pilipinas", …); both options work for any layer.
 
 ## Rules John has set
 
@@ -82,6 +84,7 @@ The join logic lives in [burritojustice/maplibre](https://github.com/burritojust
 - **Tokens never go in the URL.** The Airtable token stays in sessionStorage for the tab. `?airtable=` carries the view link only.
 - **No contact fields:** don't request email, phone, mailing address, attachments or users from Airtable unless the user adds them back.
 - **No PII in commits, PRs, outputs or geo tables.** For test files from John that have names, emails or phones (like the SF Planning notification list), make a reduced copy in the scratchpad and never commit it.
+- **Public contact lists go in `reference/`,** not Airtable, so orgs without Airtable can use them: contacts the city or the organization publishes (Cultural Districts, SF Planning's neighborhood group list). Each row has `source_url` and `checked`. Private contacts never go in the repo.
 - Keep `name` as a primary identifier in Airtable tables.
 - Push the branch **and** open the PR.
 - UI words:
