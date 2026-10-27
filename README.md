@@ -36,7 +36,7 @@ Drop a file anywhere on the page, or click **Load data**. The dialog has **Open 
   - Names of 8 or more letters can be a letter or two off: "Outer Susnet" matches "Outer Sunset".
 - A cell can list several areas, separated by commas, semicolons, pipes or line breaks. The row then counts in each of them. Clicking or hovering such a row marks all its areas, and its card names any part that isn't an area ("Not on the map: Citywide").
 - The panel shows how many rows were placed and lists the values that matched no area.
-- How each set matches values is set by `match` in `config/layers.json`. For example, districts accept `5`, `D5` or `District 5`.
+- How each set matches values is set by `match` in sf-blocks' `data/boundaries/sources.json`. For example, districts accept `5`, `D5` or `District 5`.
 
 ## Area sets
 
@@ -101,9 +101,9 @@ When the file has locations, **Format features** controls how its rows are drawn
 
 The polygon sets come from [sf-blocks](https://github.com/burritojustice/sf-blocks), the main copy of San Francisco's map data: one GeoJSON file per layer in `data/boundaries/`, plus `index.json`, which the map reads to build its tabs. The page reads sf-blocks' `region.json` for the paths and loads each file live from https://burritojustice.github.io/sf-blocks/; if that site can't be reached, it uses the copies in this repo at the same paths. `data/sf-blocks.json` lists the copies and the sf-blocks version they came from (hover the version number to see which the page is using). `?sfblocks=local` forces the copies. Refresh them with `python3 scripts/copy_sf_blocks.py ../sf-blocks`.
 
-Other names for areas ("Calle 24" for the Calle 24 Latino Cultural District, "South Bayshore" for Bayview) are in sf-blocks' `data/aliases.json`, by layer id, shared with Block Party. Add aliases there, not in `config/layers.json`.
+Other names for areas ("Calle 24" for the Calle 24 Latino Cultural District, "South Bayshore" for Bayview) are in sf-blocks' `data/aliases.json`, by layer id, shared with Block Party. Add aliases there, not in `sources.json`.
 
-The map never calls DataSF while it runs. `scripts/get_layers.mjs` still builds the files from `config/layers.json` until it moves to sf-blocks; copy its output there.
+The map never calls DataSF while it runs.
 
 | Layer | Tab | Join key | Features | Source |
 | --- | --- | --- | --- | --- |
@@ -113,7 +113,7 @@ The map never calls DataSF while it runs. `scripts/get_layers.mjs` still builds 
 | `analysis_neighborhoods` | Neighborhood | `nhood` | 41 | DataSF [p5b7-5n3h](https://data.sf.gov/-/Analysis-Neighborhoods/p5b7-5n3h) |
 | `planning_neighborhoods` | Neighborhood | `neighborho` | 37 | DataSF [Planning Neighborhood Groups](https://data.sf.gov/-/Planning-Neighborhood-Groups-Map/iacs-ws63) |
 | `realtor_neighborhoods` | Neighborhood | `nbrhood` | 92 | DataSF [5gzd-g9ns](https://data.sf.gov/-/Realtor-Neighborhoods/5gzd-g9ns) |
-| `wof_neighbourhoods` | Neighborhood | `name` | 116 | `data/wof/` (84 current + 32 unverified) |
+| `wof_neighbourhoods` | Neighborhood | `name` | 116 | Who's on First (84 current + 32 unverified), from sf-blocks' `data/uploads/wof/` |
 | `census_tracts` | Other | `geoid` | 242 | DataSF [sevw-6tgi](https://data.sf.gov/Geographic-Locations-and-Boundaries/Analysis-Neighborhoods-2020-census-tracts-assigned/sevw-6tgi) |
 | `bay_area_counties` | Other | `county` | 9 | California county boundaries, the nine Bay Area counties (to be replaced by DataSF [wamw-vt4s](https://data.sf.gov/Geographic-Locations-and-Boundaries/Bay-Area-County-Polygons/wamw-vt4s)) |
 | `bay_area_zip_codes` | Other | `zip` | 323 | DataSF [4kz9-76pb](https://data.sf.gov/dataset/Bay-Area-ZIP-Codes/4kz9-76pb) |
@@ -123,7 +123,7 @@ The map never calls DataSF while it runs. `scripts/get_layers.mjs` still builds 
 | `assembly_districts` | Other | `assemb22` | 4 | precincts dissolved by district |
 | `bart_districts` | Other | `bart22` | 3 | precincts dissolved by district |
 
-Each layer's settings are in `config/layers.json`:
+Each layer's settings are in sf-blocks' `data/boundaries/sources.json`:
 
 - `tab` decides where the layer appears. Layers that share a tab become one menu, and `"Other"` puts a layer in the Other menu.
 - `"default": true` picks the set a tab opens with.
@@ -134,27 +134,7 @@ A few precincts sit alone in their own district: one on the Bay Bridge and one n
 
 ### Refreshing them
 
-```sh
-node scripts/get_layers.mjs                    # download all layers (Node 18+, no npm install)
-node scripts/get_layers.mjs zip_codes          # just one
-node scripts/get_layers.mjs --check            # validate what's in data/boundaries
-```
-
-If a download fails, export the GeoJSON from the DataSF page and pass the file instead:
-
-```sh
-node scripts/get_layers.mjs --file zip_codes=~/Downloads/SF_ZIP_Codes.geojson
-```
-
-The script cleans each layer the same way:
-
-- keeps only the properties listed under `keep`, and sets each feature's `id` to its join key;
-- rounds coordinates to 6 decimals (about 10 cm), which roughly halves file size;
-- merges features that share a key into one MultiPolygon where `mergeByKey` is set (ZIPs 94121, 94133 and 94158 come in several pieces);
-- sorts features by key, one feature per line, so reruns produce readable diffs;
-- sets the collection's `bbox` to the mainland only, so fitting the map to a layer doesn't zoom out to the Farallones (part of District 4 and tract 06075980401). The full extent is kept as `extent`.
-
-To add a layer, add an entry to `config/layers.json` with its DataSF dataset id (the id of the dataset, not of a map view built on it), join `key`, display `name` and the properties to `keep`, then run the script for it. Dissolved layers are built from their source's file, so run the source first.
+The boundaries are built in sf-blocks by `scripts/get_layers.py` (standard-library Python), from its `data/boundaries/sources.json`; see [sf-blocks' README](https://github.com/burritojustice/sf-blocks#rebuilding-the-boundaries). It keeps the listed properties, sets each feature's `id` to its join key, rounds coordinates to 6 decimals, merges pieces that share a key where `mergeByKey` is set, sorts features by key (one per line, for readable diffs), and sets `bbox` to the mainland so the map doesn't zoom out to the Farallones. Then copy the new files here with `python3 scripts/copy_sf_blocks.py ../sf-blocks`.
 
 ## Who's on First places
 

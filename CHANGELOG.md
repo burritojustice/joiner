@@ -2,6 +2,12 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v44
+Builds on v43 (#1): merge that first.
+
+- **Boundary building moves to sf-blocks:** `scripts/get_layers.mjs` and `config/layers.json` are gone. sf-blocks' `scripts/get_layers.py` builds the same files from its `data/boundaries/sources.json` (burritojustice/sf-blocks#3), byte for byte. The map itself doesn't change.
+- README and notes point there for adding or refreshing a layer.
+
 ## v43
 Joiner moves to burritojustice and reads its boundaries from sf-blocks.
 
