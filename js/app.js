@@ -4,12 +4,14 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v42';
+const _BUILD_VERSION = 'v43';
 
 const CONFIG = {
-    manifest: 'data/boundaries/index.json',
-    boundaries: 'data/boundaries/',
-    style: 'https://api.protomaps.com/styles/v5/white/en.json?key=6c8d7dd20c838f80',
+    // Boundaries and aliases come from sf-blocks (js/sfblocks.js): live, or the copies in data/.
+    // The paths are in its region.json.
+    // Protomaps key for burritojustice.github.io (and any localhost); region.json can name another origin's.
+    protomapsKey: '071e272e8d5e13b7',
+    style: key => `https://api.protomaps.com/styles/v5/white/en.json?key=${key}`,
     // Area palettes, light→dark, each paired with a row color that stands out against it.
     // Checked with the dataviz palette validator: lightness steps and the row/area pairing.
     palettes: {
@@ -68,7 +70,7 @@ const CONFIG = {
     streetsOverZoom: 14,
     streetNamesZoom: 14,
     streetHintWidth: 0.5, streetHintOpacity: 0.8,   // street copies over the areas: share of the basemap's width
-    hover: { fill: '#FFC53D', ring: '#1E2340' },   // hovered rows: Civic Joy sun yellow, ink ring
+    hover: { fill: '#FFC53D', ring: '#1E2340' },   // hovered rows: sun yellow, ink ring
     // Categorical colors for rows, in the validated order (dataviz reference palette).
     categorical: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'],
     other: '#8a8a85',
@@ -140,8 +142,15 @@ let map, popup;
 async function boot() {
     console.log(`[joiner] ${_BUILD_VERSION}`);
     $('version').textContent = _BUILD_VERSION;
-    document.querySelector('.brand').title = `Civic Joy Fund · Joiner ${_BUILD_VERSION}`;
-    S.manifest = await (await fetch(CONFIG.manifest)).json();
+    document.querySelector('.brand').title = `Joiner ${_BUILD_VERSION}`;
+    const region = await SFBlocks.ready;
+    S.boundaryDir = region.boundaries.replace(/[^/]*$/, '');
+    [S.manifest, S.aliases] = await Promise.all([SFBlocks.json(region.boundaries),
+        // other names people use for areas, by layer id: one list for every app, in sf-blocks
+        SFBlocks.json(region.aliases).catch(err => { console.warn('[joiner] aliases', err); return {}; })]);
+    const dataNote = SFBlocks.describe();
+    document.querySelector('.brand').title = `Joiner ${_BUILD_VERSION} · ${dataNote}`;
+    $('version').title = `What changed · data: ${dataNote}`;
     for (const l of S.manifest.layers) {
         S.layers.set(l.id, l);
         let t = S.tabs.find(t => t.tab === l.tab);
@@ -183,7 +192,7 @@ async function boot() {
 
     // One view for every boundary set, so switching tabs never moves the map.
     const home = unionBbox(S.manifest.layers.filter(l => !l.regional).map(l => l.bbox).filter(Boolean));
-    map = new maplibregl.Map({ container: 'map', style: CONFIG.style, bounds: [[home[0], home[1]], [home[2], home[3]]],
+    map = new maplibregl.Map({ container: 'map', style: CONFIG.style(SFBlocks.basemapKey(CONFIG.protomapsKey)), bounds: [[home[0], home[1]], [home[2], home[3]]],
         fitBoundsOptions: { padding: 24 }, attributionControl: { compact: true } });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     popup = new maplibregl.Popup({ closeButton: true, maxWidth: '320px' });
@@ -568,7 +577,7 @@ async function loadGeo(id) {
     if (S.layers.get(id).hex) return loadHex();
     if (!S.geo.has(id)) {
         const meta = S.layers.get(id);
-        const fc = await (await fetch(CONFIG.boundaries + meta.file)).json();
+        const fc = await SFBlocks.json(S.boundaryDir + meta.file);
         fc.features.forEach(f => { f.properties._jid = String(f.id); });
         S.geo.set(id, fc);
         const anchors = new Map();
@@ -881,8 +890,9 @@ function normalizerFor(meta, fc = S.geo.get(meta.id)) {
     const byFc = normCache.get(fc) || normCache.set(fc, {}).get(fc);
     if (byFc[meta.id]) return byFc[meta.id];
     const loose = JoinKit.makeLooseNormalizer(fc.features.map(f => f.properties[meta.key]), base);
-    // aliases: other names people use for an area ("Calle 24" → "Calle 24 Latino Cultural District").
-    const al = new Map(Object.entries(m.aliases || {}).map(([a, c]) => [JoinKit.looseKey(base(a)), loose(c)]));
+    // aliases: other names people use for an area ("Calle 24" → "Calle 24 Latino Cultural District"),
+    // from sf-blocks' data/aliases.json by layer id.
+    const al = new Map(Object.entries((S.aliases || {})[meta.id] || {}).map(([a, c]) => [JoinKit.looseKey(base(a)), loose(c)]));
     return byFc[meta.id] = !al.size ? loose : v => { const b = base(v); return (b && al.get(JoinKit.looseKey(b))) ?? loose(v); };
 }
 // A column listing several areas in a cell ("Mission, South of Market"): when at least 5% of its

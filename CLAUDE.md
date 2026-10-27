@@ -4,12 +4,13 @@ Notes for Claude working on Joiner. What the project is, how changes ship, and t
 
 ## What Joiner is
 
-A MapLibre map for Civic Joy Fund. It joins rows from CSV, JSON or GeoJSON files, Airtable views, Google Sheets, DataSF/Socrata datasets and other CSV links to polygon sets: SF districts, ZIPs, neighborhood sets, census tracts, H3 hexbins, Bay Area counties and ZIPs, Cultural Districts, election precincts and the districts made from them, and polygons the user uploads. Areas are colored by count, total, average or share, and rows with locations are drawn as features.
+A MapLibre map that joins rows from CSV, JSON or GeoJSON files, Airtable views, Google Sheets, DataSF/Socrata datasets and other CSV links to polygon sets: SF districts, ZIPs, neighborhood sets, census tracts, H3 hexbins, Bay Area counties and ZIPs, Cultural Districts, election precincts and the districts made from them, and polygons the user uploads. Areas are colored by count, total, average or share, and rows with locations are drawn as features.
 
-- Live at https://civic-joy-fund.github.io/joiner/ (GitHub Pages, served from `main`).
+- Live at https://burritojustice.github.io/joiner/ (GitHub Pages, served from `main`). burritojustice is the primary home; civic-joy-fund/joiner runs its own copy and is updated from here once a change checks out, and other orgs may run customized copies.
 - Plain HTML, CSS and JS. No build step, no modules, no npm dependencies in the page.
 - Libraries come from CDNs, pinned to exact versions in `index.html`: MapLibre GL 5.16, PapaParse, h3-js 4.4.0 and JoinKit.
-- Basemap: the Protomaps `white` style. The key `6c8d7dd20c838f80` only works from `https://civic-joy-fund.github.io`, but localhost works with any valid key. Selecter uses a different key (`071e272e8d5e13b7`, for burritojustice.github.io).
+- Basemap: the Protomaps `white` style with key `071e272e8d5e13b7` (allowed origin burritojustice.github.io; localhost works with any valid key). `SFBlocks.basemapKey()` picks another origin's key from sf-blocks' `region.json` (civic-joy-fund.github.io uses `6c8d7dd20c838f80`).
+- Data: boundaries and aliases come from burritojustice/sf-blocks, live from https://burritojustice.github.io/sf-blocks/ via `js/sfblocks.js` (same code as Block Party's inline `SFBlocks`), with the copies in `data/` and `region.json` as the fallback. `data/sf-blocks.json` stamps their version; refresh with `python3 scripts/copy_sf_blocks.py ../sf-blocks`. Change data in sf-blocks, not here.
 
 ## Files
 
@@ -19,10 +20,11 @@ A MapLibre map for Civic Joy Fund. It joins rows from CSV, JSON or GeoJSON files
 | `js/app.js` | The app. `CONFIG` at the top, then state `S` (map) and `T` (table) |
 | `js/sources.js` | Reading files and links into `{ name, kind, headers, rows, geoms, geomFrom }`. Also finds geometry, reads CSVs in chunks, and handles Google Sheets, Socrata and snapshots |
 | `js/airtable.js` | Airtable REST: loading tables and their linked records, the cached list of bases and tables (`catalog`), and the token (kept in sessionStorage) |
+| `js/sfblocks.js` | Loads sf-blocks files live, falling back to the copies here (`SFBlocks.ready`, `.json(path)`, `.describe()`) |
 | `js/vendor/joinkit.js` | Fallback copy of the pinned JoinKit commit, used when jsDelivr fails |
 | `css/joiner.css` | Styles. Later versions append sections marked `/* vNN: … */`; a later rule can override an earlier one |
 | `config/layers.json` | The polygon sets: join key, name, label templates, `match` rules, `tab`, `regional`, `dissolve` |
-| `data/boundaries/` | Cleaned GeoJSON for each layer, plus `index.json` (the manifest the page reads). Committed; never fetched from DataSF at runtime |
+| `data/boundaries/`, `data/aliases.json`, `region.json` | Backup copies of sf-blocks' files (stamped in `data/sf-blocks.json`). Never fetched from DataSF at runtime |
 | `scripts/get_layers.mjs` | Builds `data/boundaries/` from DataSF, from local files (`--file id=path`), or by dissolving another layer |
 | `reference/` | Public, city-published lists that go with layers (Cultural Districts contacts), one folder per list with a README |
 | `CHANGELOG.md` | One section per version, newest first |
@@ -48,7 +50,7 @@ Each version is one PR on its own branch:
 2. Bump `_BUILD_VERSION` at the top of `js/app.js`.
 3. Add a `## vNN` section at the top of `CHANGELOG.md`: what changed, in plain words, for John rather than for a developer.
 4. Commit, ending the message with the attribution lines from the session's system reminder.
-5. Push with `git push -u origin <branch>`, then open the PR. `gh pr create` doesn't work here because GraphQL is blocked, so use the REST API: `gh api repos/civic-joy-fund/joiner/pulls -f title=… -f head=… -f base=main -f body=…`. The body is the changelog section, how it was tested, and the attribution footer.
+5. Push with `git push -u origin <branch>`, then open the PR. `gh pr create` doesn't work here because GraphQL is blocked, so use the REST API: `gh api repos/burritojustice/joiner/pulls -f title=… -f head=… -f base=main -f body=…`. The body is the changelog section, how it was tested, and the attribution footer.
 6. John merges. A GitHub Action tags each version on `main`.
 
 If the stop hook says a branch is "unpushed" right after a push, it's because the local fetch refspec doesn't track that branch. Fix it with `git config --add remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'`, then `git fetch`.
@@ -76,7 +78,7 @@ The join logic lives in [burritojustice/maplibre](https://github.com/burritojust
   - The Bay Area counties came from a California county boundaries file (the nine counties, simplified to about 20 m), not DataSF `wamw-vt4s`.
   - The Bay Area ZIPs came from the DataSF CSV export (simplified to about 10 m).
   - The precincts came from DataSF `d6x4-hefw`.
-  - The Cultural Districts came from a DataSF export of `5xmc-5bjj` (2026-10-25). Their `match` uses `stripSuffix` (drops "Cultural District") and `aliases` ("Calle 24", "SoMa Pilipinas", …); both options work for any layer.
+  - The Cultural Districts came from a DataSF export of `5xmc-5bjj` (2026-10-25). Their `match` uses `stripSuffix` (drops "Cultural District"). Aliases ("Calle 24", "SoMa Pilipinas", …) are in sf-blocks' `data/aliases.json` under the layer id; any layer can have them there.
 
 ## Rules John has set
 
@@ -113,5 +115,6 @@ The session's network goes through an allowlist. Domains John adds take effect i
 ## Related projects
 
 - **Selecter:** `burritojustice/maplibre/selecter`, the GeoJSON viewer whose point and outline styles Joiner borrowed.
-- **Block Party:** `civic-joy-fund/block-party`, the CNN street-segment lookup. Its data feeds the Airtable "Block Party 2026 geo" and "2025 geo" tables (base `appzHWTq3Hzmr12vY`).
+- **sf-blocks:** `burritojustice/sf-blocks`, the main copy of SF's boundaries, aliases, layers and streets. Changes to data go there first.
+- **Block Party:** `burritojustice/block-party`, the CNN street-segment lookup. Its data feeds the Airtable "Block Party 2026 geo" and "2025 geo" tables (base `appzHWTq3Hzmr12vY`).
 - Planned: joining by lists of CNNs (street segments), the same way cells listing several neighborhoods work now.

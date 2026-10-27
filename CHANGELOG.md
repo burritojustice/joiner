@@ -2,6 +2,14 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v43
+Joiner moves to burritojustice and reads its boundaries from sf-blocks.
+
+- **Boundaries from sf-blocks, live:** the tabs' manifest and every boundary file load from https://burritojustice.github.io/sf-blocks/, using the paths in its `region.json`. If the site can't be reached (or a file is missing there), Joiner uses the copies in this repo, which are sf-blocks 2026.10.27 (`data/sf-blocks.json`). Hovering the logo or the version shows which. `?sfblocks=local` forces the copies.
+- **One list of aliases:** other names for areas come from sf-blocks' `data/aliases.json`, shared with Block Party, instead of `config/layers.json`. Cultural Districts match the same names as before, and Planning neighborhoods now also take "South Bayshore", "Upper Market" and "Treasure Island".
+- **Unbranded:** the burritojustice avatar in place of the Civic Joy Fund logo, and the burritojustice.github.io Protomaps key. Another site's key can be listed in sf-blocks' `region.json`.
+- `scripts/copy_sf_blocks.py` refreshes the copies from a checkout of sf-blocks.
+
 ## v42
 - **Cultural Districts in Other:** San Francisco's 10 Cultural Districts (DataSF, exported 2026-10-25), with each district's designation date on hover. Rows match by district name, and short names work too: "Japantown", "Calle 24", "SoMa Pilipinas", "Castro", "Leather".
 - **A `reference/` folder for public contact lists,** starting with `reference/cultural-districts/contacts.csv`: one row per district, ready to fill in with the lead organization, website, public email and phone, and where each came from. Its README says how to add and check contacts. These are plain files, so other groups can use them without Airtable.

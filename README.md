@@ -1,8 +1,8 @@
 # joiner
 
-A map for Civic Joy Fund data. Joiner joins rows from a spreadsheet, a file, an Airtable view, a Google Sheet or a DataSF dataset to areas on a map. The areas include San Francisco districts, ZIPs, neighborhoods and census tracts, H3 hexagons, Bay Area counties and ZIPs, election precincts and the districts made from them, or polygons you upload. Each area is colored by how many rows it has, or by the total, average or share of any number column. Rows with a location are drawn too. The join logic is [JoinKit](https://github.com/burritojustice/maplibre/tree/main/joinkit), shared with Selecter.
+Joiner joins rows from a spreadsheet, a file, an Airtable view, a Google Sheet or a DataSF dataset to areas on a map. The areas include San Francisco districts, ZIPs, neighborhoods and census tracts, H3 hexagons, Bay Area counties and ZIPs, election precincts and the districts made from them, or polygons you upload. Each area is colored by how many rows it has, or by the total, average or share of any number column. Rows with a location are drawn too. The join logic is [JoinKit](https://github.com/burritojustice/maplibre/tree/main/joinkit), shared with Selecter.
 
-Live at **https://civic-joy-fund.github.io/joiner/**. Hover the Joiner logo to see the version; [CHANGELOG.md](CHANGELOG.md) says what changed in each. Nothing is uploaded: files are read in your browser.
+Live at **https://burritojustice.github.io/joiner/**. Hover the Joiner logo to see the version; [CHANGELOG.md](CHANGELOG.md) says what changed in each. Nothing is uploaded: files are read in your browser.
 
 ## Loading data
 
@@ -99,7 +99,11 @@ When the file has locations, **Format features** controls how its rows are drawn
 
 ## Boundary layers
 
-The polygon sets are in `data/boundaries/`: one GeoJSON file per layer, plus `index.json`, which the map reads to build its tabs. They're built by a script and committed, so the map never calls DataSF while it runs.
+The polygon sets come from [sf-blocks](https://github.com/burritojustice/sf-blocks), the main copy of San Francisco's map data: one GeoJSON file per layer in `data/boundaries/`, plus `index.json`, which the map reads to build its tabs. The page reads sf-blocks' `region.json` for the paths and loads each file live from https://burritojustice.github.io/sf-blocks/; if that site can't be reached, it uses the copies in this repo at the same paths. `data/sf-blocks.json` lists the copies and the sf-blocks version they came from (hover the version number to see which the page is using). `?sfblocks=local` forces the copies. Refresh them with `python3 scripts/copy_sf_blocks.py ../sf-blocks`.
+
+Other names for areas ("Calle 24" for the Calle 24 Latino Cultural District, "South Bayshore" for Bayview) are in sf-blocks' `data/aliases.json`, by layer id, shared with Block Party. Add aliases there, not in `config/layers.json`.
+
+The map never calls DataSF while it runs. `scripts/get_layers.mjs` still builds the files from `config/layers.json` until it moves to sf-blocks; copy its output there.
 
 | Layer | Tab | Join key | Features | Source |
 | --- | --- | --- | --- | --- |
