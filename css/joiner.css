@@ -1,4 +1,4 @@
-/* Joiner — Civic Joy Fund palette and type, shared with civic-joy-fund/block-party */
+/* Joiner — palette and type, shared with burritojustice/block-party */
 :root {
   --ink: #1E2340;
   --ink-soft: #545B7F;
@@ -37,6 +37,7 @@ button, input, select { font: inherit; color: inherit; }
 }
 .brand { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--ink); flex: none; }
 .brand span { font-family: var(--display); font-weight: 800; font-size: 22px; letter-spacing: -0.01em; }
+.brand img { border-radius: 50%; }
 .tabs { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
 .tab {
   display: inline-flex; align-items: center; gap: 6px;

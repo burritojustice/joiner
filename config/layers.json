@@ -236,17 +236,7 @@
         "stripSuffix": "\\s*(arts\\s*(&|and)\\s*)?cultural\\s+district$",
         "caseInsensitive": true,
         "collapseSpace": true,
-        "delimiter": ",",
-        "aliases": {
-          "Calle 24": "Calle 24 Latino Cultural District",
-          "SoMa Pilipinas": "SoMa Pilipinas Filipino Cultural District",
-          "Filipino Cultural District": "SoMa Pilipinas Filipino Cultural District",
-          "Castro": "Castro LGBTQ Cultural District",
-          "Leather": "Leather & LGBTQ Cultural District",
-          "Sunset Chinese": "Sunset Chinese Cultural District",
-          "Compton's Transgender": "Transgender Cultural District",
-          "African American Arts": "African American Arts & Cultural District"
-        }
+        "delimiter": ","
       },
       "reference": "reference/cultural-districts/"
     },
