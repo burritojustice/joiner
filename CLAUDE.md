@@ -23,9 +23,7 @@ A MapLibre map that joins rows from CSV, JSON or GeoJSON files, Airtable views, 
 | `js/sfblocks.js` | Loads sf-blocks files live, falling back to the copies here (`SFBlocks.ready`, `.json(path)`, `.describe()`) |
 | `js/vendor/joinkit.js` | Fallback copy of the pinned JoinKit commit, used when jsDelivr fails |
 | `css/joiner.css` | Styles. Later versions append sections marked `/* vNN: … */`; a later rule can override an earlier one |
-| `config/layers.json` | The polygon sets: join key, name, label templates, `match` rules, `tab`, `regional`, `dissolve` |
 | `data/boundaries/`, `data/aliases.json`, `region.json` | Backup copies of sf-blocks' files (stamped in `data/sf-blocks.json`). Never fetched from DataSF at runtime |
-| `scripts/get_layers.mjs` | Builds `data/boundaries/` from DataSF, from local files (`--file id=path`), or by dissolving another layer |
 | `reference/` | Public, city-published lists that go with layers (Cultural Districts contacts), one folder per list with a README |
 | `CHANGELOG.md` | One section per version, newest first |
 
@@ -70,10 +68,10 @@ The join logic lives in [burritojustice/maplibre](https://github.com/burritojust
 
 ## Boundary layers
 
-- Add a layer to `config/layers.json`, then run `node scripts/get_layers.mjs <id>`. Add `--file <id>=<path>` when the source is a local export.
+- Layers are built in sf-blocks: add one to its `data/boundaries/sources.json`, run `python3 scripts/get_layers.py <id>` there (`--file <id>=<path>` for a local export), open a PR in sf-blocks, then copy the files here with `scripts/copy_sf_blocks.py` once it's merged. The fields below are set in `sources.json`.
 - `tab` decides where the layer shows. Layers that share a tab name become a menu; `"tab": "Other"` puts it in the Other menu, which always ends with **Upload polygons (GeoJSON)…**.
 - `regional: true`: the map zooms out to the whole layer, and the layer's bbox doesn't count toward the SF home view.
-- `dissolve: { from, by }` builds districts from precincts (US House, State Senate, Assembly, BART). It uses JoinKit's `dissolve` from the vendor copy. The source layer must come earlier in the config.
+- `dissolve: { from, by }` builds districts from precincts (US House, State Senate, Assembly, BART). sf-blocks' `get_layers.py` carries a port of JoinKit's `dissolve`. The source layer must come earlier in `sources.json`.
 - Sources:
   - The Bay Area counties came from a California county boundaries file (the nine counties, simplified to about 20 m), not DataSF `wamw-vt4s`.
   - The Bay Area ZIPs came from the DataSF CSV export (simplified to about 10 m).

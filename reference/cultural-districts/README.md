@@ -36,5 +36,5 @@ One row per district. If a district has two organizations, add a second row with
 When the Board of Supervisors designates a new district or redraws one:
 
 1. Export the new GeoJSON from DataSF (Export › GeoJSON).
-2. Rebuild the layer: `node scripts/get_layers.mjs --file cultural_districts=<path to the export>`. Update `expectCount` and the label in `config/layers.json` if the number changed.
+2. Rebuild the layer in sf-blocks: `python3 scripts/get_layers.py --file cultural_districts=<path to the export>`, then copy it here with `scripts/copy_sf_blocks.py`. Update `expectCount` and the label in sf-blocks' `data/boundaries/sources.json` if the number changed.
 3. Add a row to `contacts.csv` for the new district, and update the export date above.
