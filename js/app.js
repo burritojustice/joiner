@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v44';
+const _BUILD_VERSION = 'v45';
 
 const CONFIG = {
     // Boundaries and aliases come from sf-blocks (js/sfblocks.js): live, or the copies in data/.
@@ -689,31 +689,82 @@ function hexNames(features) {
 // A polygon GeoJSON from the user's computer, added to Other as a set to join to. The key is the
 // property that names each polygon: a name-like one with a different value for each, else any
 // such property, else the polygon's number.
+// Uploaded polygon sets. Each area is named by one property: a guess first (name-like, readable, mostly
+// filled in, not an id), which "Name areas by" under the area list can change. The name is also what rows
+// match. Parts that share a name (a district in several pieces) become one area; unnamed parts are numbered.
+const ID_LIKE = /^(fid|objectid|object_id|id|ogc_fid|gid|globalid|shape_?(area|len|length|leng)|:id|cartodb_id)$|_id$|^id_/i;
+function namePropScore(feats, k) {
+    const vals = feats.map(f => f.properties?.[k]);
+    const filled = vals.filter(v => v !== null && v !== undefined && typeof v !== 'object' && String(v).trim() !== '').map(v => String(v).trim());
+    if (!filled.length || filled.length < feats.length * 0.5) return -Infinity;
+    const distinct = new Set(filled).size;
+    if (distinct < 2 && feats.length > 1) return -Infinity;
+    let s = distinct / feats.length + filled.filter(v => /[a-z]/i.test(v)).length / filled.length;
+    if (/name|label|title/i.test(k)) s += 2;
+    else if (/nhood|neighbo|district|dist$|county|zip|zcta|geoid|tract/i.test(k)) s += 1;
+    if (ID_LIKE.test(k)) s -= 3;
+    if (filled.every(v => /^-?[\d.]+$/.test(v)) && !/zip|zcta|geoid|tract|district|dist$/i.test(k)) s -= 1.5;
+    return s;
+}
+function nameProps(feats) {
+    const props = [...new Set(feats.flatMap(f => Object.keys(f.properties || {})))].filter(k => !k.startsWith(':') && !k.startsWith('_'));
+    return props.map(k => [k, namePropScore(feats, k)]).filter(([, s]) => s > -Infinity).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+}
+function uploadedFC(raw, prop) {
+    const groups = new Map();
+    let n = 0;
+    for (const f of raw) {
+        const v = prop ? f.properties?.[prop] : null;
+        const k = v === null || v === undefined || typeof v === 'object' || String(v).trim() === '' ? `#${++n}` : String(v).trim();
+        (groups.get(k) || groups.set(k, []).get(k)).push(f);
+    }
+    const key = prop || 'number';
+    const features = [...groups].map(([k, fs]) => ({
+        type: 'Feature', id: k,
+        properties: { ...(fs[0].properties || {}), [key]: k, ...(fs.length > 1 ? { parts: fs.length } : {}), _jid: k },
+        geometry: fs.length === 1 ? fs[0].geometry : { type: 'MultiPolygon',
+            coordinates: fs.flatMap(f => f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates) },
+    }));
+    return { type: 'FeatureCollection', features };
+}
+function useUploadedName(meta, prop) {
+    const fc = uploadedFC(meta.raw, prop);
+    meta.nameProp = prop;
+    meta.key = meta.name = prop || 'number';
+    meta.label = `${meta.short} (${fc.features.length})`;
+    S.geo.set(meta.id, fc);
+    const anchors = new Map(); fc.features.forEach(f => anchors.set(f.id, focusOf(f.geometry, meta.bbox))); S.anchors.set(meta.id, anchors);
+    return fc;
+}
+function renderUploadName() {
+    const meta = S.layers.get(S.layerId), row = $('upload-name-row');
+    row.hidden = !meta?.uploaded;
+    if (!meta?.uploaded) return;
+    $('upload-name').innerHTML = meta.nameChoices.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join('')
+        + '<option value="">(number them)</option>';
+    $('upload-name').value = meta.nameProp || '';
+    const fc = S.geo.get(meta.id), merged = fc.features.filter(f => f.properties.parts > 1).length;
+    $('upload-name-hint').textContent = (meta.nameProp ? `Rows match these names. ` : 'Areas are numbered 1, 2, 3… in file order. ')
+        + (merged ? `${merged} name${merged > 1 ? 's' : ''} cover several pieces, each drawn as one area.` : '');
+}
+
 async function addPolygonLayer(file) {
     let gj;
     try { gj = JSON.parse(await file.text()); } catch { toast(`${file.name} isn’t JSON`, { ms: 5000 }); return; }
     const feats = (gj.type === 'FeatureCollection' ? gj.features : gj.type === 'Feature' ? [gj] : [])
         .filter(f => /^(Multi)?Polygon$/.test(f?.geometry?.type));
     if (!feats.length) { toast(`${file.name} has no polygons`, { sub: 'Upload a GeoJSON file of areas (Polygon or MultiPolygon features).', ms: 6000 }); return; }
-    const props = [...new Set(feats.flatMap(f => Object.keys(f.properties || {})))].filter(k => !k.startsWith(':') && !k.startsWith('_'));
-    const unique = k => { const v = feats.map(f => f.properties?.[k]); return v.every(x => x !== null && x !== undefined && String(x).trim() !== '' && typeof x !== 'object') && new Set(v.map(String)).size === v.length; };
-    const nameLike = k => /(^|_)(name|label|title|nhood|neighbo|district|county|zip|zcta|geoid|code|id)(_|$)|name$/i.test(k);
-    const key = props.filter(unique).sort((a, b) => nameLike(b) - nameLike(a) || /name/i.test(b) - /name/i.test(a))[0] || null;
+    const choices = nameProps(feats), prop = choices[0] || null;
     const base = file.name.replace(/\.(geo)?json$/i, '');
     let id = 'upload_' + base.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 40), n = 2;
     while (S.layers.has(id)) id = id.replace(/_\d+$/, '') + '_' + n++;
-    const features = feats.map((f, i) => {
-        const k = key ? String(f.properties[key]).trim() : String(i + 1);
-        return { type: 'Feature', id: k, properties: { ...(f.properties || {}), ...(key ? {} : { number: k }), _jid: k }, geometry: f.geometry };
-    });
-    const fc = { type: 'FeatureCollection', features };
-    const meta = { id, label: `${base} (${features.length})`, short: base, tab: OTHER, key: key || 'number', name: key || 'number',
-        match: { caseInsensitive: true, collapseSpace: true }, uploaded: true, bbox: bboxFC(fc) };
-    S.layers.set(id, meta); S.geo.set(id, fc);
-    const anchors = new Map(); features.forEach(f => anchors.set(f.id, focusOf(f.geometry, meta.bbox))); S.anchors.set(id, anchors);
+    const meta = { id, short: base, tab: OTHER, match: { caseInsensitive: true, collapseSpace: true }, uploaded: true,
+        raw: feats, nameChoices: choices, bbox: bboxFC({ type: 'FeatureCollection', features: feats }) };
+    S.layers.set(id, meta);
+    const fc = useUploadedName(meta, prop);
     S.tabs.find(t => t.tab === OTHER).layers.push(meta);
     await setLayer(id);
-    toast(`Added ${base}: ${features.length.toLocaleString()} polygons`, { sub: key ? `Each is named by “${key}”, which rows can match.` : 'No property names each polygon, so they’re numbered.', ms: 6000 });
+    toast(`Added ${base}: ${fc.features.length.toLocaleString()} areas`, { sub: prop ? `Named by “${prop}”. Change it with “Name areas by” under the list.` : 'No property names the areas, so they’re numbered.', ms: 7000 });
 }
 
 async function setLayer(id) {
@@ -748,6 +799,7 @@ async function setLayer(id) {
     if (S.wideView) { const b = meta.bbox || bboxFC(fc); map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 30, duration: 600 }); }
     else if (wasWide && !meta.hex) { const h = unionBbox(S.manifest.layers.filter(l => !l.regional).map(l => l.bbox).filter(Boolean)); map.fitBounds([[h[0], h[1]], [h[2], h[3]]], { padding: 24, duration: 600 }); }
     $('list-title').textContent = shortLabel(meta);
+    renderUploadName();
     if (busy) await prepare();   // places and counts in chunks, with progress
     recompute();
     // Keep the toast until the map has drawn the new areas (much of the wait is drawing, not counting).
@@ -2810,6 +2862,13 @@ function wireUI() {
     });
     $('poly-choose').onclick = () => { $('poly-dialog').close(); $('poly-input').click(); };
     $('poly-dialog').addEventListener('click', e => { if (e.target === $('poly-dialog')) $('poly-dialog').close(); });
+    $('upload-name').onchange = async e => {
+        const meta = S.layers.get(S.layerId);
+        if (!meta?.uploaded) return;
+        useUploadedName(meta, e.target.value || null);
+        renderTabs();
+        await setLayer(meta.id);
+    };
     $('poly-input').onchange = e => { const f = e.target.files[0]; if (f) addPolygonLayer(f); e.target.value = ''; };
     // Opening the menu on an inactive tab switches to that tab, even if the same set is picked again.
     $('tabs').addEventListener('mousedown', e => {

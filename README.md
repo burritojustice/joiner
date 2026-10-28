@@ -45,7 +45,7 @@ The tabs along the top are **District**, **ZIP**, **Neighborhood** (SF Find, Ana
 - Census Tracts
 - Bay Area Counties and Bay Area ZIP Codes
 - Election Precincts 2022, plus the US House, State Senate, Assembly and BART Board districts made from them
-- **Upload polygons (GeoJSON)…**, to add your own areas for the session
+- **Upload polygons (GeoJSON)…**, to add your own areas for the session. Joiner names each area by the field that looks most like a name (not an id); pieces that share a name become one area. **Name areas by**, under the area list, picks another field.
 
 Bay Area sets zoom out to show all of themselves.
 

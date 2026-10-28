@@ -2,27 +2,11 @@
   "_about": "Backup copies of burritojustice/sf-blocks files, at the same paths as on https://burritojustice.github.io/sf-blocks/. The app reads them live and falls back to these. Refresh with scripts/copy_sf_blocks.py; don't edit them here.",
   "repo": "burritojustice/sf-blocks",
   "live": "https://burritojustice.github.io/sf-blocks/",
-  "version": "2026.10.27",
-  "copied": "2026-10-27",
+  "version": "2026.10.27.2",
+  "copied": "2026-10-28",
   "files": [
     "region.json",
     "data/aliases.json",
-    "data/boundaries/analysis_neighborhoods.geojson",
-    "data/boundaries/assembly_districts.geojson",
-    "data/boundaries/bart_districts.geojson",
-    "data/boundaries/bay_area_counties.geojson",
-    "data/boundaries/bay_area_zip_codes.geojson",
-    "data/boundaries/census_tracts.geojson",
-    "data/boundaries/cultural_districts.geojson",
-    "data/boundaries/election_precincts.geojson",
-    "data/boundaries/index.json",
-    "data/boundaries/planning_neighborhoods.geojson",
-    "data/boundaries/realtor_neighborhoods.geojson",
-    "data/boundaries/sf_find_neighborhoods.geojson",
-    "data/boundaries/state_senate_districts.geojson",
-    "data/boundaries/supervisor_districts.geojson",
-    "data/boundaries/us_house_districts.geojson",
-    "data/boundaries/wof_neighbourhoods.geojson",
-    "data/boundaries/zip_codes.geojson"
+    "data/boundaries/*"
   ]
 }

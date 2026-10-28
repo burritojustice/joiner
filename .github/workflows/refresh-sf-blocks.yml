@@ -1,0 +1,45 @@
+# Keeps the backup copies of sf-blocks files current. Every Monday (or Actions → "Refresh sf-blocks copies"
+# → Run workflow) it copies the files listed in data/sf-blocks.json from burritojustice/sf-blocks's main
+# branch and opens a pull request if any changed. The app reads sf-blocks live; these copies are only used
+# when it can't.
+# Needs: Settings → Actions → General → Workflow permissions: "Read and write", and
+# "Allow GitHub Actions to create and approve pull requests".
+name: Refresh sf-blocks copies
+on:
+  schedule:
+    - cron: '17 15 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: burritojustice/sf-blocks
+          path: .sf-blocks
+      - name: Copy
+        id: copy
+        run: |
+          python3 scripts/copy_sf_blocks.py .sf-blocks | tee "$RUNNER_TEMP/copy.txt"
+          echo "version=$(cat .sf-blocks/VERSION)" >> "$GITHUB_OUTPUT"
+          rm -rf .sf-blocks
+      - name: Open a pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.copy.outputs.version }}
+        run: |
+          if git diff --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then echo "Copies are current."; exit 0; fi
+          b="sf-blocks-$VERSION"
+          if git ls-remote --exit-code --heads origin "$b" > /dev/null; then echo "$b already has a pull request."; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$b"
+          git add -A
+          git commit -m "Refresh sf-blocks copies to $VERSION"
+          git push origin "$b"
+          { echo "Copies of sf-blocks files updated to **$VERSION** (the app reads sf-blocks live; these are its fallback)."; echo; echo '```'; cat "$RUNNER_TEMP/copy.txt"; echo '```'; } > "$RUNNER_TEMP/body.md"
+          gh pr create --base main --head "$b" --title "Refresh sf-blocks copies to $VERSION" --body-file "$RUNNER_TEMP/body.md"
