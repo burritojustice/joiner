@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Joiner</title>
-<link rel="icon" href="img/burritojustice.jpg">
+<link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="img/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -110,6 +112,11 @@
           <button type="button" data-sort="value" aria-pressed="true">Value</button>
           <button type="button" data-sort="name" aria-pressed="false">A–Z</button>
         </div>
+      </div>
+      <div class="field upload-name" id="upload-name-row" hidden>
+        <label for="upload-name">Name areas by</label>
+        <select id="upload-name"></select>
+        <p class="hint" id="upload-name-hint"></p>
       </div>
       <ol class="area-list" id="area-list"></ol>
     </section>

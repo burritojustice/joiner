@@ -36,6 +36,7 @@ A MapLibre map that joins rows from CSV, JSON or GeoJSON files, Airtable views, 
   - The join is cached in `joined`, keyed by `joinKey()`. Changing the statistic, classes or colors doesn't count again.
   - Files under 20,000 rows use JoinKit's `buildJoin` (`joinNow`). Bigger files use `buildJoinChunked` (`joinInChunks`) through `prepare()` / `refresh()`, with a progress bar.
 - `classify()` turns values into classes: `JoinKit.classBreaks` (natural breaks, equal width or quantiles, with optional log). `recolor()` re-classes without recounting.
+- Uploaded polygon sets: `nameProps()` ranks the fields that could name areas, `uploadedFC()` builds the set from the raw features by one of them (joining pieces that share a name), `useUploadedName()` / `renderUploadName()` drive "Name areas by".
 - `normalizerFor(meta)` builds the forgiving name matcher (`JoinKit.makeLooseNormalizer`). `delimFor(col)` detects columns that list several areas in one cell. `areasOfRow(i)` gives every area a row is in.
 - `loadHex()` builds the H3 grid. Auto resolution, switch zooms and short codes come from `JoinKit.hex`. Names come from `hexNameSet()`: neighborhoods, or counties from level 7 down.
 - Table: `tableRowIdx()` → `searchAndFilter()` → `renderTable()`. **Map only these** sets `S.mapMask`, and `maskJoin()` narrows the join to those rows.
@@ -44,7 +45,7 @@ A MapLibre map that joins rows from CSV, JSON or GeoJSON files, Airtable views, 
 
 Each version is one PR on its own branch:
 
-1. Branch from an up-to-date `main`, named `vNN-short-name`. If the previous PR isn't merged yet, branch from its branch and say so in the PR ("Builds on #NN, merge that first").
+1. Branch from an up-to-date `main`, named `vNN-short-name`. If the previous PR isn't merged yet, branch from its branch, but still open the PR against `main` and say "Includes #NN". Never target another PR's branch: two stacked PRs were merged into their parent branches after those had gone to `main`, and never reached it.
 2. Bump `_BUILD_VERSION` at the top of `js/app.js`.
 3. Add a `## vNN` section at the top of `CHANGELOG.md`: what changed, in plain words, for John rather than for a developer.
 4. Commit, ending the message with the attribution lines from the session's system reminder.

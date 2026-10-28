@@ -5,8 +5,9 @@
     python3 scripts/copy_sf_blocks.py ../sf-blocks --check  # only list files that differ
 
 The app reads these files live from https://burritojustice.github.io/sf-blocks/ and falls back to the
-copies here, at the same paths. data/sf-blocks.json lists the files and records the sf-blocks version
-they were copied from (its VERSION file) and the date. Standard library only.
+copies here, at the same paths. data/sf-blocks.json lists the files (a name can have wildcards, like
+data/boundaries/*, which also picks up sets added later) and records the sf-blocks version they were
+copied from (its VERSION file) and the date. Standard library only.
 """
 import argparse, filecmp, json, shutil, sys
 from datetime import date
@@ -27,8 +28,16 @@ def main():
     stamp = json.loads(STAMP.read_text())
     version = (src / 'VERSION').read_text().strip()
 
-    changed, missing = [], []
-    for rel in stamp['files']:
+    changed, missing, files = [], [], []
+    for pat in stamp['files']:
+        if any(c in pat for c in '*?['):
+            found = sorted(str(f.relative_to(src)) for f in src.glob(pat) if f.is_file())
+            files += found or []
+            if not found:
+                missing.append(pat)
+        else:
+            files.append(pat)
+    for rel in dict.fromkeys(files):
         s, d = src / rel, ROOT / rel
         if not s.exists():
             missing.append(rel)

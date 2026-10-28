@@ -2,6 +2,15 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v45
+Includes v44 (#3): merging this brings both to `main`.
+
+- **Uploaded polygons are named better:** the name is now picked for being name-like and readable (`name`, `name_1`, `title`, `district…`) rather than for being unique, and id fields (`objectid`, `fid`, `…_id`) count against. Pieces that share a name (a district in two parts) become one area; pieces with no name are numbered.
+- **"Name areas by"** under the area list, for uploaded sets: pick another field and the areas, labels and matching follow. The note under it says when several pieces were joined.
+- **Built-in sets** are named by the `name` field in sf-blocks' `data/boundaries/sources.json`; the "Add or refresh a boundary set" action there sets it (and can be told which field).
+- **Favicon:** an area (blue circle) with points in it, overlapped by a table (yellow square), the overlap pink; plus 32 px and Apple touch icons.
+- **Backup copies:** `data/sf-blocks.json` lists `data/boundaries/*`, so sets added to sf-blocks are copied too. The **Refresh sf-blocks copies** Action opens a PR each Monday when sf-blocks changed (needs Actions allowed to create pull requests in Settings → Actions → General).
+
 ## v44
 Builds on v43 (#1): merge that first.
 
