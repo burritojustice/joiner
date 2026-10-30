@@ -2,6 +2,9 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v48
+- **Favicon:** three thin rows (yellow) beside an area (blue). Five points run in an arc through the area: the three inside are black, matched, and the row that crosses into the area is pink; the two outside are hollow yellow rings, like the rows that don't match.
+
 ## v47
 - **Favicon:** an area (blue) and a table of two rows (yellow). Five points run in an arc across the area: the three inside are pink, matched, and the row that crosses into the area lights up pink too; the two outside stay dark.
 
