@@ -1,5 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#F4F7FF"/>
-<circle cx="25" cy="35" r="18" fill="#0EA5C6"/>
-<rect x="28" y="7" width="29" height="29" rx="5" fill="#FFC53D"/>
-<path d="M28 18.6V36h17A18 18 0 0 0 28 18.6z" fill="#FF3D7F"/>
-<circle cx="18" cy="40" r="4" fill="#1E2340"/><circle cx="27" cy="47" r="4" fill="#1E2340"/><circle cx="15" cy="29" r="4" fill="#1E2340"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#F4F7FF"/><defs><clipPath id="c"><circle cx="24" cy="38" r="17"/></clipPath></defs><circle cx="24" cy="38" r="17" fill="#0EA5C6"/><rect x="24" y="10" width="34" height="10" rx="2.5" fill="#FFC53D"/><rect x="24" y="24" width="34" height="10" rx="2.5" fill="#FFC53D"/><g clip-path="url(#c)"><rect x="24" y="24" width="34" height="10" rx="2.5" fill="#FF3D7F"/></g><circle cx="52.6" cy="54.0" r="4.2" fill="#1E2340"/><circle cx="41.6" cy="52.0" r="4.2" fill="#1E2340"/><circle cx="31.6" cy="47.2" r="4.2" fill="#FF3D7F"/><circle cx="23.4" cy="39.7" r="4.2" fill="#FF3D7F"/><circle cx="17.5" cy="30.3" r="4.2" fill="#FF3D7F"/></svg>
