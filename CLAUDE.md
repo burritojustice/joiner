@@ -10,6 +10,7 @@ A MapLibre map that joins rows from CSV, JSON or GeoJSON files, Airtable views, 
 - Plain HTML, CSS and JS. No build step, no modules, no npm dependencies in the page.
 - Libraries come from CDNs, pinned to exact versions in `index.html`: MapLibre GL 5.16, PapaParse, h3-js 4.4.0 and JoinKit.
 - Basemap: the Protomaps `white` style with key `071e272e8d5e13b7` (allowed origin burritojustice.github.io; localhost works with any valid key). `SFBlocks.basemapKey()` picks another origin's key from sf-blocks' `region.json` (civic-joy-fund.github.io uses `6c8d7dd20c838f80`).
+- Caching: `js/sfblocks.js` fetches `region.json` / `VERSION` with `cache: 'no-cache'` and other files with `?v=<version>`, so new sf-blocks data shows on the next load despite Pages' 10-minute cache.
 - Data: boundaries and aliases come from burritojustice/sf-blocks, live from https://burritojustice.github.io/sf-blocks/ via `js/sfblocks.js` (same code as Block Party's inline `SFBlocks`), with the copies in `data/` and `region.json` as the fallback. `data/sf-blocks.json` stamps their version; refresh with `python3 scripts/copy_sf_blocks.py ../sf-blocks`. Change data in sf-blocks, not here.
 
 ## Files

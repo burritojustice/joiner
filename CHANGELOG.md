@@ -2,6 +2,10 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v46
+- **New boundary sets show up on the next load:** GitHub Pages lets browsers keep files for 10 minutes, which is why a set added to sf-blocks took 5–10 minutes to appear in the Other menu (the version on hover could already be new, while the list of sets wasn't). `region.json` and `VERSION` are now checked with the server every time, and every other sf-blocks file is asked for with the version in its address (`…?v=2026.10.30`), so a new version means fresh files.
+- The Tag version and Refresh sf-blocks copies Actions use `actions/checkout@v5` (Node 24), which ends the Node 20 warning.
+
 ## v45
 Includes v44 (#3): merging this brings both to `main`.
 
