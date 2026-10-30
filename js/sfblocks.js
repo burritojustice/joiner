@@ -15,18 +15,24 @@ const SFBlocks = (() => {
     let region = null;
 
     // fetch with a deadline for the first byte (big files may take longer to finish)
-    const get = (url, ms = WAIT) => {
+    const get = (url, ms = WAIT, opts = {}) => {
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), ms);
-        return fetch(url, { signal: ctl.signal }).then(r => {
+        return fetch(url, { ...opts, signal: ctl.signal }).then(r => {
             clearTimeout(timer);
             if (!r.ok) throw new Error(`${r.status} ${url}`);
             return r;
         }, err => { clearTimeout(timer); throw err; });
     };
+    // GitHub Pages lets browsers keep files for 10 minutes. region.json and VERSION are checked with the
+    // server every time (cheap when unchanged), and every other file's address carries the version
+    // (?v=2026.10.30), so a new sf-blocks version is seen on the next page load, not 10 minutes later.
+    const fresh = { cache: 'no-cache' };
+    const versioned = path => base + path + (info.version ? (path.includes('?') ? '&' : '?') + 'v=' + encodeURIComponent(info.version) : '');
     async function file(path) {
+        await ready.catch(() => {});
         if (base) {
-            try { return await get(base + path); }
+            try { return await get(versioned(path)); }
             catch (err) {
                 console.warn(`[sf-blocks] ${path}: live copy failed, using the one here`, err);
                 info.fellBack.push(path);
@@ -38,8 +44,8 @@ const SFBlocks = (() => {
         info.copy = await get(STAMP).then(r => r.json()).catch(() => null);
         if (base) {
             try {
-                const [reg, ver] = await Promise.all([get(base + 'region.json').then(r => r.json()),
-                    get(base + 'VERSION').then(r => r.text())]);
+                const [reg, ver] = await Promise.all([get(base + 'region.json', WAIT, fresh).then(r => r.json()),
+                    get(base + 'VERSION', WAIT, fresh).then(r => r.text())]);
                 region = reg;
                 Object.assign(info, { live: true, version: ver.trim(), base });
                 console.log(`[sf-blocks] ${info.version}, live from ${base}`);
@@ -62,7 +68,7 @@ const SFBlocks = (() => {
         json: path => file(path).then(r => r.json()),
         text: path => file(path).then(r => r.text()),
         // absolute URL for readers that fetch on their own (PMTiles); no per-file fallback
-        url: path => new URL(base + path, location.href).href,
+        url: path => new URL(base ? versioned(path) : path, location.href).href,
         // the Protomaps key allowed for this page's origin, from region.json
         basemapKey: fallback => region?.basemap?.keys?.[location.origin] || fallback,
         // "sf-blocks 2026.10.27 (live)" for titles and footers
