@@ -4,6 +4,7 @@ Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the
 
 ## v46
 - **New boundary sets show up on the next load:** GitHub Pages lets browsers keep files for 10 minutes, which is why a set added to sf-blocks took 5–10 minutes to appear in the Other menu (the version on hover could already be new, while the list of sets wasn't). `region.json` and `VERSION` are now checked with the server every time, and every other sf-blocks file is asked for with the version in its address (`…?v=2026.10.30`), so a new version means fresh files.
+- **Favicon:** an area (blue) and a table of two rows (yellow). Five points run in an arc across the area: the three inside are pink, matched, and the row that crosses into the area lights up pink too; the two outside stay dark.
 - The Tag version and Refresh sf-blocks copies Actions use `actions/checkout@v5` (Node 24), which ends the Node 20 warning.
 
 ## v45
