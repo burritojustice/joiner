@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v49';
+const _BUILD_VERSION = 'v50';
 
 const CONFIG = {
     // Boundaries and aliases come from sf-blocks (js/sfblocks.js): live, or the copies in data/.
@@ -84,8 +84,33 @@ const CONFIG = {
     prefixAfter: 2,            // default prefix zoom = opening zoom level + this
 };
 
+// Population density palettes: the Viridis family (matplotlib, and mako / rocket from seaborn), 9 stops
+// low → high. Classes are sampled from them; Flip runs a palette the other way. Same list in Block Party.
+const SEQ_PALETTES = {
+    viridis: ['#440154', '#472D7B', '#3B528B', '#2C728E', '#21918C', '#28AE80', '#5EC962', '#ADDC30', '#FDE725'],
+    magma:   ['#000004', '#1D1147', '#51127C', '#832681', '#B73779', '#E75263', '#FC8961', '#FEC488', '#FCFDBF'],
+    inferno: ['#000004', '#210C4A', '#57106E', '#8A226A', '#BC3754', '#E45A31', '#F98E09', '#F9CB35', '#FCFFA4'],
+    plasma:  ['#0D0887', '#4C02A1', '#7E03A8', '#AA2395', '#CC4778', '#E66C5C', '#F89540', '#FDC527', '#F0F921'],
+    cividis: ['#00224E', '#1A386F', '#434E6C', '#61656F', '#7D7C78', '#9B9476', '#BCAE6C', '#DEC958', '#FEE838'],
+    mako:    ['#0B0405', '#2B1C35', '#3E356B', '#3B5698', '#357BA3', '#359FAB', '#4BC2AD', '#99DDB6', '#DEF5E5'],
+    rocket:  ['#03051A', '#30173A', '#611F53', '#971C5B', '#CB1B4F', '#EC4C3E', '#F58860', '#F6BC99', '#FAEBDD'],
+    turbo:   ['#30123B', '#466BE3', '#28BCEB', '#32F298', '#A4FC3C', '#EECF3A', '#FB7E21', '#D02F05', '#7A0403'],
+};
+const SEQ_LABELS = { viridis: 'Viridis', magma: 'Magma', inferno: 'Inferno', plasma: 'Plasma', cividis: 'Cividis', mako: 'Mako', rocket: 'Rocket', turbo: 'Turbo' };
+function sampleRamp(stops, n, flip) {
+    const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)), out = [];
+    for (let i = 0; i < n; i++) {
+        const x = (n === 1 ? 1 : i / (n - 1)) * (stops.length - 1), j = Math.min(stops.length - 2, Math.floor(x)), u = x - j;
+        const a = rgb(stops[j]), b = rgb(stops[j + 1]);
+        out.push('#' + a.map((v, k) => Math.round(v + (b[k] - v) * u).toString(16).padStart(2, '0')).join('').toUpperCase());
+    }
+    return flip ? out.reverse() : out;
+}
+// The density palette: one class more than the set's breaks (5 classes of quantiles without them)
+const densityPal = () => ({ label: SEQ_LABELS[S.densityPal], rows: '#FF3D7F', pick: '#E8590C', pickWash: '#FDEBDD',
+    ramp: sampleRamp(SEQ_PALETTES[S.densityPal] || SEQ_PALETTES.viridis, (densityMeta()?.breaks?.length ?? 4) + 1, S.densityFlip) });
 const $ = id => document.getElementById(id);
-const pal = () => CONFIG.palettes[densityActive() ? 'viridis' : S.palette] || CONFIG.palettes.blues;
+const pal = () => densityActive() ? densityPal() : CONFIG.palettes[S.palette] || CONFIG.palettes.blues;
 // Sets that say how to color themselves (sf-blocks' `choropleth`: census blocks and tracts by people per
 // square mile) show that on their own. It's on when the set is chosen, and goes off when loaded data
 // matches the set (rows joined by GEOID take over the colors); the Density button switches it either way.
@@ -108,6 +133,7 @@ const store = {
 const S = {
     densityPref: {},      // layer id → true / false once the Density button is used (else automatic)
     densityShown: false,  // the areas are colored by the set's own field (population density)
+    densityPal: 'viridis', densityFlip: false,   // its palette (SEQ_PALETTES), and run high → low
     manifest: null,       // index.json
     layers: new Map(),    // id → manifest entry
     tabs: [],             // [{ tab, layers: [entry] }]
@@ -184,6 +210,8 @@ async function boot() {
     S.tabChoice[S.layers.get(first).tab] = first;
     S.basemap = { ...S.basemap, ...store.get('basemap', {}) };
     S.palette = palKey(store.get('palette', 'blues'));
+    S.densityPal = SEQ_PALETTES[store.get('densityPal', 'viridis')] ? store.get('densityPal', 'viridis') : 'viridis';
+    S.densityFlip = !!store.get('densityFlip', false);
     S.streetColor = store.get('streetColor', CONFIG.streetColor); if (!CONFIG.labelColors[S.streetColor]) S.streetColor = CONFIG.streetColor;
     S.labelColor = store.get('labelColor', 'auto'); if (S.labelColor !== 'auto' && !CONFIG.labelColors[S.labelColor]) S.labelColor = 'auto';
     // Label size: Small to start (Dynamic sizes labels by the area's size, which can read as bigger values).
@@ -1101,10 +1129,11 @@ function recompute() {
     if (densityOn()) {
         const prop = densityMeta().prop;
         S.values = new Map(fc.features.map(f => { const v = Number(f.properties[prop]); return [f.id, Number.isFinite(v) ? v : null]; }));
-        // quantiles: density is so skewed that natural breaks leave most of the city in the darkest classes
-        const method = S.classMethod; S.classMethod = 'quantile';
-        S.classes = classify([...S.values.values()].filter(v => v !== null && v > 0));
-        S.classMethod = method;
+        // the set's own breaks (sf-blocks; each doubles the last), the same as Block Party's. Without them,
+        // quantiles: density is so skewed that natural breaks leave most of the city in the darkest classes.
+        const vals = [...S.values.values()].filter(v => v !== null && v > 0), breaks = densityMeta().breaks;
+        if (breaks?.length) S.classes = fixedClasses(vals, breaks);
+        else { const method = S.classMethod; S.classMethod = 'quantile'; S.classes = classify(vals); S.classMethod = method; }
     }
     if (S.palDensity !== densityOn()) applyPalette();   // the fill colors follow whichever palette is in use
     syncBarToggles();
@@ -1271,6 +1300,16 @@ const metricLabel = () => densityOn() ? `${densityMeta().label}${densityMeta().s
 // equal width work on the values' logarithms, so a long tail doesn't squeeze everything else into
 // the lightest class. Values are > 0 here.
 const CLASS_METHODS = { jenks: 'Natural breaks', equal: 'Equal width', quantile: 'Quantiles' };
+// Classes at fixed breaks: below the first, between each pair, and from the last up
+function fixedClasses(vals, breaks) {
+    const sorted = [...vals].sort((a, b) => a - b), n = sorted.length;
+    const idx = v => { let i = 0; while (i < breaks.length && v >= breaks[i]) i++; return i; };
+    const ranges = [0, ...breaks].map((lo, i) => ({ cls: i, c: i, lo, hi: i < breaks.length ? breaks[i] : Math.max(lo, sorted[n - 1] ?? lo), n: 0 }));
+    for (const v of sorted) ranges[idx(v)].n++;
+    const stats = { n, min: sorted[0] ?? 0, max: sorted[n - 1] ?? 0, mean: n ? sorted.reduce((a, b) => a + b, 0) / n : 0,
+        median: n ? (n % 2 ? sorted[n >> 1] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2) : 0 };
+    return { classOf: v => (v === null || !(v > 0)) ? -1 : idx(v), ranges, stats, method: 'fixed', log: true };
+}
 function classify(vals) {
     if (!vals.length) return null;
     const cb = JoinKit.classBreaks(vals, { method: S.classMethod, k: ramp().length, log: S.classLog });
@@ -1396,7 +1435,7 @@ function activeLabelFields() {
     if (S.labels) ids = S.labels.filter(id => avail.has(id) && !(id === 'id' && S.layers.get(S.layerId).hex));
     else {
         const meta = S.layers.get(S.layerId);
-        ids = [...(meta.hex ? [] : ['id']), ...(S.src && S.join ? [S.metric] : []), ...(meta.labelExtras || []).filter(x => x.default).map(x => 'x:' + x.id)];
+        ids = [...(meta.hex || meta.choropleth ? [] : ['id']), ...(S.src && S.join ? [S.metric] : []), ...(meta.labelExtras || []).filter(x => x.default).map(x => 'x:' + x.id)];
     }
     return ids.map(id => avail.get(id)).filter(Boolean);
 }
@@ -1689,8 +1728,8 @@ function renderLegend() {
             : `<h4>${esc(metricLabel())}</h4>` + [...S.classes.ranges].reverse().map(r =>
                 `<div class="row"><i style="background:${ramp()[r.c]}"></i><span>${r.lo === r.hi ? fmtShort(r.hi, S.metric) : `${fmtShort(r.lo, S.metric)} – ${fmtShort(r.hi, S.metric)}`}</span><span class="n">${r.n}</span></div>`).join('')
               + `<div class="row"><i class="clear"></i><span>No one (water, parks)</span><span class="n">${nZero}</span></div>`
-              + `<div class="foot">${CLASS_METHODS[S.classes.method] || 'Natural breaks'}${S.classes.log ? ' · log' : ''} · Density button to switch off</div>`)
-            + (S.src ? rowLegendHTML() : '');
+              + `<div class="foot">${S.classes.method === 'fixed' ? 'Each class doubles the last (log scale)' : CLASS_METHODS[S.classes.method] || 'Quantiles'} · Density button to switch off</div>`)
+            + densityControlsHTML() + (S.src ? rowLegendHTML() : '');
         return;
     }
     if (!S.src || (!S.join && !S.rowClasses && !S.rowSizes)) { lg.hidden = true; return; }
@@ -1704,6 +1743,19 @@ function renderLegend() {
         `<div class="row"><i style="background:${ramp()[r.c]}"></i><span>${r.lo === r.hi ? fmtShort(r.hi, S.metric) : `${fmtShort(r.lo, S.metric)} – ${fmtShort(r.hi, S.metric)}`}</span><span class="n">${r.n}</span></div>`).join('')
         + `<div class="row"><i class="clear"></i><span>${zeroLabel}${hidingEmpty() ? ' (hidden)' : ''}</span><span class="n">${nZero}</span></div>`
         + `<div class="foot">${CLASS_METHODS[S.classes?.method] || 'Natural breaks'}${S.classes?.log ? ' · log' : ''} · areas per class</div>` + rowLegendHTML();
+}
+
+// The density palette (a menu of the Viridis family) and Flip, under its legend
+const palGradient = k => `linear-gradient(90deg,${sampleRamp(SEQ_PALETTES[k], 9, S.densityFlip).join(',')})`;
+function densityControlsHTML() {
+    return `<div class="dens-ctl"><details class="pal-pick"><summary title="Colors for population density"><i class="pal-sw" style="background:${palGradient(S.densityPal)}"></i>${esc(SEQ_LABELS[S.densityPal])} ▾</summary>
+        <div class="pal-list">${Object.keys(SEQ_PALETTES).map(k => `<button type="button" data-dpal="${k}" aria-pressed="${k === S.densityPal}"><i class="pal-sw" style="background:${palGradient(k)}"></i>${esc(SEQ_LABELS[k])}</button>`).join('')}</div></details>
+        <button type="button" class="tog" data-dflip aria-pressed="${S.densityFlip}" title="Run the colors the other way"><i aria-hidden="true"></i>Flip</button></div>`;
+}
+function setDensityPalette(k, flip) {
+    if (k && SEQ_PALETTES[k]) { S.densityPal = k; store.set('densityPal', k); }
+    if (flip != null) { S.densityFlip = flip; store.set('densityFlip', flip); }
+    applyPalette(); recompute();
 }
 
 function compactLegendHTML() {
@@ -1772,9 +1824,21 @@ function showTip(point, id) {
     const tip = $('tip');
     const extras = extrasWith('hover').map(x => [x.label, extraValue(x, f, { short: false })]).filter(([, v]) => v);
     tip.innerHTML = `<b>${esc(nameOf(f))}</b>` + extras.map(([k, v]) => `<div>${esc(k)}: ${esc(v)}</div>`).join('')
-        + (S.src && S.join ? `<div>${esc(metricLabel())}: ${fmt(S.values.get(id))}</div>` : '');
+        + censusTip(f) + (S.src && S.join ? `<div>${esc(metricLabel())}: ${fmt(S.values.get(id))}</div>` : '');
     tip.style.left = point.x + 'px'; tip.style.top = point.y + 'px';
     tip.hidden = false;
+}
+
+// Census sets: people, homes (housing units) and density, per square mile and per square km
+function censusTip(f) {
+    const ch = S.layers.get(S.layerId)?.choropleth, p = f.properties || {};
+    if (!ch) return '';
+    const num = v => (v == null || v === '' || !Number.isFinite(Number(v))) ? null : Number(v);
+    const people = num(p.pop20), homes = num(p.housing20), d = num(p[ch.prop]);
+    const n = v => Math.round(v).toLocaleString();
+    if (people === 0) return '<div>No one lives here (2020 Census)</div>';
+    return (people != null ? `<div>People: ${n(people)}${homes != null ? ` · Homes: ${n(homes)}` : ''}</div>` : '')
+        + (d != null ? `<div>${n(d)} per sq mi · ${n(d / 2.589988)} per sq km</div>` : '');
 }
 
 // Highlight rows on the map: those in an area ({ area }) or one row ({ row }); null clears.
@@ -3190,6 +3254,9 @@ function wireUI() {
     // The pinned card: hover it to scroll; ✕ or Esc closes it.
     $('rowcard').addEventListener('click', e => { if (e.target.closest('.card-x')) pinRowCard(null); });
     $('legend').addEventListener('click', e => {
+        const dp = e.target.closest('[data-dpal]');
+        if (dp) { setDensityPalette(dp.dataset.dpal); return; }
+        if (e.target.closest('[data-dflip]')) { setDensityPalette(null, !S.densityFlip); return; }
         if (!e.target.closest('.lg-fold')) return;
         S.legendCompact = !S.legendCompact; store.set('legendCompact', S.legendCompact); renderLegend();
     });
