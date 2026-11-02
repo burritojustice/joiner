@@ -231,8 +231,8 @@ button, input, select { font: inherit; color: inherit; }
 .tog { display: inline-flex; align-items: center; gap: 6px; border: 1.5px solid var(--line); background: var(--card); border-radius: 999px;
   padding: 4px 10px; font: inherit; font-size: 13px; font-weight: 600; color: var(--ink-soft); cursor: pointer; white-space: nowrap; }
 .tog i { width: 10px; height: 10px; border-radius: 3px; border: 1.5px solid currentColor; }
-.tog[aria-pressed="true"] { color: var(--ink); border-color: var(--ink); }
-.tog[aria-pressed="true"] i { background: var(--ink); }
+.tog[aria-pressed="true"] { color: #fff; background: var(--ink); border-color: var(--ink); }
+.tog[aria-pressed="true"] i { background: #fff; border-color: #fff; }
 .tog:hover { border-color: var(--ink); }
 details.sub { margin-top: 2px; }
 details.sub > summary { cursor: pointer; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft);
@@ -620,3 +620,17 @@ details.card > summary::before, details.sub > summary::before, .src-title::befor
 .tf-pop .tf-row select { flex: 1 1 0; min-width: 0; width: 0; max-width: 100%; text-overflow: ellipsis; }
 .tf-pop .tf-row .btn { flex: none; }
 .tf-chip .tf-k { max-width: 110px; }
+
+/* v50: one rule for buttons (black when on or open, white when off; yellow is for what you picked);
+   the density palette menu and Flip under its legend */
+.dens-ctl { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.pal-pick { position: relative; }
+.pal-pick summary { list-style: none; display: flex; align-items: center; gap: 6px; cursor: pointer; border: 1.5px solid var(--line); border-radius: 999px; padding: 2px 9px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.pal-pick summary:hover { border-color: var(--ink); }
+.pal-pick summary::-webkit-details-marker { display: none; }
+.pal-pick[open] summary { background: var(--ink); border-color: var(--ink); color: #fff; }
+.pal-sw { display: inline-block; width: 34px; height: 10px; border-radius: 2px; }
+.pal-list { position: absolute; z-index: 5; left: 0; top: calc(100% + 4px); background: var(--card); border: 1.5px solid var(--ink); border-radius: 10px; padding: 4px; display: grid; gap: 2px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+.pal-list button { display: flex; align-items: center; gap: 8px; border: 0; background: none; font: inherit; font-size: 13px; padding: 4px 8px; border-radius: 6px; cursor: pointer; color: var(--ink); white-space: nowrap; }
+.pal-list button:hover { background: var(--paper); }
+.pal-list button[aria-pressed="true"] { background: var(--ink); color: #fff; }

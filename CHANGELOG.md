@@ -2,6 +2,15 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v50
+Uses the density breaks in sf-blocks #12; until it's merged, census sets fall back to quantiles.
+
+- **Same density scale as Block Party:** 7 classes, each break double the last (5K, 10K, 20K, 40K, 80K, 160K people per sq mi: a log scale), from sf-blocks. Before, quantiles topped out at 40K, so the Mission and the Tenderloin shared a color.
+- **Density colors:** under the density legend, a menu of the Viridis family (Viridis, Magma, Inferno, Plasma, Cividis, Mako, Rocket, Turbo) and **Flip** to run them the other way. Remembered in this browser. Borders use the Area outlines setting, as before.
+- **Hover on census blocks and tracts:** people, homes, and density per sq mi and per sq km ("No one lives here" for parks and water).
+- **No GEOID labels** on census sets (the id is in the hover).
+- **Buttons:** black when on, white when off (Areas, Density, Table, Features, Map only these, Flip); yellow is for what you pick on the map, and the Load data button.
+
 ## v49
 Needs sf-blocks #11 (census blocks, and population on the tracts) merged first.
 
