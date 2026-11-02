@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v48';
+const _BUILD_VERSION = 'v49';
 
 const CONFIG = {
     // Boundaries and aliases come from sf-blocks (js/sfblocks.js): live, or the copies in data/.
@@ -19,6 +19,9 @@ const CONFIG = {
         ylorrd: { label: 'Yellow–red', ramp: ['#feb24c', '#fd8d3c', '#fc4e2a', '#e31a1c', '#800026'], rows: '#1c5cab' },
         // Diverging, low → high: ColorBrewer RdYlBu (5 classes), reversed so blue is low and red high.
         // With it, features are green (Greens when colored by a number) and the selected area purple.
+        // Viridis (perceptually even, colorblind-safe), dark purple low to yellow high. Population density on
+        // census sets always uses it.
+        viridis: { label: 'Viridis', ramp: ['#440154', '#3B528B', '#21918C', '#5EC962', '#FDE725'], rows: '#FF3D7F', pick: '#E8590C', pickWash: '#FDEBDD' },
         rdylbu: { label: 'Blue–yellow–red', ramp: ['#2c7bb6', '#abd9e9', '#ffffbf', '#fdae61', '#d7191c'], rows: '#1a9850', pick: '#7B3294', pickWash: '#F1E6F7' },
     },
     nodata: '#F0EFEC',         // 0 / no value in the list and legend; on the map those areas are left clear
@@ -82,7 +85,17 @@ const CONFIG = {
 };
 
 const $ = id => document.getElementById(id);
-const pal = () => CONFIG.palettes[S.palette] || CONFIG.palettes.blues;
+const pal = () => CONFIG.palettes[densityActive() ? 'viridis' : S.palette] || CONFIG.palettes.blues;
+// Sets that say how to color themselves (sf-blocks' `choropleth`: census blocks and tracts by people per
+// square mile) show that on their own. It's on when the set is chosen, and goes off when loaded data
+// matches the set (rows joined by GEOID take over the colors); the Density button switches it either way.
+const densityMeta = () => S.layers.get(S.layerId)?.choropleth || null;
+const densityOn = () => S.densityShown && !!densityMeta();
+function densityActive() {
+    if (!densityMeta()) return false;
+    const pref = S.densityPref[S.layerId];
+    return pref != null ? pref : !(S.join && S.join.matchedRows > 0);
+}
 // v16's Blue–red ('rdbu') became Blue–yellow–red in v17.
 const palKey = k => { k = k === 'rdbu' ? 'rdylbu' : k; return CONFIG.palettes[k] ? k : 'blues'; };
 const ramp = () => pal().ramp;
@@ -93,6 +106,8 @@ const store = {
 };
 
 const S = {
+    densityPref: {},      // layer id → true / false once the Density button is used (else automatic)
+    densityShown: false,  // the areas are colored by the set's own field (population density)
     manifest: null,       // index.json
     layers: new Map(),    // id → manifest entry
     tabs: [],             // [{ tab, layers: [entry] }]
@@ -477,6 +492,7 @@ const rowCategorical = () => CONFIG.categorical.filter(c => !(ROW_CAT_SKIP[S.pal
 
 function applyPalette() {
     const p = pal();
+    S.palDensity = densityOn();
     // The selected area's color: green, or purple where the palette's features are green.
     map.setPaintProperty('bounds-hl', 'line-color', ['case', ['boolean', ['feature-state', 'selected'], false], p.pick || CONFIG.highlight, '#1E2340']);
     document.documentElement.style.setProperty('--pick', p.pick || CONFIG.highlight);
@@ -1081,6 +1097,17 @@ function recompute() {
         for (const f of fc.features) S.values.set(f.id, statFor(f.id, S.metric));
         S.classes = classify([...S.values.values()].filter(v => v !== null && v > 0));
     }
+    S.densityShown = !!(fc && densityActive());
+    if (densityOn()) {
+        const prop = densityMeta().prop;
+        S.values = new Map(fc.features.map(f => { const v = Number(f.properties[prop]); return [f.id, Number.isFinite(v) ? v : null]; }));
+        // quantiles: density is so skewed that natural breaks leave most of the city in the darkest classes
+        const method = S.classMethod; S.classMethod = 'quantile';
+        S.classes = classify([...S.values.values()].filter(v => v !== null && v > 0));
+        S.classMethod = method;
+    }
+    if (S.palDensity !== densityOn()) applyPalette();   // the fill colors follow whichever palette is in use
+    syncBarToggles();
     paint();
     renderPanel();
     renderTable();
@@ -1091,7 +1118,7 @@ function recompute() {
 // New classes only (method, log): the counts stay, so just re-class, repaint the areas, the legend,
 // the list and the labels. Instant even with a big file.
 function recolor() {
-    if (!S.join) return recompute();
+    if (!S.join || densityOn()) return recompute();
     S.classes = classify([...S.values.values()].filter(v => v !== null && v > 0));
     paint(); renderLegend(); renderList(); updateLabels();
 }
@@ -1237,7 +1264,7 @@ function looksLikeIds(vals) {
 // Coordinates are numbers but never amounts.
 const isCoordColumn = col => /^(lat|lng|lon|long|latitude|longitude|x|y|point_?[xy])$|[\s_-](lat|lng|lon|latitude|longitude)$/i.test(col.trim());
 const statLabel = s => metricOptions().find(m => m.value === s)?.label || s;
-const metricLabel = () => statLabel(S.metric);
+const metricLabel = () => densityOn() ? `${densityMeta().label}${densityMeta().source ? ` (${densityMeta().source})` : ''}` : statLabel(S.metric);
 
 // Classes for the area colors: natural breaks (around gaps in the values), equal width (the same
 // span of values each) or quantiles (the same number of areas each); with Log, natural breaks and
@@ -1300,6 +1327,7 @@ function fmtNumber(v, { money = false, abbrev = false, whole = false } = {}) {
 const fmtPct = v => (v === 0 ? '0' : v < 0.1 ? '<0.1' : v.toFixed(1)) + '%';
 
 function fmt(v, stat = S.metric) {
+    if (densityOn() && stat === S.metric) stat = 'count';   // people per sq mi: whole numbers
     if (v === null || v === undefined) return '—';
     if (stat.startsWith('pct_')) return fmtPct(v);
     return fmtNumber(v, { money: isMoney(stat), whole: !/^avg_/.test(stat) && Number.isInteger(v) });
@@ -1307,6 +1335,7 @@ function fmt(v, stat = S.metric) {
 
 // Short form for map labels: $104K, $79.4K, 1.2M.
 function fmtShort(v, stat) {
+    if (densityOn() && stat === S.metric) stat = 'count';
     if (v === null || v === undefined) return '—';
     if (stat.startsWith('pct_')) return fmtPct(v);
     return fmtNumber(v, { money: isMoney(stat), abbrev: true });
@@ -1603,7 +1632,7 @@ const NAME_ORDER = new Intl.Collator('en', { numeric: true });   // one collator
 function renderList() {
     const fc = S.geo.get(S.layerId);
     if (!fc) return;
-    const showV = !!(S.src && S.join);
+    const showV = !!(S.src && S.join) || densityOn();
     const listExtras = extrasWith('list');
     const meta = S.layers.get(S.layerId);
     const friendly = f => meta.hex && S.hex.label !== 'h3' && f.properties.hood;   // name the area, code beside it
@@ -1650,6 +1679,20 @@ function itemsHTML(id) {
 const legendHead = () => `<button type="button" class="lg-fold" aria-expanded="${!S.legendCompact}" title="${S.legendCompact ? 'Show every class' : 'Fold to one bar per layer'}">Legend</button>`;
 function renderLegend() {
     const lg = $('legend');
+    if (densityOn() && S.classes && S.showAreas) {
+        lg.hidden = false;
+        lg.classList.toggle('compact', S.legendCompact);
+        const nZero = [...S.values.values()].filter(v => !(v > 0)).length;
+        lg.innerHTML = legendHead() + (S.legendCompact
+            ? legendBar({ name: metricLabel(), right: `${S.classes.stats.n.toLocaleString()} areas`, blocks: S.classes.ranges.map(r => ({ color: ramp()[r.c], lo: r.lo, hi: r.hi })),
+                stats: S.classes.stats, f: v => fmtShort(v, S.metric) })
+            : `<h4>${esc(metricLabel())}</h4>` + [...S.classes.ranges].reverse().map(r =>
+                `<div class="row"><i style="background:${ramp()[r.c]}"></i><span>${r.lo === r.hi ? fmtShort(r.hi, S.metric) : `${fmtShort(r.lo, S.metric)} – ${fmtShort(r.hi, S.metric)}`}</span><span class="n">${r.n}</span></div>`).join('')
+              + `<div class="row"><i class="clear"></i><span>No one (water, parks)</span><span class="n">${nZero}</span></div>`
+              + `<div class="foot">${CLASS_METHODS[S.classes.method] || 'Natural breaks'}${S.classes.log ? ' · log' : ''} · Density button to switch off</div>`)
+            + (S.src ? rowLegendHTML() : '');
+        return;
+    }
     if (!S.src || (!S.join && !S.rowClasses && !S.rowSizes)) { lg.hidden = true; return; }
     lg.classList.toggle('compact', S.legendCompact);
     if (S.legendCompact) { const h = compactLegendHTML(); lg.hidden = !h; lg.innerHTML = h && legendHead() + h; return; }
@@ -2283,7 +2326,10 @@ function applyAreasVisible() {
 
 // Areas / Features buttons next to the tabs (pressed = shown).
 function syncBarToggles() {
-    const a = $('areas-toggle'), f = $('features-toggle');
+    const a = $('areas-toggle'), f = $('features-toggle'), d = $('density-toggle');
+    d.hidden = !densityMeta();
+    d.setAttribute('aria-pressed', densityActive());
+    d.title = densityActive() ? 'Color the areas by your data instead' : `Color the areas by ${densityMeta()?.label?.toLowerCase() || 'population density'}`;
     a.setAttribute('aria-pressed', S.showAreas); a.title = S.showAreas ? 'Hide the areas' : 'Show the areas';
     $('areas-check').checked = S.showAreas;
     f.hidden = !S.src?.geoms;
@@ -2605,6 +2651,7 @@ function bigFileLook(src) {
 async function useSource(src, { keep = false } = {}) {
         src.points = src.geoms ? src.geoms.map(repPoint) : null;
         S.src = src; pinRowCard(null);
+        S.densityPref = {};   // new data: density goes back to automatic (off where the data matches)
         S.areaOf = new Map();
         S.expanded = null;
         if (!keep) { S.rowStyle = { colorBy: '', labels: [], sizeBy: '', sizeLog: false }; S.keyCols = {}; S.colKeys = {}; S.metric = 'count'; bigFileLook(src); }
@@ -3058,6 +3105,7 @@ function wireUI() {
         addEventListener('pointermove', move); addEventListener('pointerup', up);
     });
     $('areas-toggle').onclick = () => { S.showAreas = !S.showAreas; applyAreasVisible(); };
+    $('density-toggle').onclick = () => { S.densityPref[S.layerId] = !densityActive(); joined = null; recompute(); };
     $('features-toggle').onclick = () => setFeaturesVisible(!S.basemap.points);
     $('lcolor-seg').onclick = e => {
         const b = e.target.closest('button'); if (!b) return;
