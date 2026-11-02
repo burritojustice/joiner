@@ -2,6 +2,9 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v51
+- **Density in Magma, flipped** by default, as in Block Party: more people is darker, and the lightest class sits quietly next to the clear blocks where no one lives. A palette you picked before is kept; the menu and Flip still change it.
+
 ## v50
 Uses the density breaks in sf-blocks #12; until it's merged, census sets fall back to quantiles.
 

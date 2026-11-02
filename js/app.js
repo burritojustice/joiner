@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v50';
+const _BUILD_VERSION = 'v51';
 
 const CONFIG = {
     // Boundaries and aliases come from sf-blocks (js/sfblocks.js): live, or the copies in data/.
@@ -84,7 +84,7 @@ const CONFIG = {
     prefixAfter: 2,            // default prefix zoom = opening zoom level + this
 };
 
-// Population density palettes: the Viridis family (matplotlib, and mako / rocket from seaborn), 9 stops
+// Population density palettes (Magma, flipped so more people is darker, by default): the Viridis family (matplotlib, and mako / rocket from seaborn), 9 stops
 // low → high. Classes are sampled from them; Flip runs a palette the other way. Same list in Block Party.
 const SEQ_PALETTES = {
     viridis: ['#440154', '#472D7B', '#3B528B', '#2C728E', '#21918C', '#28AE80', '#5EC962', '#ADDC30', '#FDE725'],
@@ -133,7 +133,7 @@ const store = {
 const S = {
     densityPref: {},      // layer id → true / false once the Density button is used (else automatic)
     densityShown: false,  // the areas are colored by the set's own field (population density)
-    densityPal: 'viridis', densityFlip: false,   // its palette (SEQ_PALETTES), and run high → low
+    densityPal: 'magma', densityFlip: true,   // its palette (SEQ_PALETTES); flipped, so more people is darker
     manifest: null,       // index.json
     layers: new Map(),    // id → manifest entry
     tabs: [],             // [{ tab, layers: [entry] }]
@@ -210,8 +210,8 @@ async function boot() {
     S.tabChoice[S.layers.get(first).tab] = first;
     S.basemap = { ...S.basemap, ...store.get('basemap', {}) };
     S.palette = palKey(store.get('palette', 'blues'));
-    S.densityPal = SEQ_PALETTES[store.get('densityPal', 'viridis')] ? store.get('densityPal', 'viridis') : 'viridis';
-    S.densityFlip = !!store.get('densityFlip', false);
+    S.densityPal = SEQ_PALETTES[store.get('densityPal', 'magma')] ? store.get('densityPal', 'magma') : 'magma';
+    S.densityFlip = !!store.get('densityFlip', true);
     S.streetColor = store.get('streetColor', CONFIG.streetColor); if (!CONFIG.labelColors[S.streetColor]) S.streetColor = CONFIG.streetColor;
     S.labelColor = store.get('labelColor', 'auto'); if (S.labelColor !== 'auto' && !CONFIG.labelColors[S.labelColor]) S.labelColor = 'auto';
     // Label size: Small to start (Dynamic sizes labels by the area's size, which can read as bigger values).
