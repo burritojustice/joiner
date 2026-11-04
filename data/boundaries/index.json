@@ -1,5 +1,5 @@
 {
-  "_doc": "Written by scripts/get_layers.mjs — do not edit by hand.",
+  "_doc": "Written by scripts/get_layers.py — do not edit by hand.",
   "portal": "https://data.sf.gov",
   "layers": [
     {
@@ -253,6 +253,51 @@
       "retrieved": "2026-10-15"
     },
     {
+      "id": "census_blocks",
+      "label": "Census Blocks 2020",
+      "short": "Census Blocks",
+      "tab": "Other",
+      "file": "census_blocks.geojson",
+      "key": "geoid20",
+      "name": "geoid20",
+      "match": {
+        "caseInsensitive": true,
+        "collapseSpace": true
+      },
+      "choropleth": {
+        "prop": "density",
+        "label": "People per sq mi",
+        "palette": "viridis",
+        "source": "2020 Census",
+        "breaks": [
+          5000,
+          10000,
+          20000,
+          40000,
+          80000,
+          160000
+        ]
+      },
+      "count": 5986,
+      "bbox": [
+        -122.61228,
+        37.70672,
+        -122.28178,
+        37.92982
+      ],
+      "extent": [
+        -123.17382,
+        37.63983,
+        -122.28178,
+        37.92982
+      ],
+      "bytes": 3420369,
+      "dataset": "p2fw-hsrv",
+      "page": "https://data.sf.gov/Geographic-Locations-and-Boundaries/Census-2020-Blocks-for-San-Francisco/p2fw-hsrv",
+      "source": "https://data.sf.gov/resource/p2fw-hsrv.geojson?$limit=50000",
+      "retrieved": "2026-11-02"
+    },
+    {
       "id": "census_tracts",
       "label": "Census Tracts 2020",
       "tab": "Other",
@@ -272,6 +317,20 @@
           "template": "D{}"
         }
       ],
+      "choropleth": {
+        "prop": "density",
+        "label": "People per sq mi",
+        "palette": "viridis",
+        "source": "2020 Census",
+        "breaks": [
+          5000,
+          10000,
+          20000,
+          40000,
+          80000,
+          160000
+        ]
+      },
       "count": 242,
       "bbox": [
         -122.51495,
@@ -285,11 +344,11 @@
         -122.35697,
         37.8333
       ],
-      "bytes": 1112556,
+      "bytes": 1127747,
       "dataset": "sevw-6tgi",
       "page": "https://data.sf.gov/Geographic-Locations-and-Boundaries/Analysis-Neighborhoods-2020-census-tracts-assigned/sevw-6tgi",
-      "source": "file:f61bb599-Analysis_Neighborhoods_-_2020_census_tracts_assigned_to_neighborhoods_20261014.geojson",
-      "retrieved": "2026-10-15"
+      "source": "https://data.sf.gov/resource/sevw-6tgi.geojson?$limit=50000",
+      "retrieved": "2026-11-02"
     },
     {
       "id": "cultural_districts",
@@ -606,6 +665,66 @@
       "page": "https://data.sf.gov/Geographic-Locations-and-Boundaries/Election-Precincts-Current-Defined-2022/d6x4-hefw",
       "source": "election_precincts dissolved by bart22",
       "retrieved": "2026-10-21"
+    },
+    {
+      "id": "historic_districts",
+      "label": "Historic Districts",
+      "tab": "Other",
+      "file": "historic_districts.geojson",
+      "key": "name_1",
+      "name": "name_1",
+      "match": {
+        "caseInsensitive": true,
+        "collapseSpace": true
+      },
+      "count": 199,
+      "bbox": [
+        -122.51105,
+        37.70815,
+        -122.35715,
+        37.8333
+      ],
+      "extent": [
+        -122.51105,
+        37.70815,
+        -122.35715,
+        37.8333
+      ],
+      "bytes": 754938,
+      "dataset": "63x5-g3m4",
+      "page": "https://data.sf.gov/d/63x5-g3m4",
+      "source": "file:Historic_Districts_20261028.geojson",
+      "retrieved": "2026-10-28"
+    },
+    {
+      "id": "community_benefit_district",
+      "label": "Community Benefit Districts",
+      "tab": "Other",
+      "file": "community_benefit_district.geojson",
+      "key": "community_benefit_district",
+      "name": "community_benefit_district",
+      "match": {
+        "caseInsensitive": true,
+        "collapseSpace": true
+      },
+      "count": 16,
+      "bbox": [
+        -122.46531,
+        37.71984,
+        -122.38811,
+        37.80863
+      ],
+      "extent": [
+        -122.46531,
+        37.71984,
+        -122.38811,
+        37.80863
+      ],
+      "bytes": 44267,
+      "dataset": "c28a-f6gs",
+      "page": "https://data.sf.gov/d/c28a-f6gs",
+      "source": "file:Community_Benefits_Districts_20261030.geojson",
+      "retrieved": "2026-10-30"
     }
   ]
 }
