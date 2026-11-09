@@ -2,8 +2,8 @@
   "_about": "Backup copies of burritojustice/sf-blocks files, at the same paths as on https://burritojustice.github.io/sf-blocks/. The app reads them live and falls back to these. Refresh with scripts/copy_sf_blocks.py; don't edit them here.",
   "repo": "burritojustice/sf-blocks",
   "live": "https://burritojustice.github.io/sf-blocks/",
-  "version": "2026.11.02.2",
-  "copied": "2026-11-02",
+  "version": "2026.11.08.2",
+  "copied": "2026-11-09",
   "files": [
     "region.json",
     "data/aliases.json",
