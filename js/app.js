@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v51';
+const _BUILD_VERSION = 'v52';
 
 const CONFIG = {
     // Boundaries and aliases come from sf-blocks (js/sfblocks.js): live, or the copies in data/.
@@ -2783,6 +2783,44 @@ let atBusy = false;
 // ── Links: Google Sheets, DataSF / Socrata, any CSV / JSON / GeoJSON URL ──
 function linkStatus(msg, kind = '') { const el = $('link-status'); el.textContent = msg; el.className = 'at-status ' + kind; }
 let linkBusy = false;
+// Google Drive: Google's picker (drive.file, so only the picked file), settings from sf-blocks' matcher/google.json.
+// A Sheet's tabs: the one with the most rows opens; the others are listed in the dialog to switch to.
+const DRIVE_TYPES = ['application/vnd.google-apps.spreadsheet', 'text/csv', 'application/json', 'application/geo+json', 'text/plain'];
+async function loadDrive() {
+    try {
+        if (!GoogleDrive.ready && !(await GoogleDrive.config(SFBlocks.url('matcher/google.json')))) { linkStatus('Google Drive isn’t set up for this site yet.', 'err'); return; }
+        const doc = await GoogleDrive.pick(DRIVE_TYPES);
+        if (!doc) return;
+        toast(`Reading ${doc.name || 'the file'} from Google Drive…`, { busy: true });
+        const got = await GoogleDrive.read(doc);
+        if (got.kind === 'file') { toast(null); $('load-dialog').close(); await loadFile(got.file); return; }
+        const tabs = got.tabs.map(tab => ({ ...tab, ...sheetRows(tab.values) })).filter(tab => tab.rows.length);
+        if (!tabs.length) { toast(null); linkStatus(`${got.name}: no rows with column names found.`, 'err'); return; }
+        const open = async tab => {
+            const raw = { name: got.tabs.length > 1 ? `${got.name} (${tab.title})` : got.name, kind: 'csv', headers: tab.headers, rows: tab.rows };
+            const src = JoinerSources.finishSource(raw);
+            dropSourceParams();
+            await useSource(src);
+            if (!(await autoMatch())) toast(`Loaded ${src.rows.length.toLocaleString()} rows from ${raw.name}`, { sub: `${(S.rowArea || []).filter(a => a != null).length.toLocaleString()} placed in ${shortLabel(S.layers.get(S.layerId))}`, ms: 5000 });
+        };
+        const best = tabs.reduce((a, b) => b.rows.length > a.rows.length ? b : a);
+        const box = $('ld-tabs');
+        if (tabs.length > 1) {
+            box.innerHTML = `<p class="lab">${esc(got.name)} has ${tabs.length} tabs with rows</p>` + tabs.map((tab, i) => `<button type="button" class="linkish" data-tab="${i}"${tab === best ? ' aria-current="true"' : ''}>${esc(tab.title)}</button> <span class="why">${tab.rows.length.toLocaleString()} row${tab.rows.length === 1 ? "" : "s"}</span>`).join('<br>');
+            box.hidden = false;
+            box.onclick = e => { const b = e.target.closest('[data-tab]'); if (!b) return; box.querySelectorAll('[data-tab]').forEach(x => x.removeAttribute('aria-current')); b.setAttribute('aria-current', 'true'); open(tabs[+b.dataset.tab]); };
+        } else { box.hidden = true; $('load-dialog').close(); }
+        await open(best);
+    } catch (e) { toast(null); linkStatus(`Google Drive: ${e.message || e}`, 'err'); console.error(e); }
+}
+// A tab's values: the column names are the first row with two or more cells filled (titles above are skipped).
+function sheetRows(values) {
+    const h = values.findIndex(r => (r || []).filter(v => String(v ?? '').trim()).length >= 2);
+    if (h < 0) return { headers: [], rows: [] };
+    const headers = values[h].map((v, i) => String(v ?? '').trim() || `column ${i + 1}`);
+    const rows = values.slice(h + 1).filter(r => (r || []).some(v => String(v ?? '').trim())).map(r => Object.fromEntries(headers.map((k, i) => [k, r[i] ?? ''])));
+    return { headers, rows };
+}
 async function loadLink(url) {
     url = String(url || '').trim();
     if (!url) { linkStatus('Paste a link to a CSV, a Google Sheet or a DataSF dataset.', 'err'); return; }
@@ -2824,8 +2862,8 @@ function atStatus(msg, kind = '') { const el = $('at-status'); el.textContent = 
 async function loadAirtable(link, { include = [], skipLinks = [], keep = false } = {}) {
     if (atBusy) return;
     const tok = $('at-token').value.trim() || AT().token.get();
-    if (!link) { atStatus('Paste a link to an Airtable view (or table).', 'err'); return; }
     if (!tok) { atStatus('Paste your personal access token.', 'err'); $('at-token-row').hidden = false; $('at-token').focus(); return; }
+    if (!link) { AT().token.set(tok); if ($('at-browse').hidden) browseAirtable(); return; }
     atBusy = true; $('at-load').disabled = true;
     atStatus('Loading from Airtable…');
     const t0 = performance.now(), secs = () => ((performance.now() - t0) / 1000).toFixed(1) + 's';
@@ -2875,7 +2913,8 @@ function renderBrowse(c, refreshing) {
     if (!c) { box.innerHTML = '<p class="hint loading">Loading the bases this token can open</p>'; return; }
     const cur = S.src?.airtable?.table;
     box.innerHTML = (c.bases.length ? c.bases.map(b => `<details class="at-base" data-base="${b.id}"${open.has(b.id) ? ' open' : ''}><summary>${esc(b.name)}${b.tables ? ` <span class="why">${b.tables.length} table${b.tables.length === 1 ? '' : 's'}</span>` : ''}</summary><ul class="at-tables">`
-        + (b.tables ? b.tables.map(t => `<li><button type="button" class="linkish" data-table="${t.id}"${cur === t.id ? ' aria-current="true"' : ''}>${esc(t.name)}</button> <span class="why">${t.fields} fields</span></li>`).join('')
+        + (b.tables ? b.tables.map(t => `<li><button type="button" class="linkish" data-table="${t.id}"${cur === t.id ? ' aria-current="true"' : ''}>${esc(t.name)}</button> <span class="why">${t.fields} fields</span>`
+            + (t.views.length > 1 ? `<span class="at-views">${t.views.map(v => `<button type="button" class="linkish" data-table="${t.id}" data-view="${v.id}">${esc(v.name)}</button>`).join(' · ')}</span>` : '') + '</li>').join('')
             : b.error ? `<li class="hint err">${esc(b.error)}</li>` : '<li class="hint loading">Loading tables</li>')
         + '</ul></details>').join('')
         : '<p class="hint">This token can’t open any bases. Add bases to it under Access on the token’s page.</p>')
@@ -2900,7 +2939,7 @@ function browseAirtable() {
         if (e.target.closest('#at-refresh')) { startCatalog(tok, { force: true }); renderBrowse(AT().readCatalog(tok), true); return; }
         const b = e.target.closest('button[data-table]'); if (!b) return;
         const base = b.closest('details').dataset.base;
-        loadAirtable({ base, table: b.dataset.table, view: null });
+        loadAirtable({ base, table: b.dataset.table, view: b.dataset.view || null });
         box.hidden = true; $('at-browse-btn').textContent = 'Show other tables';
     };
 }
@@ -3017,7 +3056,18 @@ function wireUI() {
         refresh();
     };
     $('clear-btn').onclick = clearFile;
-    $('at-form').onsubmit = e => { e.preventDefault(); loadAirtable(AT().parseLink($('at-url').value)); };
+    // a token alone opens the list of bases and tables; a link or a path (app…/tbl…/viw…) opens that one
+    $('at-form').onsubmit = e => {
+        e.preventDefault();
+        const typed = $('at-url').value.trim(), link = AT().parseLink(typed), tok = $('at-token').value.trim();
+        if (typed && !link) { atStatus('That doesn’t look like an Airtable link or path (it should have app… in it).', 'err'); return; }
+        if (link) { loadAirtable(link); return; }
+        if (tok) { AT().token.set(tok); $('at-token').value = ''; renderAirtable(); }
+        if (!AT().token.get()) { atStatus('Paste your personal access token.', 'err'); $('at-token').focus(); return; }
+        atStatus('');
+        if ($('at-browse').hidden) browseAirtable();
+    };
+    $('ld-drive').onclick = loadDrive;
     $('link-form').onsubmit = e => { e.preventDefault(); loadLink($('link-url').value); };
     $('at-forget').onclick = () => { AT().token.set(''); AT().forgetCatalog(); $('at-browse').hidden = true; renderAirtable(); atStatus('Token forgotten.'); };
     // Read the bases and tables in the background as soon as there's a token: remembered, or pasted.

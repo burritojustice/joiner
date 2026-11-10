@@ -634,3 +634,9 @@ details.card > summary::before, details.sub > summary::before, .src-title::befor
 .pal-list button { display: flex; align-items: center; gap: 8px; border: 0; background: none; font: inherit; font-size: 13px; padding: 4px 8px; border-radius: 6px; cursor: pointer; color: var(--ink); white-space: nowrap; }
 .pal-list button:hover { background: var(--paper); }
 .pal-list button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+
+/* v52: Airtable views in the table list, Google Drive in Load data */
+.at-views { display: block; padding-left: 10px; font-size: 12px; }
+.ld-buttons { gap: 8px; }
+.ld-tabs { margin: 6px 0 10px; font-size: 13px; line-height: 1.7; }
+.ld-tabs button[aria-current] { font-weight: 700; color: var(--ink); text-decoration: none; }
