@@ -21,6 +21,7 @@ A MapLibre map that joins rows from CSV, JSON or GeoJSON files, Airtable views, 
 | `js/app.js` | The app. `CONFIG` at the top, then state `S` (map) and `T` (table) |
 | `js/sources.js` | Reading files and links into `{ name, kind, headers, rows, geoms, geomFrom }`. Also finds geometry, reads CSVs in chunks, and handles Google Sheets, Socrata and snapshots |
 | `js/airtable.js` | Airtable REST: loading tables and their linked records, the cached list of bases and tables (`catalog`), and the token (kept in sessionStorage) |
+| `js/google-drive.js` | Copy of sf-blocks' `matcher/google-drive.js` (Google's picker, drive.file only). `loadDrive()` / `sheetRows()` in `app.js`; settings from sf-blocks `matcher/google.json` by origin. Test with a stand-in `window.GoogleDrive` |
 | `js/sfblocks.js` | Loads sf-blocks files live, falling back to the copies here (`SFBlocks.ready`, `.json(path)`, `.describe()`) |
 | `js/vendor/joinkit.js` | Fallback copy of the pinned JoinKit commit, used when jsDelivr fails |
 | `css/joiner.css` | Styles. Later versions append sections marked `/* vNN: … */`; a later rule can override an earlier one |

@@ -125,10 +125,6 @@
     <details class="card at-card" id="at-card">
       <summary>Airtable <span class="n" id="at-sum"></span></summary>
       <form id="at-form" autocomplete="off">
-        <div class="field">
-          <label for="at-url">View link</label>
-          <input id="at-url" type="text" inputmode="url" spellcheck="false" placeholder="https://airtable.com/app…/tbl…/viw…">
-        </div>
         <div class="field" id="at-token-row">
           <label for="at-token">Personal access token</label>
           <input id="at-token" type="password" spellcheck="false" placeholder="pat…">
@@ -141,8 +137,13 @@
           <p class="at-safe">Treat a token like a password: anyone who has it can read those bases. Keep it out of emails, chats and shared docs. If one gets out, delete it on that same page and make a new one. Joiner keeps it only in this tab until it closes, and sends it only to Airtable.</p>
         </div>
         <p class="hint" id="at-remembered" hidden>Token remembered for this tab. <button class="linkish" id="at-forget" type="button">Forget it</button></p>
+        <div class="field">
+          <label for="at-url">Table or view <span class="why">(optional)</span></label>
+          <input id="at-url" type="text" inputmode="url" spellcheck="false" placeholder="https://airtable.com/app…/tbl…/viw… or app…/tbl…">
+          <p class="hint">A link or a path like <code>app…/tbl…/viw…</code>. Leave it empty to pick from the tables your token can open.</p>
+        </div>
         <div class="at-buttons">
-          <button class="btn small" type="submit" id="at-load">Load from Airtable</button>
+          <button class="btn small" type="submit" id="at-load">Open</button>
           <button class="btn small ghost" type="button" id="at-browse-btn">Show other tables</button>
         </div>
         <div class="at-browse" id="at-browse" hidden></div>
@@ -306,8 +307,9 @@
   <dialog class="load-dialog" id="load-dialog" aria-labelledby="load-title">
     <form method="dialog" class="ld-close"><button class="toast-x" aria-label="Close">✕</button></form>
     <h3 id="load-title">Load data</h3>
-    <button class="btn" id="ld-file" type="button">Open a file…</button>
-    <p class="hint">CSV, JSON, GeoJSON or a Joiner snapshot. You can also drop a file anywhere on the page.</p>
+    <div class="ld-row ld-buttons"><button class="btn" id="ld-file" type="button">Open a file…</button><button class="btn" id="ld-drive" type="button">Google Drive…</button></div>
+    <p class="hint">CSV, JSON, GeoJSON or a Joiner snapshot. You can also drop a file anywhere on the page. Google Drive opens Google’s own picker: Joiner can read only the file you pick.</p>
+    <div class="ld-tabs" id="ld-tabs" hidden></div>
     <form id="link-form" autocomplete="off">
       <label for="link-url" class="lab">Or from a link</label>
       <div class="ld-row">
@@ -330,6 +332,7 @@
 <script src="js/sfblocks.js"></script>
 <script src="js/sources.js"></script>
 <script src="js/airtable.js"></script>
+<script src="js/google-drive.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
