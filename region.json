@@ -28,6 +28,11 @@
   "aliases": "data/aliases.json",
   "layers": "data/layers/",
   "tiles": "data/tiles/index.json",
+  "search": "data/search/index.json",
+  "facts": {
+    "streets": "data/facts/streets.json",
+    "lots": "data/facts/lots.json"
+  },
   "streets": {
     "segments": "data/sf_streets.csv",
     "intersections": "data/sf_intersections.csv",
