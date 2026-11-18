@@ -2,6 +2,16 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v53
+
+- **Layers menu:** a **Layers ▾** button in the top bar lists sf-blocks' city layers, and draws any of them over the areas.
+  - **City layers:** Muni routes, the bike network, Slow Streets, schools, fire and police stations, health care facilities, city-owned land.
+  - **Big layers:** curbs and islands, street trees, businesses, building footprints.
+  - Each one has its own color, a row in the map key, and a box with the record's fields when you hover a feature. Big point layers only draw from zoom 14.
+  - The list comes from sf-blocks itself (`data/layers/index.json`, sf-blocks#50, and `data/tiles/index.json`), so new layers there (storm drains, bus stops, the High Injury Network) show up here without a Joiner change once they're built.
+- **Use as data:** a city layer can be loaded as the data, so its points, lines or areas are counted in the areas like a loaded file (schools by supervisor district, say). It loads as a link (`?url=`), so the result can be shared. Big layers can't yet.
+- **Kept in the link** as `?layers=schools,bike`, and in snapshots.
+
 ## v52
 
 - **Airtable with just a token:** paste the token and click Open to see the bases and tables it can read. Tables with more than one view list their views too, so you can pick one. The link box is now **Table or view (optional)**: an Airtable link, or just a path like `app…/tbl…/viw…`, opens that table or view directly. The token box comes first now.

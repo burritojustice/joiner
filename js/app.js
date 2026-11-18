@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v52';
+const _BUILD_VERSION = 'v53';
 
 const CONFIG = {
     // Boundaries and aliases come from sf-blocks (js/sfblocks.js): live, or the copies in data/.
@@ -249,6 +249,9 @@ async function boot() {
     applyAreasVisible();
     renderOrderSeg();
     wireUI();
+    // Layers: sf-blocks' points, lines and areas over the areas; a small one can be loaded as the data
+    CityLayers.init(map, { before: firstSymbolLayer, changed: renderLegend, useAsData: (url, name) => loadLink(url, { name }) })
+        .catch(err => console.warn('[joiner] layers', err));
     map.on('zoom', () => { updateZoomReadout(); updateHexZoomNow(); });
     map.on('zoomend', async () => {
         if (!(isHex(S.layerId) && S.hex.auto && hexResNow() !== S.hexRes)) return;
@@ -1717,6 +1720,12 @@ function itemsHTML(id) {
 // min and max at the ends, the median as a line and the mean as a diamond where they fall.
 const legendHead = () => `<button type="button" class="lg-fold" aria-expanded="${!S.legendCompact}" title="${S.legendCompact ? 'Show every class' : 'Fold to one bar per layer'}">Legend</button>`;
 function renderLegend() {
+    legendMain();
+    const lg = $('legend'), h = window.CityLayers ? CityLayers.legendHTML() : '';
+    if (!h) return;
+    if (lg.hidden) { lg.hidden = false; lg.classList.remove('compact'); lg.innerHTML = h; } else lg.insertAdjacentHTML('beforeend', h);
+}
+function legendMain() {
     const lg = $('legend');
     if (densityOn() && S.classes && S.showAreas) {
         lg.hidden = false;
@@ -2741,6 +2750,7 @@ async function useSource(src, { keep = false } = {}) {
             if (typeof st.revealAll === 'boolean') S.revealAll = st.revealAll;
             if (st.labelColor && (st.labelColor === 'auto' || CONFIG.labelColors[st.labelColor])) { S.labelColor = st.labelColor; applyLabelColor(); }
             if (st.labels) { S.labels = st.labels.fields ?? null; S.prefix = st.labels.prefix ?? S.prefix; S.prefixZoom = st.labels.prefixZoom ?? S.prefixZoom; }
+            if (Array.isArray(st.cityLayers) && window.CityLayers) CityLayers.set(st.cityLayers);
             if (st.layerId && S.layers.has(st.layerId) && st.layerId !== S.layerId) { await setLayer(st.layerId); return; }
         }
         T.sort = null; if (!keep) { T.pin = null; T.search = ''; T.conds = []; T.mapOnly = false; S.mapMask = null; mapFilterSig = ''; $('table-search').value = ''; }
@@ -2821,7 +2831,7 @@ function sheetRows(values) {
     const rows = values.slice(h + 1).filter(r => (r || []).some(v => String(v ?? '').trim())).map(r => Object.fromEntries(headers.map((k, i) => [k, r[i] ?? ''])));
     return { headers, rows };
 }
-async function loadLink(url) {
+async function loadLink(url, { name = null } = {}) {
     url = String(url || '').trim();
     if (!url) { linkStatus('Paste a link to a CSV, a Google Sheet or a DataSF dataset.', 'err'); return; }
     if (linkBusy) return;
@@ -2839,6 +2849,7 @@ async function loadLink(url) {
             if (st === 'fetch') step(`Loading ${what}…`, [info.page > 1 ? `page ${info.page}` : '', info.rows ? `${info.rows.toLocaleString()} rows so far` : '', info.bytes ? mb(info.bytes) : ''].filter(Boolean).join(' · ') || new URL(url).host);
             else if (st === 'locate') step('Finding locations', `${Math.round(info * 100)}%`, info);
         } });
+        if (name) src.name = name;
         step(`Matching ${src.rows.length.toLocaleString()} rows`, src.geomFrom ? `Using the ${src.geomFrom}` : 'Looking for a column that names areas');
         await nextFrame();
         const q = new URLSearchParams(location.search); q.set('url', url); q.delete('airtable');
@@ -2981,7 +2992,7 @@ function renderAirtable() {
 
 function saveSnapshot() {
     const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, revealAll: S.revealAll, labelColor: S.labelColor, classMethod: S.classMethod, classLog: S.classLog, outline: S.outline, pointSize: S.pointSize, hexPointSize: S.hexPointSize, pointStyle: S.pointStyle, look: S.fileLook, hex: S.hex, areaOrder: S.areaOrder, hideEmpty: S.hideEmpty,
-        labels: { fields: S.labels, prefix: S.prefix, prefixZoom: S.prefixZoom } });
+        labels: { fields: S.labels, prefix: S.prefix, prefixZoom: S.prefixZoom }, cityLayers: window.CityLayers ? CityLayers.list() : [] });
     const blob = new Blob([JSON.stringify(snap)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
