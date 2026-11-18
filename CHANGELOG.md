@@ -2,6 +2,14 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v55
+
+- **Layers menu: Show | Count.** Each layer has one pill with two halves. Show draws it over the areas. Count makes it the data, so the areas are colored by it (and shows it too); a yellow line under it says how many features are counted, and where.
+- **Categories under each layer,** with their counts, in the colors the layer now draws in: the bike network's classes, Muni's services, schools' types, the shoreline's three surveys (in sf-blocks' own colors), and so on. Other layers get shades of their own color.
+- **Click a category** to show only that one; click it again to show all but it; click others to add or drop them. "show all" clears it. While the layer is counted, the same choice narrows the count: it's added to the table as a filter, with **Map only these** on, so you can see or change it there.
+- **Big layers can switch field:** street trees by genus, species, status, site or caretaker; businesses by category or corridor (the "by ▾" menu). Their counts come from sf-blocks' stats files.
+- Street trees are green and businesses orange. The map key notes when a layer shows only some categories. Snapshots keep the category choices.
+
 ## v54
 
 - **Big layers as data:** street trees, businesses, building footprints and curbs can now be loaded as the data too. **Use as data** in the Layers menu reads every feature from the layer's tiles at full detail, with a progress bar, then joins them to the areas like a loaded file. Street trees (138,778) take a few seconds.

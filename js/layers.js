@@ -1,7 +1,9 @@
 // Layers: sf-blocks' map layers (points, lines and areas: Muni, the bike network, schools, street trees,
 // businesses…) drawn over Joiner's areas, off until turned on. The list comes from sf-blocks itself
 // (data/layers/index.json and data/tiles/index.json), so new layers show up here without a Joiner change.
-// A small layer can also be loaded as data, so its features join to the areas like a loaded file.
+// Each layer has Show (draw it) and Count (load it as the data, so its features join to the areas like a
+// loaded file), and its categories as chips, drawn in their own colors: a click shows only that category,
+// and filters the count too while it's counted (v55).
 //   ?layers=schools,bike   turns those on (kept in the link and in snapshots)
 const CityLayers = (() => {
     // one color per layer, in order; none of them the areas' palettes' darkest steps
@@ -15,7 +17,12 @@ const CityLayers = (() => {
     ].map(([id, label, geometry, category, name]) => ({ id, label, file: id + '.geojson', format: 'geojson', geometry, category, name }));
     const NAME_FIELDS = ['name', 'label', 'title', 'dba', 'stopname', 'common', 'species', 'route', 'corridor', 'kind'];
     const SKIP = /^(_|geom|the_geom|shape|wkt|point_[xy]|latitude|longitude|lat|lon|lng)$/i;
-    const KEY = 'joiner.cityLayers';
+    // a few layers keep a color that suits them (trees green, businesses orange)
+    const OWN_COLOR = { street_trees: '#2F9E44', businesses: '#E8590C' };
+    const KEY = 'joiner.cityLayers', CAT_KEY = 'joiner.cityLayerCats';
+    const GRAY = '#ADB5BD', SHOW_CATS = 8, PAL_N = 10;
+    // fields a big layer's chips follow first, when it has them
+    const CAT_PREF = ['cat', 'genus', 'kind', 'type', 'status', 'service', 'cls', 'survey'];
     const $ = id => document.getElementById(id);
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     let map, opts = {}, list = [], tip = null, readyP = null;
@@ -26,6 +33,83 @@ const CityLayers = (() => {
     const ids = l => ['fill', 'line', 'pt'].map(k => `cl-${l.id}-${k}`);
     const save = () => { try { localStorage.setItem(KEY, JSON.stringify([...on])); } catch (e) { } };
     const nameField = l => l.name || NAME_FIELDS.find(f => l.fields && f in l.fields) || null;
+
+    // ---- categories (v55) ----
+    // The fields a layer's chips can follow, each with its values and counts: a small layer's manifest
+    // `category`; a big layer's text fields from its stats file (only fields on the features themselves).
+    function catFields(l) {
+        if (l.group !== 'tiles') return l.category && l.categories && Object.keys(l.categories).length > 1 ? [{ field: l.category, values: l.categories }] : [];
+        const fs = l.stats_data?.fields || {};
+        const out = Object.entries(fs).filter(([k, f]) => f.values && l.fields?.[k] === 'text' && Object.keys(f.values).length > 1)
+            .map(([k, f]) => ({ field: k, values: f.values, others: f.others || 0 }));
+        const rank = k => { const i = CAT_PREF.indexOf(k); return i < 0 ? 99 : i; };
+        return out.sort((a, b) => rank(a.field) - rank(b.field));
+    }
+    // HSL shades of one color: the layer's own first, then lighter and darker by turns
+    function shades(hex, n) {
+        const h = hex.replace('#', ''), [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+        const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; let hu = 0, sa = 0; const li = (mx + mn) / 2;
+        if (d) { sa = d / (1 - Math.abs(2 * li - 1)); hu = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; hu *= 60; if (hu < 0) hu += 360; }
+        const steps = [0, 16, -13, 28, -22, 38, -30, 8, -6, 22];
+        return steps.slice(0, n).map(st => `hsl(${Math.round(hu)} ${Math.round(sa * 100)}% ${Math.round(Math.max(14, Math.min(84, li * 100 + st)))}%)`);
+    }
+    // the chips' state for a layer: { field, only: Set | null, hide: bool, more: bool }
+    const catState = new Map();
+    function cats(l) {
+        const fs = catFields(l); if (!fs.length) return null;
+        const st = catState.get(l.id) || {};
+        const f = fs.find(x => x.field === st.field) || fs[0];
+        const vals = Object.entries(f.values).sort((a, b) => b[1] - a[1]);
+        const pal = l.colors ? null : shades(l.color, Math.min(PAL_N, vals.length));
+        const list = vals.map(([v, n], i) => ({ v, n, c: l.colors ? (l.colors[v] || GRAY) : i < pal.length && (vals.length <= PAL_N || i < PAL_N) ? pal[i] : GRAY }));
+        return { field: f.field, fields: fs.map(x => x.field), list, others: f.others || 0, only: st.only || null, hide: !!st.hide, more: !!st.more };
+    }
+    const catShown = (c, v) => !c.only || (c.hide ? !c.only.has(v) : c.only.has(v));
+    // Block Party's rule: the first click shows only that category, the same one again shows all but it,
+    // others toggle
+    function pickCat(id, v) {
+        const st = { ...(catState.get(id) || {}) }, only = st.only ? new Set(st.only) : null;
+        if (!only) { st.only = new Set([v]); st.hide = false; }
+        else if (!st.hide && only.size === 1 && only.has(v)) { st.hide = true; }
+        else { only.has(v) ? only.delete(v) : only.add(v); st.only = only.size ? only : null; if (!st.only) st.hide = false; }
+        catState.set(id, st); catsChanged(id);
+    }
+    function setCatField(id, field) { catState.set(id, { ...(catState.get(id) || {}), field, only: null, hide: false }); catsChanged(id); }
+    function catsChanged(id) {
+        const l = byId.get(id); saveCats();
+        if (l && map.getSource('cl-' + l.id)) paintCats(l);
+        render(); opts.changed?.();
+        if (counted() === id) countFilter(l);
+    }
+    // tell the app which rows to count: those in the shown categories
+    function countFilter(l) {
+        const c = cats(l);
+        opts.countFilter?.(l.id, c?.field, c && c.only ? v => catShown(c, v) : null, c && c.only ? catWords(c) : '');
+    }
+    const catWords = c => (c.hide ? 'all but ' : '') + [...c.only].slice(0, 3).join(', ') + (c.only.size > 3 ? ` +${c.only.size - 3}` : '');
+    const geomFilter = (l, k) => {
+        const g = geomsOf(l), isPoly = ['==', ['geometry-type'], 'Polygon'], isLine = ['==', ['geometry-type'], 'LineString'], isPt = ['==', ['geometry-type'], 'Point'];
+        return k === 'fill' ? isPoly : k === 'line' ? (g.includes('Polygon') ? ['any', isLine, isPoly] : isLine) : isPt;
+    };
+    // colors and filters by category on the layer's map layers
+    function paintCats(l) {
+        const c = cats(l), [fill, line, pt] = ids(l);
+        const val = c ? ['to-string', ['coalesce', ['get', c.field], '']] : null;
+        const color = c ? ['match', val, ...c.list.flatMap(x => [x.v, x.c]), GRAY] : l.color;
+        const keep = c && c.only ? (f => c.hide ? ['all', f, ['!', ['in', val, ['literal', [...c.only]]]]] : ['all', f, ['in', val, ['literal', [...c.only]]]]) : f => f;
+        if (map.getLayer(fill)) { map.setPaintProperty(fill, 'fill-color', color); map.setFilter(fill, keep(geomFilter(l, 'fill'))); }
+        if (map.getLayer(line)) { map.setPaintProperty(line, 'line-color', color); map.setFilter(line, keep(geomFilter(l, 'line'))); }
+        if (map.getLayer(pt)) { map.setPaintProperty(pt, 'circle-color', color); map.setFilter(pt, keep(geomFilter(l, 'pt'))); }
+    }
+    function saveCats() {
+        try { localStorage.setItem(CAT_KEY, JSON.stringify(catsOut())); } catch (e) { }
+    }
+    const catsOut = () => Object.fromEntries([...catState].filter(([, s]) => s.field || s.only).map(([id, s]) => [id, { field: s.field || null, only: s.only ? [...s.only] : null, hide: !!s.hide }]));
+    function catsIn(o) {
+        catState.clear();
+        for (const [id, s] of Object.entries(o || {})) catState.set(id, { field: s.field || undefined, only: s.only ? new Set(s.only) : null, hide: !!s.hide });
+    }
+    const counted = () => opts.countedId?.() || null;
 
     function init(m, o = {}) { return (readyP = start(m, o)); }
     async function start(m, o) {
@@ -43,7 +127,9 @@ const CityLayers = (() => {
             ...big.map(l => ({ ...l, group: 'tiles', path: tilesDir + l.file })),
         ];
         // big point layers (street trees, businesses) only from zoom 14: at city zoom they're a smear
-        list.forEach((l, i) => { l.color = COLORS[i % COLORS.length]; l.from = Math.max(l.minzoom || 0, kindOf(l) === 'Point' && l.features > 20000 ? 14 : 0); byId.set(l.id, l); });
+        await Promise.all(list.filter(l => l.group === 'tiles' && l.stats).map(l => SFBlocks.json(tilesDir + l.stats).then(d => { l.stats_data = d; }).catch(() => { })));
+        try { catsIn(JSON.parse(localStorage.getItem(CAT_KEY))); } catch (e) { }
+        list.forEach((l, i) => { l.color = OWN_COLOR[l.id] || COLORS[i % COLORS.length]; l.from = Math.max(l.minzoom || 0, kindOf(l) === 'Point' && l.features > 20000 ? 14 : 0); byId.set(l.id, l); });
         // the link wins; else what this browser had on
         const q = new URLSearchParams(location.search).get('layers');
         let want = q != null ? q.split(',') : []; if (q == null) try { want = JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { }
@@ -69,6 +155,7 @@ const CityLayers = (() => {
         map.addLayer({ id: pt, type: 'circle', ...src, filter: isPt,
             paint: { 'circle-color': c, 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.2, 14, 4, 17, 6.5],
                 'circle-stroke-color': '#fff', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 0.6, 15, 1.2] } }, before);
+        paintCats(l);
         for (const id of ids(l)) {
             if (!map.getLayer(id)) continue;
             map.on('mousemove', id, e => hover(l, e));
@@ -83,7 +170,8 @@ const CityLayers = (() => {
         const rows = Object.entries(p).filter(([k, v]) => k !== nf && !SKIP.test(k) && v != null && v !== '').slice(0, 8)
             .map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(String(v).slice(0, 80))}</td></tr>`).join('');
         if (!tip) tip = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: 'cl-tip', offset: 10, maxWidth: '280px' });
-        tip.setLngLat(e.lngLat).setHTML(`<div class="cl-tip-in"><span class="cl-dot" style="background:${l.color}"></span><b>${esc(title)}</b><div class="cl-src">${esc(l.label)}</div>${rows ? `<table>${rows}</table>` : ''}</div>`).addTo(map);
+        const c = cats(l), dot = c ? (c.list.find(x => x.v === String(p[c.field] ?? ''))?.c || GRAY) : l.color;
+        tip.setLngLat(e.lngLat).setHTML(`<div class="cl-tip-in"><span class="cl-dot" style="background:${dot}"></span><b>${esc(title)}</b><div class="cl-src">${esc(l.label)}</div>${rows ? `<table>${rows}</table>` : ''}</div>`).addTo(map);
     }
 
     function show(id, yes, { quiet = false } = {}) {
@@ -108,26 +196,48 @@ const CityLayers = (() => {
         return k === 'Point' ? `<i class="cl-sw pt" style="background:${l.color}"></i>`
             : k === 'Polygon' ? `<i class="cl-sw poly" style="border-color:${l.color};background:${l.color}33"></i>`
             : `<i class="cl-sw ln" style="background:${l.color}"></i>`; };
-    const canUse = l => !!l;
+    const fmtC = n => Number(n).toLocaleString();
+    // the chips under a layer: its categories with counts, in the colors they draw in
+    function catsHTML(l) {
+        const c = cats(l); if (!c) return '';
+        const n = c.more ? c.list.length : Math.min(SHOW_CATS, c.list.length), rest = c.list.length - n;
+        const chips = c.list.slice(0, n).map(x => `<button type="button" class="cl-cat${catShown(c, x.v) ? '' : ' off'}" data-cl-cat="${esc(l.id)}" data-v="${esc(x.v)}" aria-pressed="${c.only && catShown(c, x.v) ? 'true' : 'false'}" title="${c.only ? 'Click to show or hide' : 'Show only this'}"><i style="background:${x.c}"></i>${esc(x.v)} <em>${fmtC(x.n)}</em></button>`).join('');
+        const more = rest > 0 ? `<button type="button" class="cl-cat more" data-cl-more="${esc(l.id)}">+${rest} more</button>`
+            : c.more && c.list.length > SHOW_CATS ? `<button type="button" class="cl-cat more" data-cl-more="${esc(l.id)}">fewer</button>` : '';
+        const others = c.others && (c.more || rest <= 0) ? `<span class="cl-cat more"><i style="background:${GRAY}"></i>others <em>${fmtC(c.others)}</em></span>` : '';
+        const pick = c.fields.length > 1 ? `<label class="cl-by">by <select data-cl-field="${esc(l.id)}">${c.fields.map(f => `<option value="${esc(f)}"${f === c.field ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select></label>` : `<span class="cl-by">by ${esc(c.field)}</span>`;
+        const all = c.only ? `<button type="button" class="cl-cat more" data-cl-all="${esc(l.id)}">show all</button>` : '';
+        return `<div class="cl-cats">${pick}${chips}${more}${others}${all}</div>`;
+    }
 
     function render() {
         const b = $('layers-toggle'); if (!b) return;
         b.hidden = !list.length;
         b.setAttribute('aria-pressed', on.size ? 'true' : 'false');
         b.querySelector('.n').textContent = on.size ? ` · ${on.size}` : '';
-        const pop = $('layers-pop'); if (!pop) return;
+        const pop = $('layers-pop'); if (!pop || pop.hidden) return;
+        const cid = counted();
         const row = l => {
-            const meta = [l.features != null ? `${fmtN(l.features)} ${kindOf(l) === 'Point' ? 'points' : kindOf(l) === 'Polygon' ? 'areas' : 'lines'}` : '',
+            const what = kindOf(l) === 'Point' ? (l.grouped_by === 'address' ? 'addresses' : 'points') : kindOf(l) === 'Polygon' ? 'areas' : 'lines';
+            const meta = [l.features != null ? `${fmtC(l.features)} ${what}` : '', l.records && l.records !== l.features ? `${fmtC(l.records)} ${l.label.toLowerCase()}` : '',
                 l.from > 11 ? `from zoom ${l.from}` : '', l.data_as_of || l.retrieved || l.year || ''].filter(Boolean).join(' · ');
-            return `<li><label><input type="checkbox" data-cl="${esc(l.id)}" ${on.has(l.id) ? 'checked' : ''}>${swatch(l)}<span class="cl-name">${esc(l.label)}</span></label>
+            const isOn = on.has(l.id), isCnt = cid === l.id;
+            const cntTip = isCnt ? 'Counted: these features are the data now. Load other data to stop.'
+                : l.format === 'pmtiles' ? `Read all ${l.features ? fmtC(l.features) + ' ' : ''}of its features from its tiles and count them in the areas (a few seconds to a minute)` : 'Load its features as the data and count them in the areas';
+            const line = isCnt ? `<div class="cl-counting">${esc(opts.countLine?.() || 'Counted in the areas')}</div>` : '';
+            return `<li class="${isCnt ? 'is-counted' : ''}">${swatch(l)}<span class="cl-name">${esc(l.label)}</span>
+                <span class="cl-pill" role="group" aria-label="${esc(l.label)}"><button type="button" data-cl-show="${esc(l.id)}" aria-pressed="${isOn}" title="${isOn ? 'Hide it' : 'Draw it over the areas'}">Show</button><button type="button" data-cl-use="${esc(l.id)}" aria-pressed="${isCnt}" class="${isCnt ? 'cnt' : ''}" title="${esc(cntTip)}">Count${isCnt ? ' ✓' : ''}</button></span>
                 <span class="cl-meta">${esc(meta)}${l.page ? ` · <a href="${esc(l.page)}" target="_blank" rel="noopener" title="${esc(l.title || 'Source')}">source</a>` : ''}</span>
-                ${canUse(l) ? `<button type="button" class="btn small ghost" data-cl-use="${esc(l.id)}" title="${l.format === 'pmtiles' ? `Read all ${l.features ? fmtN(l.features) + ' ' : ''}of its features from its tiles and load them as the data, so they're counted in the areas` : "Load its features as the data, so they're counted in the areas"}">Use as data</button>` : ''}</li>`;
+                ${line}${catsHTML(l)}</li>`;
         };
         const group = (g, title, note) => { const ls = list.filter(l => l.group === g); return ls.length ? `<h4>${esc(title)}</h4>${note ? `<p class="cl-note">${esc(note)}</p>` : ''}<ul>${ls.map(row).join('')}</ul>` : ''; };
+        const keep = pop.scrollTop;
         pop.innerHTML = `<div class="cl-head"><b>Layers</b><span class="cl-from">from ${esc(SFBlocks.describe())}</span></div>`
+            + `<p class="cl-note">Show draws a layer over the areas. Count makes it the data, so the areas are colored by it. Click a category to show only that one.</p>`
             + group('city', 'City layers', '')
-            + group('tiles', 'Big layers', 'Use as data reads every feature from its tiles: a few seconds to a minute.')
+            + group('tiles', 'Big layers', 'Counting reads every feature from the tiles: a few seconds to a minute.')
             + `<div class="cl-foot"><button type="button" class="btn small ghost" data-cl-none ${on.size ? '' : 'disabled'}>Turn all off</button></div>`;
+        pop.scrollTop = keep;
     }
 
     function place() {
@@ -142,18 +252,31 @@ const CityLayers = (() => {
         if (yes) { render(); place(); }
     }
 
+    const urlOf = l => (SFBlocks.info.base || new URL('./', location.href).href) + l.path;
+    // the layer a loaded link is, if it's one (a reopened ?url= link counts as that layer again)
+    const idForUrl = url => { const u = String(url || '').split('?')[0]; return list.find(l => l.group === 'city' && (u === urlOf(l) || u.endsWith('/' + l.path)))?.id || null; };
+
     function wire() {
         const b = $('layers-toggle'), pop = $('layers-pop'); if (!b || !pop || wire.done) return; wire.done = true;
         b.addEventListener('click', e => { e.stopPropagation(); open(pop.hidden); });
         pop.addEventListener('click', e => e.stopPropagation());
-        pop.addEventListener('change', e => { const c = e.target.closest('[data-cl]'); if (c) show(c.dataset.cl, c.checked); });
+        pop.addEventListener('change', e => { const f = e.target.closest('[data-cl-field]'); if (f) setCatField(f.dataset.clField, f.value); });
         pop.addEventListener('click', e => {
+            const sh = e.target.closest('[data-cl-show]');
+            if (sh) { show(sh.dataset.clShow, !on.has(sh.dataset.clShow)); return; }
+            const cat = e.target.closest('[data-cl-cat]');
+            if (cat) { pickCat(cat.dataset.clCat, cat.dataset.v); return; }
+            const mo = e.target.closest('[data-cl-more]');
+            if (mo) { const st = catState.get(mo.dataset.clMore) || {}; catState.set(mo.dataset.clMore, { ...st, more: !st.more }); render(); return; }
+            const al = e.target.closest('[data-cl-all]');
+            if (al) { const st = catState.get(al.dataset.clAll) || {}; catState.set(al.dataset.clAll, { ...st, only: null, hide: false }); catsChanged(al.dataset.clAll); return; }
             const u = e.target.closest('[data-cl-use]');
-            if (u) { const l = byId.get(u.dataset.clUse); open(false);
-                // small layers load as a link (?url=); big ones are read from their tiles (?layerdata=)
+            if (u) { const l = byId.get(u.dataset.clUse); if (counted() === l.id) return;
+                open(false);
+                // Count shows it too; small layers load as a link (?url=), big ones are read from their tiles (?layerdata=)
+                if (!on.has(l.id)) show(l.id, true);
                 if (l.format === 'pmtiles') { opts.useLayer?.(l.id); return; }
-                const base = SFBlocks.info.base || new URL('./', location.href).href;
-                opts.useAsData?.(base + l.path, l.label); return; }
+                opts.useAsData?.(urlOf(l), l.label, l.id); return; }
             if (e.target.closest('[data-cl-none]')) { [...on].forEach(id => show(id, false, { quiet: true })); save(); writeLink(); render(); opts.changed?.(); }
         });
         document.addEventListener('click', () => { if (!pop.hidden) open(false); });
@@ -256,11 +379,17 @@ const CityLayers = (() => {
         if (!on.size) return '';
         const z = map ? map.getZoom() : 99;
         return `<h4 class="rows-h cl-h">Layers</h4>` + [...on].map(id => byId.get(id)).filter(Boolean).map(l =>
-            `<div class="row cl-row">${swatch(l)}<span>${esc(l.label)}</span><span class="n">${l.from && z < l.from ? `zoom in (${l.from}+)` : l.features != null ? fmtN(l.features) : ''}</span></div>`).join('');
+            { const c = cats(l);
+            return `<div class="row cl-row">${swatch(l)}<span>${esc(l.label)}${c && c.only ? ` <span class="cl-only">· ${esc(catWords(c))}</span>` : ''}</span><span class="n">${l.from && z < l.from ? `zoom in (${l.from}+)` : l.features != null ? fmtN(l.features) : ''}</span></div>`; }).join('');
     }
 
     return {
-        init, show, legendHTML, readAll, decodeMVT,
+        init, show, legendHTML, readAll, decodeMVT, idForUrl,
+        refresh: () => render(),
+        // after a layer is counted: apply its chips to the count
+        counted: id => { const l = byId.get(id); if (l) countFilter(l); render(); },
+        get cats() { return catsOut(); },
+        setCats: o => { catsIn(o); saveCats(); list.forEach(l => { if (map.getSource('cl-' + l.id)) paintCats(l); }); render(); opts.changed?.(); },
         get ready() { return readyP; },
         byId: id => byId.get(id),
         list: () => [...on],
