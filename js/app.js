@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v54';
+const _BUILD_VERSION = 'v55';
 
 const CONFIG = {
     // Boundaries and aliases come from sf-blocks (js/sfblocks.js): live, or the copies in data/.
@@ -250,7 +250,8 @@ async function boot() {
     renderOrderSeg();
     wireUI();
     // Layers: sf-blocks' points, lines and areas over the areas; a small one can be loaded as the data
-    CityLayers.init(map, { before: firstSymbolLayer, changed: renderLegend, useAsData: (url, name) => loadLink(url, { name }), useLayer: id => loadLayerData(id) })
+    CityLayers.init(map, { before: firstSymbolLayer, changed: renderLegend, useAsData: (url, name, id) => loadLink(url, { name, layer: id }), useLayer: id => loadLayerData(id),
+        countedId: () => S.src?.fromLayer || null, countLine: layerCountLine, countFilter: layerCountFilter })
         .catch(err => console.warn('[joiner] layers', err));
     map.on('zoom', () => { updateZoomReadout(); updateHexZoomNow(); });
     map.on('zoomend', async () => {
@@ -2044,6 +2045,7 @@ async function applyMapFilter() {
     } else S.mapMask = null;
     if (S.src.rows.length >= 20000) { toast(on ? 'Counting the matching rows' : 'Counting every row', { busy: true }); await nextFrame(); }
     recompute();
+    window.CityLayers?.refresh();   // the counted layer's Counting line
     if (S.src.rows.length >= 20000) map.once('idle', () => toast(null));
 }
 // The join narrowed to the mask: each area keeps its matching rows, and its count, sums,
@@ -2754,6 +2756,7 @@ async function useSource(src, { keep = false } = {}) {
             if (st.labelColor && (st.labelColor === 'auto' || CONFIG.labelColors[st.labelColor])) { S.labelColor = st.labelColor; applyLabelColor(); }
             if (st.labels) { S.labels = st.labels.fields ?? null; S.prefix = st.labels.prefix ?? S.prefix; S.prefixZoom = st.labels.prefixZoom ?? S.prefixZoom; }
             if (Array.isArray(st.cityLayers) && window.CityLayers) CityLayers.set(st.cityLayers);
+            if (st.cityLayerCats && window.CityLayers) CityLayers.setCats(st.cityLayerCats);
             if (st.layerId && S.layers.has(st.layerId) && st.layerId !== S.layerId) { await setLayer(st.layerId); return; }
         }
         T.sort = null; if (!keep) { T.pin = null; T.search = ''; T.conds = []; T.mapOnly = false; S.mapMask = null; mapFilterSig = ''; $('table-search').value = ''; }
@@ -2837,6 +2840,24 @@ function sheetRows(values) {
 // A big sf-blocks layer (street trees, businesses…) as the data: every feature read from its tiles, then
 // joined to the areas like a loaded file. Kept in the link as ?layerdata=<id> (v54).
 let layerBusy = false;
+// The Count line under a counted layer, and its chips as a table filter on the count (v55): keep(v) says
+// which values count, or null for all of them. The filter shows in the table like any other.
+function layerCountLine() {
+    if (!S.src) return '';
+    const n = S.mapMask ? S.mapMask.reduce((a, b) => a + b, 0) : S.src.rows.length;
+    return `Counting ${n.toLocaleString()} ${S.mapMask ? 'of ' + S.src.rows.length.toLocaleString() + ' ' : ''}features in ${shortLabel(S.layers.get(S.layerId))}`;
+}
+function layerCountFilter(id, field, keep, words) {
+    if (!S.src || S.src.fromLayer !== id) return;
+    T.conds = T.conds.filter(f => !f.fromLayer);
+    if (keep && field) {
+        const vals = [...new Set(S.src.rows.map(r => String(JoinKit.cellText(r[field]) ?? '').trim()))].filter(v => v && keep(v)).sort();
+        T.conds.push({ col: field, op: 'in', value: vals, fromLayer: true });
+        T.mapOnly = true;
+    } else if (!activeFilters()) T.mapOnly = false;
+    if (T.open) renderTable(); else renderTableFilters();
+    if (keep) toast(`Counting only ${words}`, { sub: `${field} · the filter is in the table too`, ms: 3500 });
+}
 async function loadLayerData(id) {
     const l = CityLayers.byId(id);
     if (!l) { toast(`There's no layer “${id}” in sf-blocks`, { ms: 5000 }); return; }
@@ -2851,12 +2872,14 @@ async function loadLayerData(id) {
         const src = JoinerSources.parseJSON(JSON.stringify({ type: 'FeatureCollection', features: [] }), l.label);
         src.rows = fc.features.map(f => ({ ...f.properties })); src.geoms = fc.features.map(f => f.geometry);
         src.headers = [...new Set(src.rows.slice(0, 2000).flatMap(r => Object.keys(r)))];
+        src.fromLayer = id;
         await JoinerSources.finishSource(src);
         toast(`Matching ${src.rows.length.toLocaleString()} features`, { busy: true, sub: 'Using the GeoJSON geometry' });
         await nextFrame();
         const q = new URLSearchParams(location.search); q.set('layerdata', id); q.delete('url'); q.delete('airtable');
         history.replaceState(null, '', location.pathname + '?' + q.toString().replace(/%2C/g, ',') + location.hash);
         await useSource(src);
+        CityLayers.counted(id);
         if ($('load-dialog').open) $('load-dialog').close();
         if (await autoMatch()) return;
         const placed = (S.rowArea || []).filter(a => a != null).length;
@@ -2865,7 +2888,7 @@ async function loadLayerData(id) {
         console.error(e); toast(`Couldn't read ${l.label}`, { sub: e.message, ms: 7000 });
     } finally { layerBusy = false; }
 }
-async function loadLink(url, { name = null } = {}) {
+async function loadLink(url, { name = null, layer = null } = {}) {
     url = String(url || '').trim();
     if (!url) { linkStatus('Paste a link to a CSV, a Google Sheet or a DataSF dataset.', 'err'); return; }
     if (linkBusy) return;
@@ -2884,11 +2907,13 @@ async function loadLink(url, { name = null } = {}) {
             else if (st === 'locate') step('Finding locations', `${Math.round(info * 100)}%`, info);
         } });
         if (name) src.name = name;
+        src.fromLayer = layer || window.CityLayers?.idForUrl?.(url) || null;
         step(`Matching ${src.rows.length.toLocaleString()} rows`, src.geomFrom ? `Using the ${src.geomFrom}` : 'Looking for a column that names areas');
         await nextFrame();
         const q = new URLSearchParams(location.search); q.set('url', url); q.delete('airtable'); q.delete('layerdata');
         history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash);
         await useSource(src);
+        if (src.fromLayer) CityLayers.counted(src.fromLayer);
         linkStatus('');
         if ($('load-dialog').open) $('load-dialog').close();
         if (await autoMatch()) return;
@@ -3026,7 +3051,7 @@ function renderAirtable() {
 
 function saveSnapshot() {
     const snap = JoinerSources.makeSnapshot(S.src, { layerId: S.layerId, keyCols: S.keyCols, metric: S.metric, palette: S.palette, rowStyle: S.rowStyle, labelSize: S.labelSize, revealAll: S.revealAll, labelColor: S.labelColor, classMethod: S.classMethod, classLog: S.classLog, outline: S.outline, pointSize: S.pointSize, hexPointSize: S.hexPointSize, pointStyle: S.pointStyle, look: S.fileLook, hex: S.hex, areaOrder: S.areaOrder, hideEmpty: S.hideEmpty,
-        labels: { fields: S.labels, prefix: S.prefix, prefixZoom: S.prefixZoom }, cityLayers: window.CityLayers ? CityLayers.list() : [] });
+        labels: { fields: S.labels, prefix: S.prefix, prefixZoom: S.prefixZoom }, cityLayers: window.CityLayers ? CityLayers.list() : [], cityLayerCats: window.CityLayers ? CityLayers.cats : {} });
     const blob = new Blob([JSON.stringify(snap)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
