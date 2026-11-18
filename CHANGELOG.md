@@ -2,6 +2,13 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v54
+
+- **Big layers as data:** street trees, businesses, building footprints and curbs can now be loaded as the data too. **Use as data** in the Layers menu reads every feature from the layer's tiles at full detail, with a progress bar, then joins them to the areas like a loaded file. Street trees (138,778) take a few seconds.
+  - Trees: one row per tree, with species, genus, size, status and caretaker to filter on in the table.
+  - Businesses: one row per address, with the businesses there stacked in it. The Count is addresses; color by the **Total** of `n` for businesses, or `n_food`, `n_retail`… for one kind.
+  - Kept in the link as `?layerdata=street_trees`.
+
 ## v53
 
 - **Layers menu:** a **Layers ▾** button in the top bar lists sf-blocks' city layers, and draws any of them over the areas.

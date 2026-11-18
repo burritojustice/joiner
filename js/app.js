@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v53';
+const _BUILD_VERSION = 'v54';
 
 const CONFIG = {
     // Boundaries and aliases come from sf-blocks (js/sfblocks.js): live, or the copies in data/.
@@ -250,7 +250,7 @@ async function boot() {
     renderOrderSeg();
     wireUI();
     // Layers: sf-blocks' points, lines and areas over the areas; a small one can be loaded as the data
-    CityLayers.init(map, { before: firstSymbolLayer, changed: renderLegend, useAsData: (url, name) => loadLink(url, { name }) })
+    CityLayers.init(map, { before: firstSymbolLayer, changed: renderLegend, useAsData: (url, name) => loadLink(url, { name }), useLayer: id => loadLayerData(id) })
         .catch(err => console.warn('[joiner] layers', err));
     map.on('zoom', () => { updateZoomReadout(); updateHexZoomNow(); });
     map.on('zoomend', async () => {
@@ -269,6 +269,9 @@ async function boot() {
     // ?url= (Google Sheet, DataSF or any CSV/JSON link) loads that link; the link is shareable.
     const linkParam = new URLSearchParams(location.search).get('url');
     if (linkParam) { $('link-url').value = linkParam; loadLink(linkParam); }
+    // ?layerdata= (a big sf-blocks layer, read from its tiles) loads that layer as the data
+    const layerParam = new URLSearchParams(location.search).get('layerdata');
+    if (layerParam && !linkParam) CityLayers.ready.then(() => loadLayerData(layerParam)).catch(() => { });
     const atLink = AT() && AT().parseLink(new URLSearchParams(location.search).get('airtable'));
     if (atLink) {
         $('at-url').value = AT().linkFor(atLink);
@@ -2417,8 +2420,8 @@ function setFeaturesVisible(on) {
 // A local file (or none) isn't a link: drop ?url= and ?airtable= so the address doesn't reload the old one.
 function dropSourceParams() {
     const q = new URLSearchParams(location.search);
-    if (!q.has('url') && !q.has('airtable')) return;
-    q.delete('url'); q.delete('airtable');
+    if (!q.has('url') && !q.has('airtable') && !q.has('layerdata')) return;
+    q.delete('url'); q.delete('airtable'); q.delete('layerdata');
     history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
 }
 function clearFile() {
@@ -2831,6 +2834,37 @@ function sheetRows(values) {
     const rows = values.slice(h + 1).filter(r => (r || []).some(v => String(v ?? '').trim())).map(r => Object.fromEntries(headers.map((k, i) => [k, r[i] ?? ''])));
     return { headers, rows };
 }
+// A big sf-blocks layer (street trees, businesses…) as the data: every feature read from its tiles, then
+// joined to the areas like a loaded file. Kept in the link as ?layerdata=<id> (v54).
+let layerBusy = false;
+async function loadLayerData(id) {
+    const l = CityLayers.byId(id);
+    if (!l) { toast(`There's no layer “${id}” in sf-blocks`, { ms: 5000 }); return; }
+    if (layerBusy) return; layerBusy = true;
+    let last = 0;
+    try {
+        toast(`Reading ${l.label}…`, { busy: true, sub: 'from its tiles', progress: 0 });
+        const fc = await CityLayers.readAll(id, (done, total, n) => {
+            if (Date.now() - last < 150 && done < total) return; last = Date.now();
+            toast(`Reading ${l.label}…`, { busy: true, sub: `${done.toLocaleString()} of ${total.toLocaleString()} tiles · ${n.toLocaleString()} features`, progress: done / total });
+        });
+        const src = JoinerSources.parseJSON(JSON.stringify({ type: 'FeatureCollection', features: [] }), l.label);
+        src.rows = fc.features.map(f => ({ ...f.properties })); src.geoms = fc.features.map(f => f.geometry);
+        src.headers = [...new Set(src.rows.slice(0, 2000).flatMap(r => Object.keys(r)))];
+        await JoinerSources.finishSource(src);
+        toast(`Matching ${src.rows.length.toLocaleString()} features`, { busy: true, sub: 'Using the GeoJSON geometry' });
+        await nextFrame();
+        const q = new URLSearchParams(location.search); q.set('layerdata', id); q.delete('url'); q.delete('airtable');
+        history.replaceState(null, '', location.pathname + '?' + q.toString().replace(/%2C/g, ',') + location.hash);
+        await useSource(src);
+        if ($('load-dialog').open) $('load-dialog').close();
+        if (await autoMatch()) return;
+        const placed = (S.rowArea || []).filter(a => a != null).length;
+        toast(`Loaded ${src.rows.length.toLocaleString()} features from ${l.label}`, { sub: `${placed.toLocaleString()} placed in ${shortLabel(S.layers.get(S.layerId))}${l.id === 'businesses' ? ' · each is an address: color by the Total of n for businesses' : ''}`, ms: 7000 });
+    } catch (e) {
+        console.error(e); toast(`Couldn't read ${l.label}`, { sub: e.message, ms: 7000 });
+    } finally { layerBusy = false; }
+}
 async function loadLink(url, { name = null } = {}) {
     url = String(url || '').trim();
     if (!url) { linkStatus('Paste a link to a CSV, a Google Sheet or a DataSF dataset.', 'err'); return; }
@@ -2852,7 +2886,7 @@ async function loadLink(url, { name = null } = {}) {
         if (name) src.name = name;
         step(`Matching ${src.rows.length.toLocaleString()} rows`, src.geomFrom ? `Using the ${src.geomFrom}` : 'Looking for a column that names areas');
         await nextFrame();
-        const q = new URLSearchParams(location.search); q.set('url', url); q.delete('airtable');
+        const q = new URLSearchParams(location.search); q.set('url', url); q.delete('airtable'); q.delete('layerdata');
         history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash);
         await useSource(src);
         linkStatus('');
@@ -2894,7 +2928,7 @@ async function loadAirtable(link, { include = [], skipLinks = [], keep = false }
         await nextFrame();
         const src = JoinerSources.finishSource(raw);
         AT().token.set(tok); $('at-token').value = '';
-        const q = new URLSearchParams(location.search); q.set('airtable', AT().linkFor(src.airtable)); q.delete('url');
+        const q = new URLSearchParams(location.search); q.set('airtable', AT().linkFor(src.airtable)); q.delete('url'); q.delete('layerdata');
         history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash);
         step(`Placing ${src.rows.length.toLocaleString()} rows in ${shortLabel(S.layers.get(S.layerId))}…`, src.geomFrom ? `Using the ${src.geomFrom}` : 'Matching by column');
         await nextFrame();
