@@ -26,7 +26,9 @@
       <button type="button" class="tog" id="density-toggle" aria-pressed="false" hidden><i aria-hidden="true"></i>Density</button>
       <button type="button" class="tog" id="table-toggle" aria-pressed="false" hidden title="Show every row in a table below the map"><i aria-hidden="true"></i>Table</button>
       <button type="button" class="tog" id="features-toggle" aria-pressed="true" hidden><i aria-hidden="true"></i>Features</button>
+      <button type="button" class="tog tog-menu" id="layers-toggle" aria-pressed="false" aria-expanded="false" aria-haspopup="true" hidden title="City layers from sf-blocks, drawn over the areas"><i aria-hidden="true"></i>Layers<span class="n"></span> <span class="tri" aria-hidden="true">▾</span></button>
     </div>
+    <div class="layers-pop" id="layers-pop" role="menu" hidden></div>
     <div class="bar-actions">
       <a class="version" id="version" href="https://github.com/burritojustice/joiner/blob/main/CHANGELOG.md" target="_blank" rel="noopener" title="What changed"></a>
       <span class="source-chip" id="source-chip" hidden></span>
@@ -325,6 +327,7 @@
 <script src="https://unpkg.com/maplibre-gl@5.16.0/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/h3-js@4.4.0/dist/h3-js.umd.js"></script>
+<script src="https://unpkg.com/pmtiles@4.5.0/dist/pmtiles.js"></script>
 <!-- JoinKit: shared join logic, pinned to the commit that merged burritojustice/maplibre#15 (0.2.0, indexed point-in-polygon) -->
 <script src="https://cdn.jsdelivr.net/gh/burritojustice/maplibre@4851893809029e26be48346b9cf193c9077c90ea/joinkit/joinkit.js"></script>
 <!-- If the CDN fails (jsDelivr can refuse a commit it hasn't fetched yet), use the copy of the same commit kept here. -->
@@ -333,6 +336,7 @@
 <script src="js/sources.js"></script>
 <script src="js/airtable.js"></script>
 <script src="js/google-drive.js"></script>
+<script src="js/layers.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
