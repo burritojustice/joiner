@@ -114,7 +114,7 @@ const CityLayers = (() => {
     }
     function setCatField(id, field) { catState.set(id, { ...(catState.get(id) || {}), field, only: null, hide: false }); catsChanged(id); }
     function catsChanged(id) {
-        const l = byId.get(id); saveCats();
+        const l = byId.get(id); saveCats(); unlit();
         if (l && map.getSource('cl-' + l.id)) paintCats(l);
         render(); opts.changed?.();
         if (counted() === id) countFilter(l);
@@ -352,7 +352,7 @@ const CityLayers = (() => {
         };
         const group = (g, title, note) => { const ls = list.filter(l => l.group === g); return ls.length ? `<h4>${esc(title)}</h4>${note ? `<p class="cl-note">${esc(note)}</p>` : ''}<ul>${ls.map(row).join('')}</ul>` : ''; };
         const keep = pop.scrollTop;
-        pop.innerHTML = `<div class="cl-head"><b>Layers</b><span class="cl-from">from ${esc(SFBlocks.describe())}</span></div>`
+        pop.innerHTML = `<div class="cl-head"><b>SF Layers</b><span class="cl-from">from ${esc(SFBlocks.describe())}</span></div>`
             + `<p class="cl-note">Show draws a layer over the areas. Count makes it the data, so the areas are colored by it. Click a category to show only that one.</p>`
             + group('city', 'City layers', '')
             + group('tiles', 'Big layers', 'Counting reads every feature from the tiles: a few seconds to a minute.')
@@ -503,7 +503,7 @@ const CityLayers = (() => {
     function legendHTML() {
         if (!on.size) return '';
         const z = map ? map.getZoom() : 99;
-        return `<h4 class="rows-h cl-h">Layers</h4>` + [...on].map(id => byId.get(id)).filter(Boolean).map(l => {
+        return `<h4 class="rows-h cl-h">SF Layers</h4>` + [...on].map(id => byId.get(id)).filter(Boolean).map(l => {
             const c = cats(l), off = keyOff.has(l.id);
             const n = l.from && z < l.from ? `zoom in (${l.from}+)` : l.features != null ? fmtN(l.features) : '';
             const by = c ? (c.fields.length > 1 ? `<select class="cl-kby" data-cl-field="${esc(l.id)}" aria-label="Color ${esc(l.label)} by">${c.fields.map(f => `<option value="${esc(f)}"${f === c.field ? ' selected' : ''}>by ${esc(f)}</option>`).join('')}</select>` : `<span class="cl-kby">by ${esc(c.field)}</span>`) : '';
@@ -516,9 +516,39 @@ const CityLayers = (() => {
             return head + `<div class="cl-kcats">${rows}${more}${reset}</div>`;
         }).join('');
     }
+    // Hovering a value (in the key or a chip) fades the layer's other values on the map (v57)
+    const OPA = { fill: ['fill-opacity'], line: ['line-opacity'], pt: ['circle-opacity', 'circle-stroke-opacity'], sym: ['icon-opacity'],
+        d1: ['line-opacity'], d2: ['line-opacity'], d3: ['line-opacity'], d4: ['line-opacity'] };
+    let lit = null;   // { id, saved: [[layer, prop, value]] }
+    function litValue(id, v) {
+        if (lit && lit.id === id && lit.v === v) return;
+        unlit();
+        const l = byId.get(id), c = l && cats(l); if (!c || !on.has(id)) return;
+        const eq = ['==', ['to-string', ['coalesce', ['get', c.field], '']], v], saved = [];
+        for (const k of Object.keys(OPA)) {
+            const lid = `cl-${l.id}-${k}`; if (!map.getLayer(lid)) continue;
+            for (const prop of OPA[k]) {
+                const was = map.getPaintProperty(lid, prop); saved.push([lid, prop, was]);
+                const full = typeof was === 'number' ? was : 1;
+                map.setPaintProperty(lid, prop, ['case', eq, k === 'fill' ? Math.min(1, full * 2.5) : 1, k === 'fill' ? 0.03 : 0.12]);
+            }
+        }
+        lit = { id, v, saved };
+    }
+    function unlit() {
+        if (!lit) return;
+        for (const [lid, prop, was] of lit.saved) if (map.getLayer(lid)) map.setPaintProperty(lid, prop, was);
+        lit = null;
+    }
+    function wireHover(el) {
+        el.addEventListener('mouseover', e => { const b = e.target.closest('[data-cl-cat]'); if (b) litValue(b.dataset.clCat, b.dataset.v); else unlit(); });
+        el.addEventListener('mouseleave', unlit);
+    }
+
     // clicks in the map key (the legend is redrawn by the app, so listen on it once)
     function wireKey() {
         const lg = $('legend'); if (!lg || wireKey.done) return; wireKey.done = true;
+        wireHover(lg); const pop = $('layers-pop'); if (pop) wireHover(pop);
         lg.addEventListener('click', e => {
             const cat = e.target.closest('[data-cl-cat]'); if (cat) { pickCat(cat.dataset.clCat, cat.dataset.v); return; }
             const al = e.target.closest('[data-cl-all]'); if (al) { const st = catState.get(al.dataset.clAll) || {}; catState.set(al.dataset.clAll, { ...st, only: null, hide: false }); catsChanged(al.dataset.clAll); return; }

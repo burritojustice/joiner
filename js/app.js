@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v56';
+const _BUILD_VERSION = 'v57';
 
 const CONFIG = {
     // Boundaries and aliases come from sf-blocks (js/sfblocks.js): live, or the copies in data/.
@@ -1863,9 +1863,18 @@ function hlRows(t) {
     let feats = [];
     if (t && S.src?.geoms && S.basemap.points) {
         const idx = t.row != null ? [t.row] : S.rowArea.map((a, i) => a === t.area ? i : -1).filter(i => i >= 0);
-        feats = idx.slice(0, 5000).filter(i => S.src.geoms[i]).map(i => ({ type: 'Feature', geometry: S.src.geoms[i], properties: { _s: sizeOf(i) } }));
+        feats = idx.slice(0, 5000).filter(i => S.src.geoms[i]).map(i => ({ type: 'Feature', geometry: S.src.geoms[i], properties: { _s: sizeOf(i), _slim: slimLine(S.src.geoms[i]) } }));
     }
     map.getSource('rows-hl').setData({ type: 'FeatureCollection', features: feats });
+}
+
+// a line that's drawn thin (and highlighted thin): anything but one street-sized LineString
+function slimLine(g) {
+    if (!g || g.type === 'Point' || g.type === 'MultiPoint') return false;
+    if (g.type !== 'LineString') return true;
+    let m = 0; const c = g.coordinates;
+    for (let i = 1; i < c.length && m <= 1000; i++) m += Math.hypot((c[i][0] - c[i - 1][0]) * 88000, (c[i][1] - c[i - 1][1]) * 111000);
+    return m > 1000;
 }
 
 // Hovering a row that lists several areas lights them all; id is the main one (outlined in the list).
@@ -2331,7 +2340,16 @@ function updateCrowd() {
     if (k !== S.crowdK) { S.crowdK = k; applyPointSize(); }
 }
 const lineW = k => ['interpolate', ['linear'], ['zoom'], 12, 4.5 * k, 14, 7 * k, 16, 11 * k, 18, 14 * k];
+// Street-sized lines draw wide (lineW); long lines and MultiLineStrings (a shoreline, a route: _slim) draw
+// thin, so they don't bury the map. s is the slim width at zoom 16, scaled like lineW. (v57)
+const lineWS = (k, s) => ['interpolate', ['linear'], ['zoom'],
+    ...[[12, 4.5, 0.55], [14, 7, 0.75], [16, 11, 1], [18, 14, 1.2]].flatMap(([z, w, f]) => [z, ['case', ['get', '_slim'], s * f, w * k]])];
 const hlW = k => ['interpolate', ['linear'], ['zoom'], 10, 5 * k, 12, 7 * k, 14, 10.5 * k, 16, 16 * k, 18, 20 * k];
+// The hover highlight follows how a line is drawn (v57): a street-sized line (one LineString, under 1 km)
+// gets the wide yellow band; long lines, MultiLineStrings and outlines (a shoreline, a route) a slim one,
+// a few pixels wider than the line itself.
+const hlLineW = (k, wide) => ['interpolate', ['linear'], ['zoom'],
+    ...[[10, 5, 0.6], [12, 7, 0.7], [14, 10.5, 0.85], [16, 16, 1], [18, 20, 1.15]].flatMap(([z, w, f]) => [z, ['case', ['get', '_slim'], (wide ? 7 : 4) * f, w * k]])];
 function radiusExpr(extra = 0, mul = 1) {
     const m = (CONFIG.pointSizes[sizeNow()] || 1) * mul * (sizeNow() === 'pinpoint' ? 1 : S.crowdK);   // pinpoints are already as small as they go
     const r = base => S.rowSizes ? ['+', extra, ['*', base * m, ['+', 0.45, ['*', 1.55, ['max', 0, ['get', '_s']]]]]] : base * m + extra;
@@ -2347,13 +2365,13 @@ function applyPointSize() {
     map.setPaintProperty('rows-hl-point', 'circle-radius', radiusExpr(2, 1.6));
     // Lines follow the same control.
     const k = (CONFIG.lineSizes[sizeNow()] || 1) * Math.sqrt(S.crowdK);
-    map.setPaintProperty('rows-sline-casing', 'line-width', lineW(1.55 * k));
-    for (const id of ['rows-sline', 'rows-sline-out']) map.setPaintProperty(id, 'line-width', lineW(k));
-    map.setPaintProperty('rows-sline-out-core', 'line-width', lineW(0.45 * k));
+    map.setPaintProperty('rows-sline-casing', 'line-width', lineWS(1.55 * k, 0));
+    for (const id of ['rows-sline', 'rows-sline-out']) map.setPaintProperty(id, 'line-width', lineWS(k, 3 * Math.max(1, k)));
+    map.setPaintProperty('rows-sline-out-core', 'line-width', lineWS(0.45 * k, 1.2 * Math.max(1, k)));
     for (const id of ['rows-line', 'rows-line-out']) map.setPaintProperty(id, 'line-width', 2.5 * k);
     map.setPaintProperty('rows-line-glow', 'line-width', 6 * k);
-    map.setPaintProperty('rows-hl-casing', 'line-width', hlW(1.6 * k));
-    map.setPaintProperty('rows-hl-line', 'line-width', hlW(k));
+    map.setPaintProperty('rows-hl-casing', 'line-width', hlLineW(1.6 * k, true));
+    map.setPaintProperty('rows-hl-line', 'line-width', hlLineW(k, false));
 }
 
 let rowLayerKey = {};
@@ -2372,7 +2390,7 @@ function updateRowLayer() {
     const feats = [];
     if (show) S.src.geoms.forEach((g, i) => {
         if (!g || (S.mapMask && !S.mapMask[i])) return;   // Map these rows only
-        const props = { _i: i, _in: S.rowArea[i] != null, _k: k(i), _s: sizeOf(i), _mid: false };
+        const props = { _i: i, _in: S.rowArea[i] != null, _k: k(i), _s: sizeOf(i), _mid: false, _slim: slimLine(g) };
         feats.push({ type: 'Feature', geometry: g, properties: props });
         // Zoomed out, a line shows as a dot at its midpoint.
         if (/LineString$/.test(g.type) && S.src.points[i]) feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: S.src.points[i] }, properties: { ...props, _mid: true } });
