@@ -2,6 +2,12 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v57
+
+- **Hovering a value in the map key highlights it on the map:** the layer's other values fade while the pointer is on it. The chips in the menu do the same.
+- **Layers is now "SF Layers"** (the button, the menu and the map key).
+- **Long lines from your file draw thin.** A shoreline, a route or anything in a MultiLineString used to draw as wide as a street block, and its hover highlight was a wide yellow band over all of it. Now only street-sized lines (one LineString under 1 km) draw wide; the rest draw about 3 px, with a slim yellow highlight a little wider than the line.
+
 ## v56
 
 - **Each layer chooses how its categories are drawn**, with an **as** switch in the Layers menu:
