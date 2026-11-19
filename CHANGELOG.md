@@ -2,6 +2,16 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v56
+
+- **Each layer chooses how its categories are drawn**, with an **as** switch in the Layers menu:
+  - **Colors**: a palette of clearly different colors. Pick **Bold** (Okabe–Ito, readable with color blindness), **Soft** or **Dark**; the shoreline also has **Its own** survey colors from sf-blocks. The default when a field has 8 values or fewer.
+  - **Shades**: shades of the layer's own color, as in v55. The default above 8 values (tree genus has 220).
+  - **Shapes**: the layer keeps its one color; points become circles, squares, triangles, diamonds and stars, lines become solid, dashed, dotted, dash-dot and long-dash. The first 5 values get one each, the rest gray. Useful with two point layers on at once.
+  - Values past the palette go gray. Areas use Colors or Shades.
+- **The map key lists each layer's values with counts**, in their colors, shapes or dashes. Click a value to show only it, again for all but it, others to add or drop (the same as the chips, which stay in step). The **by** menu there switches the field. Each layer has a box to hide it without turning it off. Long lists show 8 and "+N more".
+- The style, palette, field and filter are kept per layer in this browser and in snapshots.
+
 ## v55
 
 - **Layers menu: Show | Count.** Each layer has one pill with two halves. Show draws it over the areas. Count makes it the data, so the areas are colored by it (and shows it too); a yellow line under it says how many features are counted, and where.

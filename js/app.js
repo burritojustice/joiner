@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v55';
+const _BUILD_VERSION = 'v56';
 
 const CONFIG = {
     // Boundaries and aliases come from sf-blocks (js/sfblocks.js): live, or the copies in data/.

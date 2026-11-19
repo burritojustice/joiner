@@ -700,3 +700,36 @@ span.cl-cat.more { cursor: default; }
 .cl-by { font-size: 11.5px; color: var(--ink-soft); margin-right: 2px; }
 .cl-by select { font: 600 11.5px var(--body); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 0 2px; background: var(--card); }
 .legend .cl-only { color: var(--ink-soft); font-size: 11.5px; }
+
+/* v56: how a layer draws its categories (as Shades / Colors / Shapes, palettes), and its values in the map key */
+.cl-style, .cl-pals { grid-column: 2 / 4; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.cl-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.cl-seg button { font: 600 11.5px var(--body); color: var(--ink); background: var(--card); border: 0; padding: 2px 9px; cursor: pointer; }
+.cl-seg button + button { border-left: 1px solid var(--line); }
+.cl-seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+.cl-pals button { display: inline-flex; align-items: center; gap: 5px; font: 11.5px var(--body); color: var(--ink); background: none; border: 1px solid transparent; border-radius: 7px; padding: 2px 6px 2px 3px; cursor: pointer; }
+.cl-pals button[aria-pressed="true"] { border-color: var(--ink); }
+.cl-pals button:not([aria-pressed="true"]):hover { border-color: var(--line); }
+.cl-strip { display: inline-flex; border-radius: 3px; overflow: hidden; }
+.cl-strip i { width: 6px; height: 11px; }
+.cl-mk { flex: none; display: inline-block; }
+svg.cl-mk { width: 12px; height: 12px; }
+svg.cl-mk.ln { width: 20px; height: 8px; }
+i.cl-mk.pt { width: 8px; height: 8px; border-radius: 50%; }
+i.cl-mk.poly { width: 11px; height: 9px; border: 1.5px solid; border-radius: 2px; box-sizing: border-box; }
+.cl-cat svg.cl-mk, .cl-cat i.cl-mk { margin-right: 0; }
+/* the map key */
+.legend .cl-row { align-items: center; }
+.legend .cl-row .cl-kon { margin: 0 2px 0 0; accent-color: var(--ink); flex: none; }
+.legend .cl-row.off .cl-kname { color: var(--ink-soft); }
+.legend .cl-kname { font-weight: 600; }
+.legend .cl-kby { font: 11px var(--body); color: var(--ink-soft); border: 0; background: none; padding: 0; margin-left: 4px; max-width: 9em; }
+.legend select.cl-kby { cursor: pointer; text-decoration: underline dotted; }
+.cl-kcats { display: grid; margin: 0 0 4px; }
+.cl-kc { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; font: 12px var(--body); color: var(--ink); background: none; border: 0; border-radius: 5px; padding: 1px 4px 1px 20px; cursor: pointer; }
+.cl-kc span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-kc em { margin-left: auto; padding-left: 8px; font-style: normal; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.cl-kc:hover { background: #F0F1F6; }
+.cl-kc.off { opacity: .4; }
+.cl-kc.off span { text-decoration: line-through; }
+.cl-kc.more { color: var(--ink-soft); font-size: 11.5px; }
