@@ -21,6 +21,25 @@ const CityLayers = (() => {
     const OWN_COLOR = { street_trees: '#2F9E44', businesses: '#E8590C' };
     const KEY = 'joiner.cityLayers', CAT_KEY = 'joiner.cityLayerCats';
     const GRAY = '#ADB5BD', SHOW_CATS = 8, PAL_N = 10;
+    // How a layer draws its categories (v56): "as" Shades of its color, Colors from a qualitative palette,
+    // or Shapes (points: Block Party's shapes; lines: dash patterns) in its one color. Colors is the default
+    // for 8 values or fewer, Shades above that; a manifest's own colors (the shoreline's) come first.
+    const PALETTES = {
+        bold: { label: 'Bold', c: ['#E69F00', '#0072B2', '#009E73', '#CC79A7', '#D55E00', '#56B4E9', '#000000', '#F0E442'] },   // Okabe–Ito
+        soft: { label: 'Soft', c: ['#66C2A5', '#FC8D62', '#8DA0CB', '#E78AC3', '#A6D854', '#FFD92F', '#E5C494', '#B3B3B3'] },   // ColorBrewer Set2
+        dark: { label: 'Dark', c: ['#1B9E77', '#D95F02', '#7570B3', '#E7298A', '#66A61E', '#E6AB02', '#A6761D', '#666666'] },   // ColorBrewer Dark2
+    };
+    const AS = [['shades', 'Shades'], ['colors', 'Colors'], ['shapes', 'Shapes']];
+    const SHAPES = ['circle', 'square', 'triangle', 'diamond', 'star'];
+    // dash patterns for lines, in line widths: solid, dashes, dots, dash-dot, long dash
+    const DASHES = [null, [3, 2], [0.7, 1.6], [3, 1.4, 0.7, 1.4], [7, 2.5]];
+    const SHAPE_PATHS = {   // in a 0–1 box (Block Party's, plus a circle)
+        circle: Array.from({ length: 28 }, (_, i) => [0.5 + 0.42 * Math.cos(i * Math.PI / 14), 0.5 + 0.42 * Math.sin(i * Math.PI / 14)]),
+        square: [[0.16, 0.16], [0.84, 0.16], [0.84, 0.84], [0.16, 0.84]],
+        triangle: [[0.5, 0.06], [0.97, 0.88], [0.03, 0.88]],
+        diamond: [[0.5, 0.02], [0.98, 0.5], [0.5, 0.98], [0.02, 0.5]],
+        star: Array.from({ length: 10 }, (_, i) => { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 0.21 : 0.5; return [0.5 + r * Math.cos(a), 0.54 + r * Math.sin(a)]; }),
+    };
     // fields a big layer's chips follow first, when it has them
     const CAT_PREF = ['cat', 'genus', 'kind', 'type', 'status', 'service', 'cls', 'survey'];
     const $ = id => document.getElementById(id);
@@ -30,7 +49,8 @@ const CityLayers = (() => {
 
     const geomsOf = l => [].concat(l.geometry || []).map(g => String(g).replace('Multi', ''));
     const kindOf = l => { const g = geomsOf(l); return g.includes('Polygon') ? 'Polygon' : g.includes('LineString') ? 'LineString' : 'Point'; };
-    const ids = l => ['fill', 'line', 'pt'].map(k => `cl-${l.id}-${k}`);
+    const ids = l => ['fill', 'line', 'pt', 'sym', 'd1', 'd2', 'd3', 'd4'].map(k => `cl-${l.id}-${k}`);
+    const keyOff = new Set();   // shown, but turned off with its box in the map key (stays listed there)
     const save = () => { try { localStorage.setItem(KEY, JSON.stringify([...on])); } catch (e) { } };
     const nameField = l => l.name || NAME_FIELDS.find(f => l.fields && f in l.fields) || null;
 
@@ -55,14 +75,32 @@ const CityLayers = (() => {
     }
     // the chips' state for a layer: { field, only: Set | null, hide: bool, more: bool }
     const catState = new Map();
+    const canShape = l => kindOf(l) !== 'Polygon';
     function cats(l) {
         const fs = catFields(l); if (!fs.length) return null;
         const st = catState.get(l.id) || {};
         const f = fs.find(x => x.field === st.field) || fs[0];
         const vals = Object.entries(f.values).sort((a, b) => b[1] - a[1]);
-        const pal = l.colors ? null : shades(l.color, Math.min(PAL_N, vals.length));
-        const list = vals.map(([v, n], i) => ({ v, n, c: l.colors ? (l.colors[v] || GRAY) : i < pal.length && (vals.length <= PAL_N || i < PAL_N) ? pal[i] : GRAY }));
-        return { field: f.field, fields: fs.map(x => x.field), list, others: f.others || 0, only: st.only || null, hide: !!st.hide, more: !!st.more };
+        const own = l.colors && f.field === l.category;
+        let as = st.as || (own || vals.length <= PALETTES.bold.c.length ? 'colors' : 'shades');
+        if (as === 'shapes' && !canShape(l)) as = 'colors';
+        const pal = st.pal || (own ? 'own' : 'bold');
+        let list;
+        if (as === 'shapes') list = vals.map(([v, n], i) => ({ v, n, c: i < SHAPES.length ? l.color : GRAY, s: i < SHAPES.length ? i : -1 }));
+        else if (as === 'colors') {
+            const P = pal === 'own' && own ? null : (PALETTES[pal] || PALETTES.bold).c;
+            list = vals.map(([v, n], i) => ({ v, n, c: P ? (i < P.length ? P[i] : GRAY) : (l.colors[v] || GRAY) }));
+        } else {
+            const sh = shades(l.color, Math.min(PAL_N, vals.length));
+            list = vals.map(([v, n], i) => ({ v, n, c: i < sh.length && (vals.length <= PAL_N || i < PAL_N) ? sh[i] : GRAY }));
+        }
+        return { field: f.field, fields: fs.map(x => x.field), list, others: f.others || 0, only: st.only || null, hide: !!st.hide, more: !!st.more,
+            as, pal: as === 'colors' ? (pal === 'own' && !own ? 'bold' : pal) : null, own };
+    }
+    function setStyle(id, as, pal) {
+        const st = { ...(catState.get(id) || {}) };
+        if (as) st.as = as; if (pal) { st.pal = pal; st.as = 'colors'; }
+        catState.set(id, st); catsChanged(id);
     }
     const catShown = (c, v) => !c.only || (c.hide ? !c.only.has(v) : c.only.has(v));
     // Block Party's rule: the first click shows only that category, the same one again shows all but it,
@@ -93,21 +131,77 @@ const CityLayers = (() => {
     };
     // colors and filters by category on the layer's map layers
     function paintCats(l) {
-        const c = cats(l), [fill, line, pt] = ids(l);
+        const c = cats(l), [fill, line, pt, sym] = ids(l);
         const val = c ? ['to-string', ['coalesce', ['get', c.field], '']] : null;
         const color = c ? ['match', val, ...c.list.flatMap(x => [x.v, x.c]), GRAY] : l.color;
         const keep = c && c.only ? (f => c.hide ? ['all', f, ['!', ['in', val, ['literal', [...c.only]]]]] : ['all', f, ['in', val, ['literal', [...c.only]]]]) : f => f;
+        const shapes = c && c.as === 'shapes';
         if (map.getLayer(fill)) { map.setPaintProperty(fill, 'fill-color', color); map.setFilter(fill, keep(geomFilter(l, 'fill'))); }
-        if (map.getLayer(line)) { map.setPaintProperty(line, 'line-color', color); map.setFilter(line, keep(geomFilter(l, 'line'))); }
-        if (map.getLayer(pt)) { map.setPaintProperty(pt, 'circle-color', color); map.setFilter(pt, keep(geomFilter(l, 'pt'))); }
+        if (map.getLayer(line)) {
+            map.setPaintProperty(line, 'line-color', color); map.setFilter(line, keep(geomFilter(l, 'line')));
+            // dash patterns by category: one layer per pattern (cl-<id>-d1…d4), each taking its categories off
+            // the solid one. Data-driven line-dasharray throws while drawing in MapLibre 5.16 when it changes.
+            const dashed = shapes ? c.list.filter(x => x.s > 0 && DASHES[x.s]) : [];
+            if (dashed.length) map.setFilter(line, ['all', keep(geomFilter(l, 'line')), ['!', ['in', val, ['literal', dashed.map(x => x.v)]]]]);
+            for (let k = 1; k < DASHES.length; k++) {
+                const lid = `cl-${l.id}-d${k}`; if (!map.getLayer(lid)) continue;
+                const vs = dashed.filter(x => x.s === k).map(x => x.v);
+                map.setFilter(lid, vs.length ? ['all', keep(geomFilter(l, 'line')), ['in', val, ['literal', vs]]] : ['boolean', false]);
+                map.setPaintProperty(lid, 'line-color', color);
+            }
+        }
+        // points: circles, or shapes (SDF icons that take any color) when drawn as shapes
+        if (map.getLayer(pt)) { map.setPaintProperty(pt, 'circle-color', color); map.setFilter(pt, shapes ? ['boolean', false] : keep(geomFilter(l, 'pt'))); }
+        if (map.getLayer(sym)) {
+            map.setFilter(sym, shapes ? keep(geomFilter(l, 'pt')) : ['boolean', false]);
+            if (shapes) {
+                map.setLayoutProperty(sym, 'icon-image', ['match', val, ...c.list.filter(x => x.s >= 0).flatMap(x => [x.v, 'cl-shape-' + SHAPES[x.s]]), 'cl-shape-circle']);
+                map.setPaintProperty(sym, 'icon-color', color);
+            }
+        }
+    }
+    // a shape as an SDF image (Block Party's shapeImage): a signed distance to its edge, so it takes any color
+    function shapeImage(k) {
+        const N = 64, PAD = 10, c = document.createElement('canvas'); c.width = c.height = N;
+        const g = c.getContext('2d'), box = N - 2 * PAD;
+        g.fillStyle = '#000'; g.beginPath();
+        SHAPE_PATHS[k].forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](PAD + x * box, PAD + y * box)); g.closePath(); g.fill();
+        const a = g.getImageData(0, 0, N, N).data, inside = new Uint8Array(N * N);
+        for (let i = 0; i < N * N; i++) inside[i] = a[i * 4 + 3] > 127 ? 1 : 0;
+        const R = 8, out = new Uint8ClampedArray(N * N * 4);
+        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+            const me = inside[y * N + x]; let d = R;
+            for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+                const X = x + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= N || Y >= N) { if (me) d = Math.min(d, Math.hypot(dx, dy)); continue; }
+                if (inside[Y * N + X] !== me) d = Math.min(d, Math.hypot(dx, dy) - 0.5);
+            }
+            const sd = me ? -d : d, i = (y * N + x) * 4;
+            out[i] = out[i + 1] = out[i + 2] = 255; out[i + 3] = Math.round(255 - 255 * (sd / R + 0.25));
+        }
+        return { width: N, height: N, data: out };
+    }
+    function addShapes() { for (const k of SHAPES) if (!map.hasImage('cl-shape-' + k)) map.addImage('cl-shape-' + k, shapeImage(k), { sdf: true, pixelRatio: 2 }); }
+    // a category's mark for the menu and the map key: its shape, dash, line or dot, in its color
+    function markHTML(l, c, x) {
+        const k = kindOf(l), col = x.c;
+        if (c && c.as === 'shapes' && k === 'Point') {
+            const pts = SHAPE_PATHS[SHAPES[Math.max(0, x.s)]].map(([a, b]) => `${(1 + a * 12).toFixed(1)},${(1 + b * 12).toFixed(1)}`).join(' ');
+            return `<svg class="cl-mk" viewBox="0 0 14 14" aria-hidden="true"><polygon points="${pts}" fill="${col}" stroke="#fff" stroke-width="1"/></svg>`;
+        }
+        if (k === 'LineString') {
+            const d = c && c.as === 'shapes' && x.s > 0 ? DASHES[x.s] : null;
+            return `<svg class="cl-mk ln" viewBox="0 0 22 8" aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" stroke="${col}" stroke-width="2.5"${d ? ` stroke-dasharray="${d.map(n => Math.max(0.5, n * 2.5)).join(' ')}"` : ' stroke-linecap="round"'}/></svg>`;
+        }
+        if (k === 'Polygon') return `<i class="cl-mk poly" style="border-color:${col};background:${col}44"></i>`;
+        return `<i class="cl-mk pt" style="background:${col}"></i>`;
     }
     function saveCats() {
         try { localStorage.setItem(CAT_KEY, JSON.stringify(catsOut())); } catch (e) { }
     }
-    const catsOut = () => Object.fromEntries([...catState].filter(([, s]) => s.field || s.only).map(([id, s]) => [id, { field: s.field || null, only: s.only ? [...s.only] : null, hide: !!s.hide }]));
+    const catsOut = () => Object.fromEntries([...catState].filter(([, s]) => s.field || s.only || s.as || s.pal).map(([id, s]) => [id, { field: s.field || null, only: s.only ? [...s.only] : null, hide: !!s.hide, as: s.as || null, pal: s.pal || null }]));
     function catsIn(o) {
         catState.clear();
-        for (const [id, s] of Object.entries(o || {})) catState.set(id, { field: s.field || undefined, only: s.only ? new Set(s.only) : null, hide: !!s.hide });
+        for (const [id, s] of Object.entries(o || {})) catState.set(id, { field: s.field || undefined, only: s.only ? new Set(s.only) : null, hide: !!s.hide, as: s.as || undefined, pal: s.pal || undefined });
     }
     const counted = () => opts.countedId?.() || null;
 
@@ -134,9 +228,10 @@ const CityLayers = (() => {
         const q = new URLSearchParams(location.search).get('layers');
         let want = q != null ? q.split(',') : []; if (q == null) try { want = JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { }
         want.filter(id => byId.has(id)).forEach(id => show(id, true, { quiet: true }));
-        wire();
+        wire(); wireKey();
         render(); writeLink(); opts.changed?.();
         map.on('zoomend', () => { if (on.size) opts.changed?.(); });
+        map.on('styleimagemissing', e => { if (String(e.id).startsWith('cl-shape-')) addShapes(); });
     }
 
     function ensure(l) {
@@ -146,7 +241,7 @@ const CityLayers = (() => {
         const src = { source: sid, ...(l.format === 'pmtiles' ? { 'source-layer': l.layer || l.id } : {}), minzoom: l.from || 0 };
         // over the areas, under the loaded rows and every label
         const before = ['rows-fill', 'rows-line', 'rows-pt'].find(id => map.getLayer(id)) || opts.before?.();
-        const [fill, line, pt] = ids(l), c = l.color, g = geomsOf(l);
+        const [fill, line, pt, sym] = ids(l), c = l.color, g = geomsOf(l);
         const isPoly = ['==', ['geometry-type'], 'Polygon'], isLine = ['==', ['geometry-type'], 'LineString'], isPt = ['==', ['geometry-type'], 'Point'];
         if (g.includes('Polygon')) map.addLayer({ id: fill, type: 'fill', ...src, filter: isPoly, paint: { 'fill-color': c, 'fill-opacity': 0.16 } }, before);
         map.addLayer({ id: line, type: 'line', ...src, filter: g.includes('Polygon') ? ['any', isLine, isPoly] : isLine,
@@ -155,6 +250,15 @@ const CityLayers = (() => {
         map.addLayer({ id: pt, type: 'circle', ...src, filter: isPt,
             paint: { 'circle-color': c, 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.2, 14, 4, 17, 6.5],
                 'circle-stroke-color': '#fff', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 0.6, 15, 1.2] } }, before);
+        if (g.includes('LineString')) for (let k = 1; k < DASHES.length; k++)
+            map.addLayer({ id: `cl-${l.id}-d${k}`, type: 'line', ...src, filter: ['boolean', false], layout: { 'line-cap': 'butt', 'line-join': 'round' },
+                paint: { 'line-color': c, 'line-opacity': 0.9, 'line-dasharray': DASHES[k], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.6, 16, 3.5] } }, before);
+        if (g.includes('Point')) {
+            addShapes();
+            map.addLayer({ id: sym, type: 'symbol', ...src, filter: ['boolean', false],
+                layout: { 'icon-image': 'cl-shape-circle', 'icon-size': ['interpolate', ['linear'], ['zoom'], 11, 0.3, 14, 0.5, 17, 0.75], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+                paint: { 'icon-color': c, 'icon-halo-color': '#fff', 'icon-halo-width': 1.1 } }, before);
+        }
         paintCats(l);
         for (const id of ids(l)) {
             if (!map.getLayer(id)) continue;
@@ -176,12 +280,19 @@ const CityLayers = (() => {
 
     function show(id, yes, { quiet = false } = {}) {
         const l = byId.get(id); if (!l) return;
-        if (yes) { ensure(l); on.add(id); } else on.delete(id);
-        for (const lid of ids(l)) if (map.getLayer(lid)) map.setLayoutProperty(lid, 'visibility', yes ? 'visible' : 'none');
+        if (yes) { ensure(l); on.add(id); } else { on.delete(id); keyOff.delete(id); }
+        vis(l);
         if (!yes) tip?.remove();
         if (quiet) return;
         save(); writeLink(); render(); opts.changed?.();
     }
+
+    function vis(l) {
+        const v = on.has(l.id) && !keyOff.has(l.id) ? 'visible' : 'none';
+        for (const lid of ids(l)) if (map.getLayer(lid)) map.setLayoutProperty(lid, 'visibility', v);
+    }
+    // the box beside a layer in the map key: hide it there without turning it off
+    function keyToggle(id, yes) { const l = byId.get(id); if (!l) return; yes ? keyOff.delete(id) : keyOff.add(id); vis(l); if (!yes) tip?.remove(); opts.changed?.(); }
 
     // ?layers= in the link, so a shared link opens with the same layers on
     function writeLink() {
@@ -201,13 +312,22 @@ const CityLayers = (() => {
     function catsHTML(l) {
         const c = cats(l); if (!c) return '';
         const n = c.more ? c.list.length : Math.min(SHOW_CATS, c.list.length), rest = c.list.length - n;
-        const chips = c.list.slice(0, n).map(x => `<button type="button" class="cl-cat${catShown(c, x.v) ? '' : ' off'}" data-cl-cat="${esc(l.id)}" data-v="${esc(x.v)}" aria-pressed="${c.only && catShown(c, x.v) ? 'true' : 'false'}" title="${c.only ? 'Click to show or hide' : 'Show only this'}"><i style="background:${x.c}"></i>${esc(x.v)} <em>${fmtC(x.n)}</em></button>`).join('');
+        const chips = c.list.slice(0, n).map(x => `<button type="button" class="cl-cat${catShown(c, x.v) ? '' : ' off'}" data-cl-cat="${esc(l.id)}" data-v="${esc(x.v)}" aria-pressed="${c.only && catShown(c, x.v) ? 'true' : 'false'}" title="${c.only ? 'Click to show or hide' : 'Show only this'}">${markHTML(l, c, x)}${esc(x.v)} <em>${fmtC(x.n)}</em></button>`).join('');
         const more = rest > 0 ? `<button type="button" class="cl-cat more" data-cl-more="${esc(l.id)}">+${rest} more</button>`
             : c.more && c.list.length > SHOW_CATS ? `<button type="button" class="cl-cat more" data-cl-more="${esc(l.id)}">fewer</button>` : '';
         const others = c.others && (c.more || rest <= 0) ? `<span class="cl-cat more"><i style="background:${GRAY}"></i>others <em>${fmtC(c.others)}</em></span>` : '';
         const pick = c.fields.length > 1 ? `<label class="cl-by">by <select data-cl-field="${esc(l.id)}">${c.fields.map(f => `<option value="${esc(f)}"${f === c.field ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select></label>` : `<span class="cl-by">by ${esc(c.field)}</span>`;
         const all = c.only ? `<button type="button" class="cl-cat more" data-cl-all="${esc(l.id)}">show all</button>` : '';
-        return `<div class="cl-cats">${pick}${chips}${more}${others}${all}</div>`;
+        return styleHTML(l, c) + `<div class="cl-cats">${pick}${chips}${more}${others}${all}</div>`;
+    }
+    // "as" Shades / Colors / Shapes, and the palettes under Colors
+    function styleHTML(l, c) {
+        const seg = AS.filter(([k]) => k !== 'shapes' || canShape(l)).map(([k, t]) => `<button type="button" data-cl-as="${esc(l.id)}" data-v="${k}" aria-pressed="${c.as === k}">${t}</button>`).join('');
+        const strip = cs => `<span class="cl-strip">${cs.slice(0, 8).map(x => `<i style="background:${x}"></i>`).join('')}</span>`;
+        const pals = c.as !== 'colors' ? '' : `<div class="cl-pals">${c.own ? `<button type="button" data-cl-pal="${esc(l.id)}" data-v="own" aria-pressed="${c.pal === 'own'}">${strip(Object.values(l.colors))}Its own</button>` : ''}`
+            + Object.entries(PALETTES).map(([k, p]) => `<button type="button" data-cl-pal="${esc(l.id)}" data-v="${k}" aria-pressed="${c.pal === k}">${strip(p.c)}${p.label}</button>`).join('') + `</div>`;
+        const tip = c.as === 'shapes' ? `<span class="cl-by">${kindOf(l) === 'Point' ? `${SHAPES.length} shapes` : `${DASHES.length} dashes`}, then gray</span>` : '';
+        return `<div class="cl-style"><span class="cl-by">as</span><span class="cl-seg">${seg}</span>${tip}</div>${pals}`;
     }
 
     function render() {
@@ -266,6 +386,10 @@ const CityLayers = (() => {
             if (sh) { show(sh.dataset.clShow, !on.has(sh.dataset.clShow)); return; }
             const cat = e.target.closest('[data-cl-cat]');
             if (cat) { pickCat(cat.dataset.clCat, cat.dataset.v); return; }
+            const as = e.target.closest('[data-cl-as]');
+            if (as) { setStyle(as.dataset.clAs, as.dataset.v); return; }
+            const pl = e.target.closest('[data-cl-pal]');
+            if (pl) { setStyle(pl.dataset.clPal, null, pl.dataset.v); return; }
             const mo = e.target.closest('[data-cl-more]');
             if (mo) { const st = catState.get(mo.dataset.clMore) || {}; catState.set(mo.dataset.clMore, { ...st, more: !st.more }); render(); return; }
             const al = e.target.closest('[data-cl-all]');
@@ -374,13 +498,36 @@ const CityLayers = (() => {
         return { type: 'FeatureCollection', features: feats };
     }
 
-    // rows for the map key: each layer that's on, with a note when it only draws from closer in
+    // the map key: each layer that's on, with a box to hide it, its field and its values with counts;
+    // a value works like its chip (only it / all but it / add or drop) (v56)
     function legendHTML() {
         if (!on.size) return '';
         const z = map ? map.getZoom() : 99;
-        return `<h4 class="rows-h cl-h">Layers</h4>` + [...on].map(id => byId.get(id)).filter(Boolean).map(l =>
-            { const c = cats(l);
-            return `<div class="row cl-row">${swatch(l)}<span>${esc(l.label)}${c && c.only ? ` <span class="cl-only">· ${esc(catWords(c))}</span>` : ''}</span><span class="n">${l.from && z < l.from ? `zoom in (${l.from}+)` : l.features != null ? fmtN(l.features) : ''}</span></div>`; }).join('');
+        return `<h4 class="rows-h cl-h">Layers</h4>` + [...on].map(id => byId.get(id)).filter(Boolean).map(l => {
+            const c = cats(l), off = keyOff.has(l.id);
+            const n = l.from && z < l.from ? `zoom in (${l.from}+)` : l.features != null ? fmtN(l.features) : '';
+            const by = c ? (c.fields.length > 1 ? `<select class="cl-kby" data-cl-field="${esc(l.id)}" aria-label="Color ${esc(l.label)} by">${c.fields.map(f => `<option value="${esc(f)}"${f === c.field ? ' selected' : ''}>by ${esc(f)}</option>`).join('')}</select>` : `<span class="cl-kby">by ${esc(c.field)}</span>`) : '';
+            const head = `<div class="row cl-row${off ? ' off' : ''}"><input type="checkbox" class="cl-kon" data-cl-key="${esc(l.id)}"${off ? '' : ' checked'} aria-label="Show ${esc(l.label)}">${c ? '' : swatch(l)}<span class="cl-kname">${esc(l.label)}</span>${by}<span class="n">${n}</span></div>`;
+            if (!c || off) return head;
+            const st = catState.get(l.id) || {}, all = st.kmore, m = all ? c.list.length : Math.min(SHOW_CATS, c.list.length), rest = c.list.length - m;
+            const rows = c.list.slice(0, m).map(x => `<button type="button" class="cl-kc${catShown(c, x.v) ? '' : ' off'}" data-cl-cat="${esc(l.id)}" data-v="${esc(x.v)}" title="${c.only ? 'Click to show or hide' : 'Show only this'}">${markHTML(l, c, x)}<span>${esc(x.v)}</span><em>${fmtC(x.n)}</em></button>`).join('');
+            const more = rest > 0 ? `<button type="button" class="cl-kc more" data-cl-kmore="${esc(l.id)}">+${rest} more</button>` : all && c.list.length > SHOW_CATS ? `<button type="button" class="cl-kc more" data-cl-kmore="${esc(l.id)}">fewer</button>` : '';
+            const reset = c.only ? `<button type="button" class="cl-kc more" data-cl-all="${esc(l.id)}">show all</button>` : '';
+            return head + `<div class="cl-kcats">${rows}${more}${reset}</div>`;
+        }).join('');
+    }
+    // clicks in the map key (the legend is redrawn by the app, so listen on it once)
+    function wireKey() {
+        const lg = $('legend'); if (!lg || wireKey.done) return; wireKey.done = true;
+        lg.addEventListener('click', e => {
+            const cat = e.target.closest('[data-cl-cat]'); if (cat) { pickCat(cat.dataset.clCat, cat.dataset.v); return; }
+            const al = e.target.closest('[data-cl-all]'); if (al) { const st = catState.get(al.dataset.clAll) || {}; catState.set(al.dataset.clAll, { ...st, only: null, hide: false }); catsChanged(al.dataset.clAll); return; }
+            const mo = e.target.closest('[data-cl-kmore]'); if (mo) { const st = catState.get(mo.dataset.clKmore) || {}; catState.set(mo.dataset.clKmore, { ...st, kmore: !st.kmore }); opts.changed?.(); }
+        });
+        lg.addEventListener('change', e => {
+            const k = e.target.closest('[data-cl-key]'); if (k) { keyToggle(k.dataset.clKey, k.checked); return; }
+            const f = e.target.closest('[data-cl-field]'); if (f) setCatField(f.dataset.clField, f.value);
+        });
     }
 
     return {
