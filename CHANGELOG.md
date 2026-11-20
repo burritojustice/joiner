@@ -2,6 +2,15 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v60
+
+- **SF Layers opens tidier.** Each layer is one line: its name, Show | Count, and a short line saying how it's drawn ("colors by kind ▸"). Click that to open its colors and categories; they're folded away until you do. The mark beside each layer shows its first few colors.
+- **One color.** A layer's "as" switch now starts with One color: the whole layer in its own color, no categories, and the key shows just that color. Its chips still filter.
+- **Count turns off from Count.** Click Count ✓ again to stop counting a layer: the areas go back to empty and the layer stays drawn while Show is on.
+- **The key says what's counted.** Above the count, the key names the layer or file the areas are counting ("SF Layer · Large Utility Excavation Permits").
+- **Long names stay in the key.** The key is at most 300 px wide: long values (utility permit purposes) end in "…" with the full text on hover, and a long layer name wraps to two lines.
+- **Reloading keeps a counted layer a layer.** A counted SF layer used to come back after a reload as a plain file, with Count off in SF Layers. Now it comes back counted, under its own name.
+
 ## v59
 
 - **Heights in feet or meters.** sf-blocks now stores measurements in meters and says which fields are (storm drains' elevation, `elev_m`). Joiner shows them in feet by default, or meters: the switch is at the bottom of SF Layers ("heights in ft · m") and is remembered in this browser. It applies to the hover popup, the table (the column reads "elev (ft)") and a row's details once a layer is counted.

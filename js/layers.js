@@ -29,7 +29,8 @@ const CityLayers = (() => {
         soft: { label: 'Soft', c: ['#66C2A5', '#FC8D62', '#8DA0CB', '#E78AC3', '#A6D854', '#FFD92F', '#E5C494', '#B3B3B3'] },   // ColorBrewer Set2
         dark: { label: 'Dark', c: ['#1B9E77', '#D95F02', '#7570B3', '#E7298A', '#66A61E', '#E6AB02', '#A6761D', '#666666'] },   // ColorBrewer Dark2
     };
-    const AS = [['shades', 'Shades'], ['colors', 'Colors'], ['shapes', 'Shapes']];
+    // 'one': the layer's one color, no categories drawn (v60); its chips still filter
+    const AS = [['one', 'One color'], ['shades', 'Shades'], ['colors', 'Colors'], ['shapes', 'Shapes']];
     const SHAPES = ['circle', 'square', 'triangle', 'diamond', 'star'];
     // dash patterns for lines, in line widths: solid, dashes, dots, dash-dot, long dash
     const DASHES = [null, [3, 2], [0.7, 1.6], [3, 1.4, 0.7, 1.4], [7, 2.5]];
@@ -86,7 +87,8 @@ const CityLayers = (() => {
         if (as === 'shapes' && !canShape(l)) as = 'colors';
         const pal = st.pal || (own ? 'own' : 'bold');
         let list;
-        if (as === 'shapes') list = vals.map(([v, n], i) => ({ v, n, c: i < SHAPES.length ? l.color : GRAY, s: i < SHAPES.length ? i : -1 }));
+        if (as === 'one') list = vals.map(([v, n]) => ({ v, n, c: l.color }));
+        else if (as === 'shapes') list = vals.map(([v, n], i) => ({ v, n, c: i < SHAPES.length ? l.color : GRAY, s: i < SHAPES.length ? i : -1 }));
         else if (as === 'colors') {
             const P = pal === 'own' && own ? null : (PALETTES[pal] || PALETTES.bold).c;
             list = vals.map(([v, n], i) => ({ v, n, c: P ? (i < P.length ? P[i] : GRAY) : (l.colors[v] || GRAY) }));
@@ -133,7 +135,7 @@ const CityLayers = (() => {
     function paintCats(l) {
         const c = cats(l), [fill, line, pt, sym] = ids(l);
         const val = c ? ['to-string', ['coalesce', ['get', c.field], '']] : null;
-        const color = c ? ['match', val, ...c.list.flatMap(x => [x.v, x.c]), GRAY] : l.color;
+        const color = c && c.as !== 'one' ? ['match', val, ...c.list.flatMap(x => [x.v, x.c]), GRAY] : l.color;
         const keep = c && c.only ? (f => c.hide ? ['all', f, ['!', ['in', val, ['literal', [...c.only]]]]] : ['all', f, ['in', val, ['literal', [...c.only]]]]) : f => f;
         const shapes = c && c.as === 'shapes';
         if (map.getLayer(fill)) { map.setPaintProperty(fill, 'fill-color', color); map.setFilter(fill, keep(geomFilter(l, 'fill'))); }
@@ -275,7 +277,7 @@ const CityLayers = (() => {
             .map(([k, v]) => { const u = l.units?.[k], U = window.JoinerUnits;
                 return `<tr><th>${esc(u && U ? U.label(k, u) : k)}</th><td>${esc(u && U ? U.show(v, u) : String(v).slice(0, 80))}</td></tr>`; }).join('');
         if (!tip) tip = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: 'cl-tip', offset: 10, maxWidth: '280px' });
-        const c = cats(l), dot = c ? (c.list.find(x => x.v === String(p[c.field] ?? ''))?.c || GRAY) : l.color;
+        const c = cats(l), dot = c && c.as !== 'one' ? (c.list.find(x => x.v === String(p[c.field] ?? ''))?.c || GRAY) : l.color;
         tip.setLngLat(e.lngLat).setHTML(`<div class="cl-tip-in"><span class="cl-dot" style="background:${dot}"></span><b>${esc(title)}</b><div class="cl-src">${esc(l.label)}</div>${rows ? `<table>${rows}</table>` : ''}</div>`).addTo(map);
     }
 
@@ -309,11 +311,26 @@ const CityLayers = (() => {
             : k === 'Polygon' ? `<i class="cl-sw poly" style="border-color:${l.color};background:${l.color}33"></i>`
             : `<i class="cl-sw ln" style="background:${l.color}"></i>`; };
     const fmtC = n => Number(n).toLocaleString();
+    // a layer's mark in the menu: its one color, or the first few colors (or shapes) its categories draw in
+    function rowMark(l) {
+        const c = cats(l); if (!c || c.as === 'one') return swatch(l);
+        // lines: one bar of their first colors (separate short lines would read as a dash pattern)
+        if (kindOf(l) === 'LineString' && c.as !== 'shapes') return `<span class="cl-rmk cl-rbar" aria-hidden="true">${c.list.slice(0, 4).map(x => `<i style="background:${x.c}"></i>`).join('')}</span>`;
+        return `<span class="cl-rmk" aria-hidden="true">${c.list.slice(0, 4).map(x => markHTML(l, c, x)).join('')}</span>`;
+    }
+    // the menu opens with each layer on one line; Style ▸ opens its colors and categories (v60)
+    const openRows = new Set();
+    function styleToggle(l) {
+        const c = cats(l); if (!c) return '';
+        const isOpen = openRows.has(l.id);
+        const what = c.only ? `only ${catWords(c)}` : c.as === 'one' ? 'one color' : `${(AS.find(a => a[0] === c.as) || [, ''])[1].toLowerCase()} by ${c.field}`;
+        return `<button type="button" class="cl-open" data-cl-open="${esc(l.id)}" aria-expanded="${isOpen}" title="${isOpen ? 'Hide' : 'Show'} its colors and categories">${esc(what)} ${isOpen ? '▾' : '▸'}</button>`;
+    }
     // the chips under a layer: its categories with counts, in the colors they draw in
     function catsHTML(l) {
         const c = cats(l); if (!c) return '';
         const n = c.more ? c.list.length : Math.min(SHOW_CATS, c.list.length), rest = c.list.length - n;
-        const chips = c.list.slice(0, n).map(x => `<button type="button" class="cl-cat${catShown(c, x.v) ? '' : ' off'}" data-cl-cat="${esc(l.id)}" data-v="${esc(x.v)}" aria-pressed="${c.only && catShown(c, x.v) ? 'true' : 'false'}" title="${c.only ? 'Click to show or hide' : 'Show only this'}">${markHTML(l, c, x)}${esc(x.v)} <em>${fmtC(x.n)}</em></button>`).join('');
+        const chips = c.list.slice(0, n).map(x => `<button type="button" class="cl-cat${catShown(c, x.v) ? '' : ' off'}" data-cl-cat="${esc(l.id)}" data-v="${esc(x.v)}" aria-pressed="${c.only && catShown(c, x.v) ? 'true' : 'false'}" title="${esc(x.v)}: ${c.only ? 'click to show or hide' : 'click to show only this'}">${markHTML(l, c, x)}<span class="cl-cv">${esc(x.v)}</span> <em>${fmtC(x.n)}</em></button>`).join('');
         const more = rest > 0 ? `<button type="button" class="cl-cat more" data-cl-more="${esc(l.id)}">+${rest} more</button>`
             : c.more && c.list.length > SHOW_CATS ? `<button type="button" class="cl-cat more" data-cl-more="${esc(l.id)}">fewer</button>` : '';
         const others = c.others && (c.more || rest <= 0) ? `<span class="cl-cat more"><i style="background:${GRAY}"></i>others <em>${fmtC(c.others)}</em></span>` : '';
@@ -327,7 +344,7 @@ const CityLayers = (() => {
         const strip = cs => `<span class="cl-strip">${cs.slice(0, 8).map(x => `<i style="background:${x}"></i>`).join('')}</span>`;
         const pals = c.as !== 'colors' ? '' : `<div class="cl-pals">${c.own ? `<button type="button" data-cl-pal="${esc(l.id)}" data-v="own" aria-pressed="${c.pal === 'own'}">${strip(Object.values(l.colors))}Its own</button>` : ''}`
             + Object.entries(PALETTES).map(([k, p]) => `<button type="button" data-cl-pal="${esc(l.id)}" data-v="${k}" aria-pressed="${c.pal === k}">${strip(p.c)}${p.label}</button>`).join('') + `</div>`;
-        const tip = c.as === 'shapes' ? `<span class="cl-by">${kindOf(l) === 'Point' ? `${SHAPES.length} shapes` : `${DASHES.length} dashes`}, then gray</span>` : '';
+        const tip = c.as === 'one' ? `<span class="cl-by">${swatch(l)} drawn in its color</span>` : c.as === 'shapes' ? `<span class="cl-by">${kindOf(l) === 'Point' ? `${SHAPES.length} shapes` : `${DASHES.length} dashes`}, then gray</span>` : '';
         return `<div class="cl-style"><span class="cl-by">as</span><span class="cl-seg">${seg}</span>${tip}</div>${pals}`;
     }
 
@@ -343,18 +360,18 @@ const CityLayers = (() => {
             const meta = [l.features != null ? `${fmtC(l.features)} ${what}` : '', l.records && l.records !== l.features ? `${fmtC(l.records)} ${l.label.toLowerCase()}` : '',
                 l.from > 11 ? `from zoom ${l.from}` : '', l.data_as_of || l.retrieved || l.year || ''].filter(Boolean).join(' · ');
             const isOn = on.has(l.id), isCnt = cid === l.id;
-            const cntTip = isCnt ? 'Counted: these features are the data now. Load other data to stop.'
+            const cntTip = isCnt ? 'Counted: these features are the data now. Click to stop counting.'
                 : l.format === 'pmtiles' ? `Read all ${l.features ? fmtC(l.features) + ' ' : ''}of its features from its tiles and count them in the areas (a few seconds to a minute)` : 'Load its features as the data and count them in the areas';
             const line = isCnt ? `<div class="cl-counting">${esc(opts.countLine?.() || 'Counted in the areas')}</div>` : '';
-            return `<li class="${isCnt ? 'is-counted' : ''}">${swatch(l)}<span class="cl-name">${esc(l.label)}</span>
+            return `<li class="${isCnt ? 'is-counted' : ''}">${rowMark(l)}<span class="cl-name">${esc(l.label)}</span>
                 <span class="cl-pill" role="group" aria-label="${esc(l.label)}"><button type="button" data-cl-show="${esc(l.id)}" aria-pressed="${isOn}" title="${isOn ? 'Hide it' : 'Draw it over the areas'}">Show</button><button type="button" data-cl-use="${esc(l.id)}" aria-pressed="${isCnt}" class="${isCnt ? 'cnt' : ''}" title="${esc(cntTip)}">Count${isCnt ? ' ✓' : ''}</button></span>
-                <span class="cl-meta">${esc(meta)}${l.page ? ` · <a href="${esc(l.page)}" target="_blank" rel="noopener" title="${esc(l.title || 'Source')}">source</a>` : ''}</span>
-                ${line}${catsHTML(l)}</li>`;
+                <span class="cl-meta">${esc(meta)}${l.page ? ` · <a href="${esc(l.page)}" target="_blank" rel="noopener" title="${esc(l.title || 'Source')}">source</a>` : ''}${styleToggle(l)}</span>
+                ${line}${openRows.has(l.id) ? catsHTML(l) : ''}</li>`;
         };
         const group = (g, title, note) => { const ls = list.filter(l => l.group === g); return ls.length ? `<h4>${esc(title)}</h4>${note ? `<p class="cl-note">${esc(note)}</p>` : ''}<ul>${ls.map(row).join('')}</ul>` : ''; };
         const keep = pop.scrollTop;
         pop.innerHTML = `<div class="cl-head"><b>SF Layers</b><span class="cl-from">from ${esc(SFBlocks.describe())}</span></div>`
-            + `<p class="cl-note">Show draws a layer over the areas. Count makes it the data, so the areas are colored by it. Click a category to show only that one.</p>`
+            + `<p class="cl-note">Show draws a layer over the areas. Count makes it the data, so the areas are colored by it.</p>`
             + group('city', 'City layers', '')
             + group('tiles', 'Big layers', 'Counting reads every feature from the tiles: a few seconds to a minute.')
             + `<div class="cl-foot"><button type="button" class="btn small ghost" data-cl-none ${on.size ? '' : 'disabled'}>Turn all off</button>`
@@ -377,7 +394,7 @@ const CityLayers = (() => {
 
     const urlOf = l => (SFBlocks.info.base || new URL('./', location.href).href) + l.path;
     // the layer a loaded link is, if it's one (a reopened ?url= link counts as that layer again)
-    const idForUrl = url => { const u = String(url || '').split('?')[0]; return list.find(l => l.group === 'city' && (u === urlOf(l) || u.endsWith('/' + l.path)))?.id || null; };
+    const idForUrl = url => { const u = String(url || '').split('?')[0]; return list.find(l => l.format !== 'pmtiles' && (u === urlOf(l) || u.endsWith('/' + l.path)))?.id || null; };   // big GeoJSON layers too (v60)
 
     function wire() {
         const b = $('layers-toggle'), pop = $('layers-pop'); if (!b || !pop || wire.done) return; wire.done = true;
@@ -385,6 +402,8 @@ const CityLayers = (() => {
         pop.addEventListener('click', e => e.stopPropagation());
         pop.addEventListener('change', e => { const f = e.target.closest('[data-cl-field]'); if (f) setCatField(f.dataset.clField, f.value); });
         pop.addEventListener('click', e => {
+            const op = e.target.closest('[data-cl-open]');
+            if (op) { const id = op.dataset.clOpen; openRows.has(id) ? openRows.delete(id) : openRows.add(id); render(); return; }
             const sh = e.target.closest('[data-cl-show]');
             if (sh) { show(sh.dataset.clShow, !on.has(sh.dataset.clShow)); return; }
             const cat = e.target.closest('[data-cl-cat]');
@@ -400,7 +419,7 @@ const CityLayers = (() => {
             const al = e.target.closest('[data-cl-all]');
             if (al) { const st = catState.get(al.dataset.clAll) || {}; catState.set(al.dataset.clAll, { ...st, only: null, hide: false }); catsChanged(al.dataset.clAll); return; }
             const u = e.target.closest('[data-cl-use]');
-            if (u) { const l = byId.get(u.dataset.clUse); if (counted() === l.id) return;
+            if (u) { const l = byId.get(u.dataset.clUse); if (counted() === l.id) { opts.stopCount?.(l.id); render(); return; }
                 open(false);
                 // Count shows it too; small layers load as a link (?url=), big ones are read from their tiles (?layerdata=)
                 if (!on.has(l.id)) show(l.id, true);
@@ -509,13 +528,15 @@ const CityLayers = (() => {
         if (!on.size) return '';
         const z = map ? map.getZoom() : 99;
         return `<h4 class="rows-h cl-h">SF Layers</h4>` + [...on].map(id => byId.get(id)).filter(Boolean).map(l => {
-            const c = cats(l), off = keyOff.has(l.id);
+            const c0 = cats(l), off = keyOff.has(l.id), one = c0 && c0.as === 'one', c = one ? null : c0;
             const n = l.from && z < l.from ? `zoom in (${l.from}+)` : l.features != null ? fmtN(l.features) : '';
             const by = c ? (c.fields.length > 1 ? `<select class="cl-kby" data-cl-field="${esc(l.id)}" aria-label="Color ${esc(l.label)} by">${c.fields.map(f => `<option value="${esc(f)}"${f === c.field ? ' selected' : ''}>by ${esc(f)}</option>`).join('')}</select>` : `<span class="cl-kby">by ${esc(c.field)}</span>`) : '';
-            const head = `<div class="row cl-row${off ? ' off' : ''}"><input type="checkbox" class="cl-kon" data-cl-key="${esc(l.id)}"${off ? '' : ' checked'} aria-label="Show ${esc(l.label)}">${c ? '' : swatch(l)}<span class="cl-kname">${esc(l.label)}</span>${by}<span class="n">${n}</span></div>`;
+            const head = `<div class="row cl-row${off ? ' off' : ''}"><input type="checkbox" class="cl-kon" data-cl-key="${esc(l.id)}"${off ? '' : ' checked'} aria-label="Show ${esc(l.label)}">${c ? '' : swatch(l)}<span class="cl-kname" title="${esc(l.label)}">${esc(l.label)}</span>${by}<span class="n">${n}</span></div>`;
+            // one color: the swatch says it all; a filter still shows what's left out
+            if (one && c0.only && !off) return head + `<div class="cl-kcats"><span class="cl-kc more">only ${esc(catWords(c0))} · <button type="button" class="cl-klink" data-cl-all="${esc(l.id)}">show all</button></span></div>`;
             if (!c || off) return head;
             const st = catState.get(l.id) || {}, all = st.kmore, m = all ? c.list.length : Math.min(SHOW_CATS, c.list.length), rest = c.list.length - m;
-            const rows = c.list.slice(0, m).map(x => `<button type="button" class="cl-kc${catShown(c, x.v) ? '' : ' off'}" data-cl-cat="${esc(l.id)}" data-v="${esc(x.v)}" title="${c.only ? 'Click to show or hide' : 'Show only this'}">${markHTML(l, c, x)}<span>${esc(x.v)}</span><em>${fmtC(x.n)}</em></button>`).join('');
+            const rows = c.list.slice(0, m).map(x => `<button type="button" class="cl-kc${catShown(c, x.v) ? '' : ' off'}" data-cl-cat="${esc(l.id)}" data-v="${esc(x.v)}" title="${esc(x.v)}: ${c.only ? 'click to show or hide' : 'click to show only this'}">${markHTML(l, c, x)}<span>${esc(x.v)}</span><em>${fmtC(x.n)}</em></button>`).join('');
             const more = rest > 0 ? `<button type="button" class="cl-kc more" data-cl-kmore="${esc(l.id)}">+${rest} more</button>` : all && c.list.length > SHOW_CATS ? `<button type="button" class="cl-kc more" data-cl-kmore="${esc(l.id)}">fewer</button>` : '';
             const reset = c.only ? `<button type="button" class="cl-kc more" data-cl-all="${esc(l.id)}">show all</button>` : '';
             return head + `<div class="cl-kcats">${rows}${more}${reset}</div>`;
@@ -568,7 +589,7 @@ const CityLayers = (() => {
     return {
         init, show, legendHTML, readAll, decodeMVT, idForUrl,
         // the colors the shown layers draw in (each category's when it has them), for the file's Auto color (v58)
-        colorsOn: () => [...on].filter(id => !keyOff.has(id)).map(id => byId.get(id)).filter(Boolean).flatMap(l => { const c = cats(l); return c ? c.list.filter(x => x.c !== GRAY).slice(0, 8).map(x => x.c) : [l.color]; }),
+        colorsOn: () => [...on].filter(id => !keyOff.has(id)).map(id => byId.get(id)).filter(Boolean).flatMap(l => { const c = cats(l); return c && c.as !== 'one' ? c.list.filter(x => x.c !== GRAY).slice(0, 8).map(x => x.c) : [l.color]; }),
         refresh: () => render(),
         // after a layer is counted: apply its chips to the count
         counted: id => { const l = byId.get(id); if (l) countFilter(l); render(); },

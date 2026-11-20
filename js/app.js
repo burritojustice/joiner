@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v59';
+const _BUILD_VERSION = 'v60';
 
 const CONFIG = {
     // Boundaries and aliases come from sf-blocks (js/sfblocks.js): live, or the copies in data/.
@@ -252,7 +252,7 @@ async function boot() {
     // Layers: sf-blocks' points, lines and areas over the areas; a small one can be loaded as the data
     JoinerUnits.onChange(() => { if (T.open) renderTable(); renderLegend(); });
     CityLayers.init(map, { before: firstSymbolLayer, changed: () => { if (S.src && !S.rowStyle.color && !S.rowClasses) { applyPalette(); renderFormatFeatures(); } renderLegend(); }, useAsData: (url, name, id) => loadLink(url, { name, layer: id }), useLayer: id => loadLayerData(id),
-        countedId: () => S.src?.fromLayer || null, countLine: layerCountLine, countFilter: layerCountFilter })
+        countedId: () => S.src?.fromLayer || null, countLine: layerCountLine, countFilter: layerCountFilter, stopCount: stopCounting })
         .catch(err => console.warn('[joiner] layers', err));
     map.on('zoom', () => { updateZoomReadout(); updateHexZoomNow(); });
     map.on('zoomend', async () => {
@@ -270,7 +270,8 @@ async function boot() {
     renderAirtable();
     // ?url= (Google Sheet, DataSF or any CSV/JSON link) loads that link; the link is shareable.
     const linkParam = new URLSearchParams(location.search).get('url');
-    if (linkParam) { $('link-url').value = linkParam; loadLink(linkParam); }
+    // (after SF Layers is ready, so a layer's own link comes back counted as that layer, not as a file; v60)
+    if (linkParam) { $('link-url').value = linkParam; Promise.race([CityLayers.ready, new Promise(r => setTimeout(r, 8000))]).catch(() => { }).then(() => loadLink(linkParam)); }
     // ?layerdata= (a big sf-blocks layer, read from its tiles) loads that layer as the data
     const layerParam = new URLSearchParams(location.search).get('layerdata');
     if (layerParam && !linkParam) CityLayers.ready.then(() => loadLayerData(layerParam)).catch(() => { });
@@ -1774,6 +1775,8 @@ function itemsHTML(id) {
 
 // The legend folds to one bar per layer (the ▸ in its heading): the classes as equal blocks,
 // min and max at the ends, the median as a line and the mean as a diamond where they fall.
+// what the areas count, under the statistic: the SF layer's or file's name (v60)
+const legendOf = () => S.src && !densityOn() ? `<div class="lg-of" title="${esc(S.src.name)}">${S.src.fromLayer ? 'SF Layer · ' : ''}${esc(S.src.name)}</div>` : '';
 const legendHead = () => `<button type="button" class="lg-fold" aria-expanded="${!S.legendCompact}" title="${S.legendCompact ? 'Show every class' : 'Fold to one bar per layer'}">Legend</button>`;
 function renderLegend() {
     legendMain();
@@ -1804,7 +1807,7 @@ function legendMain() {
     lg.hidden = false;
     const zeroLabel = S.metric.startsWith('avg_') ? 'No rows' : fmt(0);
     const nZero = [...S.values.values()].filter(v => !(v > 0)).length;
-    lg.innerHTML = legendHead() + `<h4>${esc(metricLabel())}</h4>` + [...(S.classes?.ranges || [])].reverse().map(r =>
+    lg.innerHTML = legendHead() + legendOf() + `<h4>${esc(metricLabel())}</h4>` + [...(S.classes?.ranges || [])].reverse().map(r =>
         `<div class="row"><i style="background:${ramp()[r.c]}"></i><span>${r.lo === r.hi ? fmtShort(r.hi, S.metric) : `${fmtShort(r.lo, S.metric)} – ${fmtShort(r.hi, S.metric)}`}</span><span class="n">${r.n}</span></div>`).join('')
         + `<div class="row"><i class="clear"></i><span>${zeroLabel}${hidingEmpty() ? ' (hidden)' : ''}</span><span class="n">${nZero}</span></div>`
         + `<div class="foot">${CLASS_METHODS[S.classes?.method] || 'Natural breaks'}${S.classes?.log ? ' · log' : ''} · areas per class</div>` + rowLegendHTML();
@@ -1829,7 +1832,7 @@ function compactLegendHTML() {
     if (S.join && S.showAreas && S.classes) {
         const nZero = [...S.values.values()].filter(v => !(v > 0)).length;
         const unit = meta.hex ? 'hexagons' : 'areas';
-        parts.push(legendBar({ name: metricLabel(), right: `${S.classes.stats.n.toLocaleString()} ${unit}${nZero ? ` · ${nZero.toLocaleString()} empty` : ''}`,
+        parts.push(legendOf() + legendBar({ name: metricLabel(), right: `${S.classes.stats.n.toLocaleString()} ${unit}${nZero ? ` · ${nZero.toLocaleString()} empty` : ''}`,
             blocks: S.classes.ranges.map(r => ({ color: ramp()[r.c], lo: r.lo, hi: r.hi })), stats: S.classes.stats, f: v => fmtShort(v, S.metric) }));
     }
     const rc = S.rowClasses;
@@ -2928,6 +2931,14 @@ function layerCountFilter(id, field, keep, words) {
     if (T.open) renderTable(); else renderTableFilters();
     if (keep) toast(`Counting only ${words}`, { sub: `${field} · the filter is in the table too`, ms: 3500 });
 }
+// Count ✓ clicked again (v60): the layer stops being the data (it stays drawn while Show is on)
+function stopCounting(id) {
+    if (!S.src || S.src.fromLayer !== id) return;
+    const name = S.src.name;
+    T.conds = T.conds.filter(f => !f.fromLayer); T.mapOnly = false; S.mapMask = null; mapFilterSig = '';
+    clearFile();
+    toast(`Stopped counting ${name}`, { sub: 'It stays on the map while Show is on', ms: 3500 });
+}
 async function loadLayerData(id) {
     const l = CityLayers.byId(id);
     if (!l) { toast(`There's no layer “${id}” in sf-blocks`, { ms: 5000 }); return; }
@@ -2976,8 +2987,9 @@ async function loadLink(url, { name = null, layer = null } = {}) {
             if (st === 'fetch') step(`Loading ${what}…`, [info.page > 1 ? `page ${info.page}` : '', info.rows ? `${info.rows.toLocaleString()} rows so far` : '', info.bytes ? mb(info.bytes) : ''].filter(Boolean).join(' · ') || new URL(url).host);
             else if (st === 'locate') step('Finding locations', `${Math.round(info * 100)}%`, info);
         } });
-        if (name) src.name = name;
         src.fromLayer = layer || window.CityLayers?.idForUrl?.(url) || null;
+        if (!name && src.fromLayer) name = CityLayers.byId(src.fromLayer)?.label;
+        if (name) src.name = name;
         if (src.fromLayer) src.units = CityLayers.byId(src.fromLayer)?.units || null;
         step(`Matching ${src.rows.length.toLocaleString()} rows`, src.geomFrom ? `Using the ${src.geomFrom}` : 'Looking for a column that names areas');
         await nextFrame();

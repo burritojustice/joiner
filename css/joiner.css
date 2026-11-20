@@ -745,3 +745,31 @@ i.cl-mk.poly { width: 11px; height: 9px; border: 1.5px solid; border-radius: 2px
 /* v59: feet or meters for measured fields */
 .cl-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .cl-units { display: inline-flex; align-items: center; gap: 6px; }
+
+/* v60: long names stay inside the key; SF Layers opens one line per layer; one color */
+.legend { max-width: min(300px, calc(100% - 24px)); box-sizing: border-box; }
+.legend.compact { width: 270px; max-width: min(270px, calc(100% - 24px)); }
+.legend .row, .legend .lg-name { min-width: 0; }
+.legend .row > span:not(.n), .legend .cl-kname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legend .row.cl-row .cl-kname { flex: 1 1 auto; }
+.legend .cl-kby { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cl-kcats { grid-template-columns: minmax(0, 1fr); }
+.cl-kc { min-width: 0; }
+.cl-klink { all: unset; cursor: pointer; text-decoration: underline; }
+.legend .lg-of { font-size: 11.5px; color: var(--ink-soft); margin: 0 0 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-pill button.cnt[aria-pressed="true"] { cursor: pointer; }
+.cl-pill button.cnt[aria-pressed="true"]:hover { background: #F5D96B; }
+.cl-cat { max-width: 100%; min-width: 0; }
+.cl-cat .cl-cv { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 22em; }
+.cl-rmk { display: inline-flex; align-items: center; gap: 1px; margin: 0 2px; }
+.cl-rmk i.cl-mk.pt { width: 6px; height: 6px; }
+.cl-rmk svg.cl-mk { width: 9px; height: 9px; }
+.cl-rmk svg.cl-mk.ln { width: 9px; height: 8px; }
+.cl-rmk i.cl-mk.poly { width: 7px; height: 7px; }
+.cl-open { all: unset; cursor: pointer; margin-left: 6px; color: var(--ink); text-decoration: underline dotted; text-underline-offset: 2px; }
+.cl-open:hover { text-decoration-style: solid; }
+.cl-style .cl-sw { display: inline-block; vertical-align: middle; margin-right: 3px; }
+.cl-rmk.cl-rbar { gap: 0; width: 20px; height: 4px; border-radius: 2px; overflow: hidden; }
+.cl-rmk.cl-rbar i { flex: 1; height: 100%; }
+.legend .row.cl-row .cl-kname { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.25; }
+.legend .cl-kby { flex: 0 3 auto; max-width: 7em; }
