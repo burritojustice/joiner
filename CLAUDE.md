@@ -44,6 +44,7 @@ A MapLibre map that joins rows from CSV, JSON or GeoJSON files, Airtable views, 
 - `normalizerFor(meta)` builds the forgiving name matcher (`JoinKit.makeLooseNormalizer`). `delimFor(col)` detects columns that list several areas in one cell. `areasOfRow(i)` gives every area a row is in.
 - `loadHex()` builds the H3 grid. Auto resolution, switch zooms and short codes come from `JoinKit.hex`. Names come from `hexNameSet()`: neighborhoods, or counties from level 7 down.
 - A file's one color (v58): `S.rowStyle.color` ('' = Auto) from `SWATCHES` (`#row-swatches`); `rowColorNow()` gives Auto as the palette's `rows` color or the first of `AUTO_ORDER` with `colorGap()` over 150 (then 90) from every color in `CityLayers.colorsOn()`; SF Layers' `changed` re-applies it.
+- Units (v59): a layer's `units` from the sf-blocks manifest (`{ elev_m: 'm' }`) goes on `src.units` when it's counted; `JoinerUnits` (`pref` ft / m, localStorage `joiner.units`, `show(v, u)`, `label(k, u)`) formats those columns in the table (`showIn`, `unitOf`), the row popup and the SF Layers hover; the switch is `data-cl-unit` in the menu's foot.
 - Lines from a file: `slimLine(g)` sets `_slim` on rows that aren't one street-sized LineString (under 1 km); `lineWS()` draws those about 3 px and `hlLineW()` gives them a slim hover highlight, while street-sized lines keep `lineW()` / `hlW()` (v57).
 - Table: `tableRowIdx()` → `searchAndFilter()` → `renderTable()`. **Map only these** sets `S.mapMask`, and `maskJoin()` narrows the join to those rows.
 
