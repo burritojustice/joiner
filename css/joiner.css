@@ -733,3 +733,11 @@ i.cl-mk.poly { width: 11px; height: 9px; border: 1.5px solid; border-radius: 2px
 .cl-kc.off { opacity: .4; }
 .cl-kc.off span { text-decoration: line-through; }
 .cl-kc.more { color: var(--ink-soft); font-size: 11.5px; }
+
+/* v58: one color for a loaded file's features: Auto or a swatch */
+.row-swatches { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.row-swatches button { display: inline-flex; align-items: center; gap: 5px; padding: 2px; border: 1.5px solid transparent; border-radius: 7px; background: none; cursor: pointer; font: 600 11.5px var(--body); color: var(--ink); }
+.row-swatches button i { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(30,35,64,.25); }
+.row-swatches .sw-auto { padding-right: 7px; }
+.row-swatches button[aria-pressed="true"] { border-color: var(--ink); }
+.row-swatches button:not([aria-pressed="true"]):hover { border-color: var(--line); }

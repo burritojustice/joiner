@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v57';
+const _BUILD_VERSION = 'v58';
 
 const CONFIG = {
     // Boundaries and aliases come from sf-blocks (js/sfblocks.js): live, or the copies in data/.
@@ -161,7 +161,7 @@ const S = {
     labelSize: 'auto',    // 'auto' (by the size of the areas) | 'small' | 'medium' | 'large'
     revealAll: false,     // show every label line at once instead of adding them as you zoom in
     labelColor: 'auto',   // 'auto' or a key of CONFIG.labelColors
-    rowStyle: { colorBy: '', labels: [], sizeBy: '', sizeLog: false },   // Format features: color rows by a column, label them with columns
+    rowStyle: { colorBy: '', color: '', labels: [], sizeBy: '', sizeLog: false },   // Format features: one color ('' = Auto) or by a column, labels
     rowClasses: null,     // { type: 'numeric'|'category', colors, ranges|cats, classOf(row) }
     expanded: null,       // area id expanded in the list
     rowArea: [],          // row index → area id it was placed in (null = not placed), active layer
@@ -250,7 +250,7 @@ async function boot() {
     renderOrderSeg();
     wireUI();
     // Layers: sf-blocks' points, lines and areas over the areas; a small one can be loaded as the data
-    CityLayers.init(map, { before: firstSymbolLayer, changed: renderLegend, useAsData: (url, name, id) => loadLink(url, { name, layer: id }), useLayer: id => loadLayerData(id),
+    CityLayers.init(map, { before: firstSymbolLayer, changed: () => { if (S.src && !S.rowStyle.color && !S.rowClasses) { applyPalette(); renderFormatFeatures(); } renderLegend(); }, useAsData: (url, name, id) => loadLink(url, { name, layer: id }), useLayer: id => loadLayerData(id),
         countedId: () => S.src?.fromLayer || null, countLine: layerCountLine, countFilter: layerCountFilter })
         .catch(err => console.warn('[joiner] layers', err));
     map.on('zoom', () => { updateZoomReadout(); updateHexZoomNow(); });
@@ -509,6 +509,32 @@ function addMapLayers() {
     });
 }
 
+// A loaded file's one color (v58): picked by hand from SWATCHES (Block Party's: ROYGBIV, aqua, magenta,
+// black, white), or Auto: the area palette's row color, else the first of AUTO_ORDER that's clearly unlike the
+// SF Layers on the map (and their category colors), so a file never lands in a layer's color.
+const SWATCHES = [['#E03131', 'Red'], ['#F76707', 'Orange'], ['#F2B705', 'Yellow'], ['#2B9348', 'Green'], ['#1C7ED6', 'Blue'],
+    ['#3F37C9', 'Indigo'], ['#8E44AD', 'Violet'], ['#00B4C5', 'Aqua'], ['#D91BB5', 'Magenta'], ['#1E2340', 'Black'], ['#FFFFFF', 'White']];
+const AUTO_ORDER = ['#F76707', '#1C7ED6', '#D91BB5', '#2B9348', '#00B4C5', '#E03131', '#8E44AD', '#F2B705', '#3F37C9', '#1E2340'];
+function hexRGB(c) {
+    const h = String(c).trim();
+    if (h[0] === '#') { const x = h.length === 4 ? [...h.slice(1)].map(k => k + k).join('') : h.slice(1, 7); return [0, 2, 4].map(i => parseInt(x.slice(i, i + 2), 16)); }
+    const m = h.match(/hsl\(\s*([\d.]+)\D+([\d.]+)%\D+([\d.]+)%/); if (!m) return null;
+    const H = +m[1] / 360, S2 = +m[2] / 100, L = +m[3] / 100, q = L < 0.5 ? L * (1 + S2) : L + S2 - L * S2, p2 = 2 * L - q;
+    const f = t => { t = (t + 1) % 1; return 255 * (t < 1 / 6 ? p2 + (q - p2) * 6 * t : t < 0.5 ? q : t < 2 / 3 ? p2 + (q - p2) * (2 / 3 - t) * 6 : p2); };
+    return [f(H + 1 / 3), f(H), f(H - 1 / 3)];
+}
+function colorGap(a, b) {   // a rough "redmean" distance; under ~120 reads as the same color on a map
+    const x = hexRGB(a), y = hexRGB(b); if (!x || !y) return 999;
+    const r = (x[0] + y[0]) / 2, d = x.map((v, i) => v - y[i]);
+    return Math.sqrt((2 + r / 256) * d[0] ** 2 + 4 * d[1] ** 2 + (2 + (255 - r) / 256) * d[2] ** 2);
+}
+function rowColorNow() {
+    if (S.rowStyle.color) return S.rowStyle.color;
+    const used = window.CityLayers ? CityLayers.colorsOn() : [];
+    const p = pal(), cands = [p.rows, ...AUTO_ORDER.filter(c => c !== p.rows)];
+    return cands.find(c => used.every(u => colorGap(c, u) > 150)) || cands.find(c => used.every(u => colorGap(c, u) > 90)) || p.rows;
+}
+
 // Relative luminance, for choosing a white or dark glow around a color.
 function luminance(hex) {
     const c = hex.replace('#', '').match(/../g).map(h => { const v = parseInt(h, 16) / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
@@ -536,7 +562,7 @@ function applyPalette() {
         ['match', ['coalesce', ['feature-state', 'c'], -1], ...p.ramp.flatMap((c, i) => [i, c]), 'rgba(0,0,0,0)']);
     // Rows: one contrasting color, or one per class when colored by a column (property _k).
     const rc = S.rowClasses;
-    const colors = rc ? rc.colors : [p.rows];
+    const colors = rc ? rc.colors : [rowColorNow()];
     // Class -1 (no value, or a category folded into Other) is gray.
     const pick = (vals, other) => rc ? ['match', ['get', '_k'], ...vals.flatMap((v, i) => [i, v]), other] : vals[0];
     const color = pick(colors, CONFIG.other), glow = pick(colors.map(glowFor), glowFor(CONFIG.other));
@@ -548,7 +574,7 @@ function applyPalette() {
     map.setPaintProperty('rows-sline-casing', 'line-color', glow);
     applyPointStyle(color, glow);
     applyOutline();
-    document.documentElement.style.setProperty('--rows', p.rows);
+    document.documentElement.style.setProperty('--rows', rowColorNow());
 }
 
 // Points and lines in the chosen style. Rows not placed in an area are hollow or faded.
@@ -1565,7 +1591,10 @@ function renderFormatFeatures() {
     $('points-count').textContent = S.src.geoms.filter(Boolean).length.toLocaleString();
     const cols = S.src.headers.filter(h => !h.startsWith('_') && !(S.src.geomCols || []).includes(h));
     $('row-color').innerHTML = `<option value="">One color</option>` + cols.map(c => `<option value="${esc(c)}"${c === S.rowStyle.colorBy ? ' selected' : ''}>${esc(c)}</option>`).join('');
-    const rc = S.rowClasses;
+    const rc = S.rowClasses, now = rowColorNow();
+    $('row-swatches').hidden = !!rc;
+    $('row-swatches').innerHTML = `<button type="button" class="sw-auto" data-swatch="" aria-pressed="${!S.rowStyle.color}" title="Auto: a color unlike the SF Layers on the map"><i style="background:${now}"></i>Auto</button>`
+        + SWATCHES.map(([c, n]) => `<button type="button" data-swatch="${c}" aria-pressed="${S.rowStyle.color === c}" title="${n}" aria-label="${n}"><i style="background:${c}"></i></button>`).join('');
     $('row-color-hint').textContent = !rc ? 'Solid when placed in an area, hollow when not.'
         : rc.type === 'numeric' ? `A number: ${rc.colors.length} classes by natural breaks, on the ${rowRampPal().label.toLowerCase()} ramp so rows stand out from the areas.`
         : `${rc.cats.length} most common values${rc.otherN ? ', the rest as Other' : ''}.` + (rc.cats.length > 3 ? ' More than 3 colors can be hard to tell apart; hover names the value.' : '');
@@ -2757,7 +2786,7 @@ async function useSource(src, { keep = false } = {}) {
             Object.assign(S.keyCols, st.keyCols || {});
             if (st.metric) S.metric = st.metric;
             if (st.palette && CONFIG.palettes[palKey(st.palette)]) { S.palette = palKey(st.palette); applyPalette(); }
-            if (st.rowStyle) S.rowStyle = { colorBy: st.rowStyle.colorBy || '', labels: st.rowStyle.labels || [], sizeBy: st.rowStyle.sizeBy || '', sizeLog: !!st.rowStyle.sizeLog };
+            if (st.rowStyle) S.rowStyle = { colorBy: st.rowStyle.colorBy || '', color: st.rowStyle.color || '', labels: st.rowStyle.labels || [], sizeBy: st.rowStyle.sizeBy || '', sizeLog: !!st.rowStyle.sizeLog };
             if (st.pointSize && CONFIG.pointSizes[st.pointSize]) S.pointSize = st.pointSize;
             if (st.hexPointSize && CONFIG.pointSizes[st.hexPointSize]) S.hexPointSize = st.hexPointSize;
             if (st.pointStyle && CONFIG.pointStyles[st.pointStyle]) S.pointStyle = st.pointStyle;
@@ -3320,6 +3349,7 @@ function wireUI() {
         applyStreetColor();
     };
     $('row-color').onchange = e => { S.rowStyle.colorBy = e.target.value; updateRowLayer(); renderFormatFeatures(); };
+    $('row-swatches').onclick = e => { const b = e.target.closest('[data-swatch]'); if (!b) return; S.rowStyle.color = b.dataset.swatch; applyPalette(); renderFormatFeatures(); renderLegend(); };
     $('row-label-chips').onclick = e => {
         const b = e.target.closest('.chip'); if (!b) return;
         const c = b.dataset.col, l = S.rowStyle.labels;
