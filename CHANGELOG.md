@@ -2,6 +2,11 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v58
+
+- **Pick a color for your file's features.** Under Format features → Color by, "One color" now has a row of swatches: red, orange, yellow, green, blue, indigo, violet, aqua, magenta, black and white (Block Party's file colors), plus **Auto**.
+- **Auto stays clear of SF Layers.** It used to be tied to the area palette (orange with Blues), the same orange as the first SF Layer. Now it takes the palette's color only when no SF Layer on the map is drawn in something like it; otherwise the first of orange, blue, magenta, green, aqua… that isn't. With the 1850s shorelines on (green, blue, orange), a dropped file comes in magenta. It changes again if you turn layers on or off; a picked swatch stays.
+
 ## v57
 
 - **Hovering a value in the map key highlights it on the map:** the layer's other values fade while the pointer is on it. The chips in the menu do the same.

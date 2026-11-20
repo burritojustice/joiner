@@ -562,6 +562,8 @@ const CityLayers = (() => {
 
     return {
         init, show, legendHTML, readAll, decodeMVT, idForUrl,
+        // the colors the shown layers draw in (each category's when it has them), for the file's Auto color (v58)
+        colorsOn: () => [...on].filter(id => !keyOff.has(id)).map(id => byId.get(id)).filter(Boolean).flatMap(l => { const c = cats(l); return c ? c.list.filter(x => x.c !== GRAY).slice(0, 8).map(x => x.c) : [l.color]; }),
         refresh: () => render(),
         // after a layer is counted: apply its chips to the count
         counted: id => { const l = byId.get(id); if (l) countFilter(l); render(); },
