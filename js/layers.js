@@ -272,7 +272,8 @@ const CityLayers = (() => {
         map.getCanvas().style.cursor = 'default';
         const p = f.properties || {}, nf = nameField(l), title = nf && p[nf] != null && p[nf] !== '' ? p[nf] : l.label;
         const rows = Object.entries(p).filter(([k, v]) => k !== nf && !SKIP.test(k) && v != null && v !== '').slice(0, 8)
-            .map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(String(v).slice(0, 80))}</td></tr>`).join('');
+            .map(([k, v]) => { const u = l.units?.[k], U = window.JoinerUnits;
+                return `<tr><th>${esc(u && U ? U.label(k, u) : k)}</th><td>${esc(u && U ? U.show(v, u) : String(v).slice(0, 80))}</td></tr>`; }).join('');
         if (!tip) tip = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: 'cl-tip', offset: 10, maxWidth: '280px' });
         const c = cats(l), dot = c ? (c.list.find(x => x.v === String(p[c.field] ?? ''))?.c || GRAY) : l.color;
         tip.setLngLat(e.lngLat).setHTML(`<div class="cl-tip-in"><span class="cl-dot" style="background:${dot}"></span><b>${esc(title)}</b><div class="cl-src">${esc(l.label)}</div>${rows ? `<table>${rows}</table>` : ''}</div>`).addTo(map);
@@ -356,7 +357,9 @@ const CityLayers = (() => {
             + `<p class="cl-note">Show draws a layer over the areas. Count makes it the data, so the areas are colored by it. Click a category to show only that one.</p>`
             + group('city', 'City layers', '')
             + group('tiles', 'Big layers', 'Counting reads every feature from the tiles: a few seconds to a minute.')
-            + `<div class="cl-foot"><button type="button" class="btn small ghost" data-cl-none ${on.size ? '' : 'disabled'}>Turn all off</button></div>`;
+            + `<div class="cl-foot"><button type="button" class="btn small ghost" data-cl-none ${on.size ? '' : 'disabled'}>Turn all off</button>`
+            + (list.some(l => l.units) && window.JoinerUnits ? `<span class="cl-units"><span class="cl-by">heights in</span><span class="cl-seg">${['ft', 'm'].map(u => `<button type="button" data-cl-unit="${u}" aria-pressed="${JoinerUnits.pref === u}">${u}</button>`).join('')}</span></span>` : '')
+            + `</div>`;
         pop.scrollTop = keep;
     }
 
@@ -386,6 +389,8 @@ const CityLayers = (() => {
             if (sh) { show(sh.dataset.clShow, !on.has(sh.dataset.clShow)); return; }
             const cat = e.target.closest('[data-cl-cat]');
             if (cat) { pickCat(cat.dataset.clCat, cat.dataset.v); return; }
+            const un = e.target.closest('[data-cl-unit]');
+            if (un) { JoinerUnits.set(un.dataset.clUnit); render(); return; }
             const as = e.target.closest('[data-cl-as]');
             if (as) { setStyle(as.dataset.clAs, as.dataset.v); return; }
             const pl = e.target.closest('[data-cl-pal]');

@@ -2,6 +2,11 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v59
+
+- **Heights in feet or meters.** sf-blocks now stores measurements in meters and says which fields are (storm drains' elevation, `elev_m`). Joiner shows them in feet by default, or meters: the switch is at the bottom of SF Layers ("heights in ft · m") and is remembered in this browser. It applies to the hover popup, the table (the column reads "elev (ft)") and a row's details once a layer is counted.
+- Table filters on those columns still compare the stored meters.
+
 ## v58
 
 - **Pick a color for your file's features.** Under Format features → Color by, "One color" now has a row of swatches: red, orange, yellow, green, blue, indigo, violet, aqua, magenta, black and white (Block Party's file colors), plus **Auto**.

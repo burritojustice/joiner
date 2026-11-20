@@ -741,3 +741,7 @@ i.cl-mk.poly { width: 11px; height: 9px; border: 1.5px solid; border-radius: 2px
 .row-swatches .sw-auto { padding-right: 7px; }
 .row-swatches button[aria-pressed="true"] { border-color: var(--ink); }
 .row-swatches button:not([aria-pressed="true"]):hover { border-color: var(--line); }
+
+/* v59: feet or meters for measured fields */
+.cl-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cl-units { display: inline-flex; align-items: center; gap: 6px; }

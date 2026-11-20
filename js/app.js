@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v58';
+const _BUILD_VERSION = 'v59';
 
 const CONFIG = {
     // Boundaries and aliases come from sf-blocks (js/sfblocks.js): live, or the copies in data/.
@@ -250,6 +250,7 @@ async function boot() {
     renderOrderSeg();
     wireUI();
     // Layers: sf-blocks' points, lines and areas over the areas; a small one can be loaded as the data
+    JoinerUnits.onChange(() => { if (T.open) renderTable(); renderLegend(); });
     CityLayers.init(map, { before: firstSymbolLayer, changed: () => { if (S.src && !S.rowStyle.color && !S.rowClasses) { applyPalette(); renderFormatFeatures(); } renderLegend(); }, useAsData: (url, name, id) => loadLink(url, { name, layer: id }), useLayer: id => loadLayerData(id),
         countedId: () => S.src?.fromLayer || null, countLine: layerCountLine, countFilter: layerCountFilter })
         .catch(err => console.warn('[joiner] layers', err));
@@ -1422,6 +1423,28 @@ function isMoneyCol(col) {
 }
 const fmtCol = (v, col) => fmtNumber(v, { money: isMoneyCol(col) });
 // A cell as shown in popups, lists and row labels: dollar amounts without cents.
+// Measurements (v59): sf-blocks stores them in meters and says so in a layer's `units` ({ elev_m: 'm' });
+// Joiner shows feet or meters, switched in SF Layers (localStorage joiner.units, feet unless set).
+window.JoinerUnits = (() => {
+    let pref = 'ft';
+    try { pref = localStorage.getItem('joiner.units') === 'm' ? 'm' : 'ft'; } catch (e) { }
+    const listeners = [];
+    return {
+        get pref() { return pref; },
+        set(u) { pref = u === 'm' ? 'm' : 'ft'; try { localStorage.setItem('joiner.units', pref); } catch (e) { } listeners.forEach(f => f()); },
+        onChange: f => listeners.push(f),
+        // a stored value in its unit, shown in the chosen one
+        show(v, u) {
+            const n = typeof v === 'number' ? v : parseFloat(v); if (u !== 'm' || !isFinite(n)) return v == null ? '' : String(v);
+            return pref === 'ft' ? `${Math.round(n * 3.28084).toLocaleString()} ft` : `${(Math.round(n * 10) / 10).toLocaleString()} m`;
+        },
+        // a field's name with its unit: elev_m → elev (ft)
+        label: (k, u) => u === 'm' ? `${k.replace(/_m$/, '')} (${pref})` : k,
+    };
+})();
+const unitOf = c => S.src?.units?.[c];
+const showIn = (v, c) => unitOf(c) ? JoinerUnits.show(JoinKit.cellText(v), unitOf(c)) : cellShow(v);
+
 function cellShow(v) {
     const t = JoinKit.cellText(v);
     const m = /^\s*(-?)\$\s?([\d,]+(?:\.\d+)?)\s*$/.exec(t);
@@ -2196,13 +2219,13 @@ function renderTable() {
     const all = [AREA_SORT, ...cols];
     const pinned = all.includes(T.pin) ? T.pin : (cols.includes(rowLabelCol()) ? rowLabelCol() : AREA_SORT);
     const order = [pinned, ...all.filter(c => c !== pinned)];
-    const title = c => c === AREA_SORT ? areaLabel : c;
+    const title = c => c === AREA_SORT ? areaLabel : unitOf(c) ? JoinerUnits.label(c, unitOf(c)) : c;
     const PIN = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 1.5l4 4-2 1-2.6 2.6.4 3.2-1.3 1.2-3-3L2 14.5l-.5-.5 4-4-3-3 1.2-1.3 3.2.4L9.5 3.5z"/></svg>';
     const head = `<tr>${order.map(c => `<th data-col="${esc(c)}" class="${sortCls(c)}${c === pinned ? ' pinned' : ''}${c === AREA_SORT ? ' area' : ''}" title="Sort by ${esc(title(c))}"><span class="th-t">${esc(title(c))}</span><button type="button" class="pin" data-pin="${esc(c)}" title="${c === pinned ? 'Pinned at the left' : 'Pin this column at the left'}" aria-pressed="${c === pinned}">${PIN}</button></th>`).join('')}</tr>`;
     const cell = (i, c) => {
         if (c === AREA_SORT) return `<td class="area${c === pinned ? ' pinned' : ''}">${esc(area(i))}</td>`;
-        const t = cellShow(S.src.rows[i][c]);
-        return `<td class="${c === pinned ? 'pinned' : ''}" title="${esc(t.length > 40 ? t : '')}">${esc(t)}</td>`;
+        const t = showIn(S.src.rows[i][c], c);
+        return `<td class="${c === pinned ? 'pinned' : ''}${unitOf(c) ? ' num' : ''}" title="${esc(t.length > 40 ? t : '')}">${esc(t)}</td>`;
     };
     const body = shown.map(i => `<tr data-row="${i}" class="${S.src.points?.[i] ? 'has-loc' : ''}">${order.map(c => cell(i, c)).join('')}</tr>`).join('');
     const grid = $('table-grid');
@@ -2710,7 +2733,7 @@ function rowPopupHTML(i, { all = false } = {}) {
     const fields = S.src.headers.filter(h => !h.startsWith('_') && JoinKit.cellText(r[h]) !== '' && !(S.src.geomCols || []).includes(h)).slice(0, all ? Infinity : 30);
     // Value first, field name under it (long names are cut short; the full name is in the tooltip).
     return `<div class="pop"><h4>${esc(rowTitle(i))}</h4><div class="sub">${a ? esc(a) : 'Not placed in an area'}${off.length ? `<br>Not on the map: ${esc(off.join(', '))}` : ''}</div>
-        <dl class="fields">${fields.map(h => `<div><dd>${esc(cellShow(r[h]))}</dd><dt title="${esc(h)}">${esc(h)}</dt></div>`).join('')}</dl></div>`;
+        <dl class="fields">${fields.map(h => `<div><dd>${esc(showIn(r[h], h))}</dd><dt title="${esc(h)}">${esc(unitOf(h) ? JoinerUnits.label(h, unitOf(h)) : h)}</dt></div>`).join('')}</dl></div>`;
 }
 
 function popupHTML(f) {
@@ -2919,7 +2942,7 @@ async function loadLayerData(id) {
         const src = JoinerSources.parseJSON(JSON.stringify({ type: 'FeatureCollection', features: [] }), l.label);
         src.rows = fc.features.map(f => ({ ...f.properties })); src.geoms = fc.features.map(f => f.geometry);
         src.headers = [...new Set(src.rows.slice(0, 2000).flatMap(r => Object.keys(r)))];
-        src.fromLayer = id;
+        src.fromLayer = id; src.units = l.units || null;
         await JoinerSources.finishSource(src);
         toast(`Matching ${src.rows.length.toLocaleString()} features`, { busy: true, sub: 'Using the GeoJSON geometry' });
         await nextFrame();
@@ -2955,6 +2978,7 @@ async function loadLink(url, { name = null, layer = null } = {}) {
         } });
         if (name) src.name = name;
         src.fromLayer = layer || window.CityLayers?.idForUrl?.(url) || null;
+        if (src.fromLayer) src.units = CityLayers.byId(src.fromLayer)?.units || null;
         step(`Matching ${src.rows.length.toLocaleString()} rows`, src.geomFrom ? `Using the ${src.geomFrom}` : 'Looking for a column that names areas');
         await nextFrame();
         const q = new URLSearchParams(location.search); q.set('url', url); q.delete('airtable'); q.delete('layerdata');
