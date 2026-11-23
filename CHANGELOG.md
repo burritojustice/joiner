@@ -2,6 +2,11 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v61
+
+- **Water in 1850–52.** SF Layers lists the water from sf-blocks' 1850–52 shoreline survey. Show paints it in the basemap's water color, just above the areas and under the streets, so the land made since then (the Marina, the waterfront, Mission Bay, Islais Creek, India Basin) shows as water. Over today's bay it's the same color, so no edge shows. Turn Areas off and it sits under the basemap's streets the same way. It has no Count button and no categories (it's one area of water).
+- The sea level rise layers (24″ and 66″ with a 100-year storm, and the 108″ zone's edge) show up in SF Layers by themselves once sf-blocks has them.
+
 ## v60
 
 - **SF Layers opens tidier.** Each layer is one line: its name, Show | Count, and a short line saying how it's drawn ("colors by kind ▸"). Click that to open its colors and categories; they're folded away until you do. The mark beside each layer shows its first few colors.
