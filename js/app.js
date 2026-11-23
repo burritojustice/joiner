@@ -4,7 +4,7 @@
 'use strict';
 
 // Bump on every release and add a matching section to CHANGELOG.md.
-const _BUILD_VERSION = 'v60';
+const _BUILD_VERSION = 'v61';
 
 const CONFIG = {
     // Boundaries and aliases come from sf-blocks (js/sfblocks.js): live, or the copies in data/.
@@ -251,7 +251,7 @@ async function boot() {
     wireUI();
     // Layers: sf-blocks' points, lines and areas over the areas; a small one can be loaded as the data
     JoinerUnits.onChange(() => { if (T.open) renderTable(); renderLegend(); });
-    CityLayers.init(map, { before: firstSymbolLayer, changed: () => { if (S.src && !S.rowStyle.color && !S.rowClasses) { applyPalette(); renderFormatFeatures(); } renderLegend(); }, useAsData: (url, name, id) => loadLink(url, { name, layer: id }), useLayer: id => loadLayerData(id),
+    CityLayers.init(map, { before: firstSymbolLayer, waterBefore: () => S.showAreas && !areasUnder() && map.getLayer('bounds-glow') ? 'bounds-glow' : null, changed: () => { if (S.src && !S.rowStyle.color && !S.rowClasses) { applyPalette(); renderFormatFeatures(); } renderLegend(); }, useAsData: (url, name, id) => loadLink(url, { name, layer: id }), useLayer: id => loadLayerData(id),
         countedId: () => S.src?.fromLayer || null, countLine: layerCountLine, countFilter: layerCountFilter, stopCount: stopCounting })
         .catch(err => console.warn('[joiner] layers', err));
     map.on('zoom', () => { updateZoomReadout(); updateHexZoomNow(); });
@@ -380,6 +380,7 @@ function applyAreaOrder() {
     map.moveLayer('bounds-fill', areasUnder() && water ? water : 'bounds-glow');
     applyRoadHint(areasUnder() && S.showAreas);
     applyBasemapToggles();   // the street copies are redundant when the areas are under the streets
+    window.CityLayers?.placeWater?.();
     renderOrderSeg();
 }
 function renderOrderSeg() {
@@ -2470,6 +2471,7 @@ function applyAreasVisible() {
     syncBarToggles();
     for (const id of ['bounds-fill', 'bounds-glow', 'bounds-line', 'bounds-hl', 'area-labels']) map.setLayoutProperty(id, 'visibility', v);
     applyRoadHint(areasUnder() && S.showAreas);
+    window.CityLayers?.placeWater?.();
     store.set('showAreas', S.showAreas);
     updateLabels();
     renderLegend();

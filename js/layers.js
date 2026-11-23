@@ -78,6 +78,7 @@ const CityLayers = (() => {
     const catState = new Map();
     const canShape = l => kindOf(l) !== 'Polygon';
     function cats(l) {
+        if (l.draw === 'water') return null;   // one water color, no categories
         const fs = catFields(l); if (!fs.length) return null;
         const st = catState.get(l.id) || {};
         const f = fs.find(x => x.field === st.field) || fs[0];
@@ -225,7 +226,7 @@ const CityLayers = (() => {
         // big point layers (street trees, businesses) only from zoom 14: at city zoom they're a smear
         await Promise.all(list.filter(l => l.group === 'tiles' && l.stats).map(l => SFBlocks.json(tilesDir + l.stats).then(d => { l.stats_data = d; }).catch(() => { })));
         try { catsIn(JSON.parse(localStorage.getItem(CAT_KEY))); } catch (e) { }
-        list.forEach((l, i) => { l.color = OWN_COLOR[l.id] || COLORS[i % COLORS.length]; l.from = Math.max(l.minzoom || 0, kindOf(l) === 'Point' && l.features > 20000 ? 14 : 0); byId.set(l.id, l); });
+        list.forEach((l, i) => { l.color = l.draw === 'water' ? waterColor() : OWN_COLOR[l.id] || COLORS[i % COLORS.length]; l.from = Math.max(l.minzoom || 0, kindOf(l) === 'Point' && l.features > 20000 ? 14 : 0); byId.set(l.id, l); });
         // the link wins; else what this browser had on
         const q = new URLSearchParams(location.search).get('layers');
         let want = q != null ? q.split(',') : []; if (q == null) try { want = JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { }
@@ -236,11 +237,42 @@ const CityLayers = (() => {
         map.on('styleimagemissing', e => { if (String(e.id).startsWith('cl-shape-')) addShapes(); });
     }
 
+    // the basemap's water color, for layers marked draw: 'water' (sf-blocks' Water in 1850–52)
+    function waterColor() {
+        const w = map.getStyle()?.layers?.find(x => x.type === 'fill' && x['source-layer'] === 'water');
+        const c = w && map.getPaintProperty(w.id, 'fill-color');
+        return typeof c === 'string' ? c : '#A6C8E0';
+    }
+    // a water layer goes just above the basemap's water, under its roads, buildings and labels, so land
+    // that was water then shows as water and today's water looks the same. No outline: its edge out in
+    // the bay is a made-up frame, not a shore.
+    function ensureWater(l, sid, src) {
+        const layers = map.getStyle().layers;
+        const lastWater = layers.map(x => x.type !== 'symbol' && x['source-layer'] === 'water').lastIndexOf(true);   // not its labels
+        const before = layers.slice(lastWater + 1).find(x => x.source !== sid && !String(x.id).startsWith('cl-'))?.id;
+        map.addLayer({ id: ids(l)[0], type: 'fill', ...src, paint: { 'fill-color': l.color = waterColor(), 'fill-opacity': 1, 'fill-antialias': false } }, before);
+        placeWater();
+    }
+    // where water layers sit: just over the areas' fill while the areas draw over the basemap (else the
+    // areas hide it on land), otherwise just over the basemap's water. Under the streets either way.
+    function placeWater() {
+        if (!map) return;
+        const layers = map.getStyle().layers;
+        for (const l of list.filter(x => x.draw === 'water' && map.getLayer(ids(x)[0]))) {
+            const id = ids(l)[0], over = opts.waterBefore?.();
+            if (over) { map.moveLayer(id, over); continue; }
+            const lastWater = layers.map(x => x.type !== 'symbol' && x['source-layer'] === 'water').lastIndexOf(true);
+            const before = layers.slice(lastWater + 1).find(x => x.id !== id && !String(x.id).startsWith('cl-'))?.id;
+            if (before) map.moveLayer(id, before);
+        }
+    }
+
     function ensure(l) {
         const sid = 'cl-' + l.id; if (map.getSource(sid)) return;
         const url = SFBlocks.url(l.path);
         map.addSource(sid, l.format === 'pmtiles' ? { type: 'vector', url: 'pmtiles://' + url } : { type: 'geojson', data: url });
         const src = { source: sid, ...(l.format === 'pmtiles' ? { 'source-layer': l.layer || l.id } : {}), minzoom: l.from || 0 };
+        if (l.draw === 'water') return ensureWater(l, sid, src);
         // over the areas, under the loaded rows and every label
         const before = ['rows-fill', 'rows-line', 'rows-pt'].find(id => map.getLayer(id)) || opts.before?.();
         const [fill, line, pt, sym] = ids(l), c = l.color, g = geomsOf(l);
@@ -364,7 +396,7 @@ const CityLayers = (() => {
                 : l.format === 'pmtiles' ? `Read all ${l.features ? fmtC(l.features) + ' ' : ''}of its features from its tiles and count them in the areas (a few seconds to a minute)` : 'Load its features as the data and count them in the areas';
             const line = isCnt ? `<div class="cl-counting">${esc(opts.countLine?.() || 'Counted in the areas')}</div>` : '';
             return `<li class="${isCnt ? 'is-counted' : ''}">${rowMark(l)}<span class="cl-name">${esc(l.label)}</span>
-                <span class="cl-pill" role="group" aria-label="${esc(l.label)}"><button type="button" data-cl-show="${esc(l.id)}" aria-pressed="${isOn}" title="${isOn ? 'Hide it' : 'Draw it over the areas'}">Show</button><button type="button" data-cl-use="${esc(l.id)}" aria-pressed="${isCnt}" class="${isCnt ? 'cnt' : ''}" title="${esc(cntTip)}">Count${isCnt ? ' ✓' : ''}</button></span>
+                <span class="cl-pill" role="group" aria-label="${esc(l.label)}"><button type="button" data-cl-show="${esc(l.id)}" aria-pressed="${isOn}" title="${isOn ? 'Hide it' : l.draw === 'water' ? 'Paint it as water, under the streets' : 'Draw it over the areas'}">Show</button>${l.draw === 'water' ? '' : `<button type="button" data-cl-use="${esc(l.id)}" aria-pressed="${isCnt}" class="${isCnt ? 'cnt' : ''}" title="${esc(cntTip)}">Count${isCnt ? ' ✓' : ''}</button>`}</span>
                 <span class="cl-meta">${esc(meta)}${l.page ? ` · <a href="${esc(l.page)}" target="_blank" rel="noopener" title="${esc(l.title || 'Source')}">source</a>` : ''}${styleToggle(l)}</span>
                 ${line}${openRows.has(l.id) ? catsHTML(l) : ''}</li>`;
         };
@@ -587,7 +619,7 @@ const CityLayers = (() => {
     }
 
     return {
-        init, show, legendHTML, readAll, decodeMVT, idForUrl,
+        init, show, legendHTML, readAll, decodeMVT, idForUrl, placeWater,
         // the colors the shown layers draw in (each category's when it has them), for the file's Auto color (v58)
         colorsOn: () => [...on].filter(id => !keyOff.has(id)).map(id => byId.get(id)).filter(Boolean).flatMap(l => { const c = cats(l); return c && c.as !== 'one' ? c.list.filter(x => x.c !== GRAY).slice(0, 8).map(x => x.c) : [l.color]; }),
         refresh: () => render(),
