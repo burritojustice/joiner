@@ -133,8 +133,20 @@ const CityLayers = (() => {
         return k === 'fill' ? isPoly : k === 'line' ? (g.includes('Polygon') ? ['any', isLine, isPoly] : isLine) : isPt;
     };
     // colors and filters by category on the layer's map layers
+    // water layers with several surveys (Water in the 1850s): one at a time, the first by default (v62)
+    const waterPick = {};
+    const waterYears = l => Object.keys(l.categories || {}).sort();
+    const waterYear = l => waterYears(l).includes(waterPick[l.id]) ? waterPick[l.id] : waterYears(l)[0];
+    function waterPillHTML(l) {
+        const ys = waterYears(l); if (l.draw !== 'water' || ys.length < 2) return '';
+        return `<span class="cl-wyears" role="group">${ys.map(y => `<button type="button" data-cl-wyear="${esc(l.id)}" data-v="${esc(y)}" aria-pressed="${y === waterYear(l)}">${esc(y)}</button>`).join('')}</span>`;
+    }
     function paintCats(l) {
         const c = cats(l), [fill, line, pt, sym] = ids(l);
+        if (l.draw === 'water') {
+            if (map.getLayer(fill) && l.category && waterYears(l).length > 1) map.setFilter(fill, ['all', geomFilter(l, 'fill'), ['==', ['to-string', ['get', l.category]], waterYear(l)]]);
+            return;
+        }
         const val = c ? ['to-string', ['coalesce', ['get', c.field], '']] : null;
         const color = c && c.as !== 'one' ? ['match', val, ...c.list.flatMap(x => [x.v, x.c]), GRAY] : l.color;
         const keep = c && c.only ? (f => c.hide ? ['all', f, ['!', ['in', val, ['literal', [...c.only]]]]] : ['all', f, ['in', val, ['literal', [...c.only]]]]) : f => f;
@@ -251,7 +263,7 @@ const CityLayers = (() => {
         const lastWater = layers.map(x => x.type !== 'symbol' && x['source-layer'] === 'water').lastIndexOf(true);   // not its labels
         const before = layers.slice(lastWater + 1).find(x => x.source !== sid && !String(x.id).startsWith('cl-'))?.id;
         map.addLayer({ id: ids(l)[0], type: 'fill', ...src, paint: { 'fill-color': l.color = waterColor(), 'fill-opacity': 1, 'fill-antialias': false } }, before);
-        placeWater();
+        paintCats(l); placeWater();
     }
     // where water layers sit: just over the areas' fill while the areas draw over the basemap (else the
     // areas hide it on land), otherwise just over the basemap's water. Under the streets either way.
@@ -397,7 +409,7 @@ const CityLayers = (() => {
             const line = isCnt ? `<div class="cl-counting">${esc(opts.countLine?.() || 'Counted in the areas')}</div>` : '';
             return `<li class="${isCnt ? 'is-counted' : ''}">${rowMark(l)}<span class="cl-name">${esc(l.label)}</span>
                 <span class="cl-pill" role="group" aria-label="${esc(l.label)}"><button type="button" data-cl-show="${esc(l.id)}" aria-pressed="${isOn}" title="${isOn ? 'Hide it' : l.draw === 'water' ? 'Paint it as water, under the streets' : 'Draw it over the areas'}">Show</button>${l.draw === 'water' ? '' : `<button type="button" data-cl-use="${esc(l.id)}" aria-pressed="${isCnt}" class="${isCnt ? 'cnt' : ''}" title="${esc(cntTip)}">Count${isCnt ? ' ✓' : ''}</button>`}</span>
-                <span class="cl-meta">${esc(meta)}${l.page ? ` · <a href="${esc(l.page)}" target="_blank" rel="noopener" title="${esc(l.title || 'Source')}">source</a>` : ''}${styleToggle(l)}</span>
+                <span class="cl-meta">${esc(meta)}${l.page ? ` · <a href="${esc(l.page)}" target="_blank" rel="noopener" title="${esc(l.title || 'Source')}">source</a>` : ''}${styleToggle(l)}${waterPillHTML(l)}</span>
                 ${line}${openRows.has(l.id) ? catsHTML(l) : ''}</li>`;
         };
         const group = (g, title, note) => { const ls = list.filter(l => l.group === g); return ls.length ? `<h4>${esc(title)}</h4>${note ? `<p class="cl-note">${esc(note)}</p>` : ''}<ul>${ls.map(row).join('')}</ul>` : ''; };
@@ -434,6 +446,8 @@ const CityLayers = (() => {
         pop.addEventListener('click', e => e.stopPropagation());
         pop.addEventListener('change', e => { const f = e.target.closest('[data-cl-field]'); if (f) setCatField(f.dataset.clField, f.value); });
         pop.addEventListener('click', e => {
+            const wy = e.target.closest('[data-cl-wyear]');
+            if (wy) { const l = byId.get(wy.dataset.clWyear); waterPick[l.id] = wy.dataset.v; paintCats(l); render(); opts.changed?.(); return; }
             const op = e.target.closest('[data-cl-open]');
             if (op) { const id = op.dataset.clOpen; openRows.has(id) ? openRows.delete(id) : openRows.add(id); render(); return; }
             const sh = e.target.closest('[data-cl-show]');
@@ -563,7 +577,7 @@ const CityLayers = (() => {
             const c0 = cats(l), off = keyOff.has(l.id), one = c0 && c0.as === 'one', c = one ? null : c0;
             const n = l.from && z < l.from ? `zoom in (${l.from}+)` : l.features != null ? fmtN(l.features) : '';
             const by = c ? (c.fields.length > 1 ? `<select class="cl-kby" data-cl-field="${esc(l.id)}" aria-label="Color ${esc(l.label)} by">${c.fields.map(f => `<option value="${esc(f)}"${f === c.field ? ' selected' : ''}>by ${esc(f)}</option>`).join('')}</select>` : `<span class="cl-kby">by ${esc(c.field)}</span>`) : '';
-            const head = `<div class="row cl-row${off ? ' off' : ''}"><input type="checkbox" class="cl-kon" data-cl-key="${esc(l.id)}"${off ? '' : ' checked'} aria-label="Show ${esc(l.label)}">${c ? '' : swatch(l)}<span class="cl-kname" title="${esc(l.label)}">${esc(l.label)}</span>${by}<span class="n">${n}</span></div>`;
+            const head = `<div class="row cl-row${off ? ' off' : ''}"><input type="checkbox" class="cl-kon" data-cl-key="${esc(l.id)}"${off ? '' : ' checked'} aria-label="Show ${esc(l.label)}">${c ? '' : swatch(l)}<span class="cl-kname" title="${esc(l.label)}">${esc(l.label)}${l.draw === 'water' && waterYears(l).length > 1 ? ` · ${esc(waterYear(l))}` : ''}</span>${by}<span class="n">${n}</span></div>`;
             // one color: the swatch says it all; a filter still shows what's left out
             if (one && c0.only && !off) return head + `<div class="cl-kcats"><span class="cl-kc more">only ${esc(catWords(c0))} · <button type="button" class="cl-klink" data-cl-all="${esc(l.id)}">show all</button></span></div>`;
             if (!c || off) return head;

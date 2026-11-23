@@ -2,6 +2,10 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v62
+
+- **Water in the 1850s** (was Water in 1850–52) has a pill for its surveys: 1850–52 · 1853 · 1857, one at a time, 1850–52 first. 1853 and 1857 cover the northeast waterfront: piers show as land, and 1857 has its wharves, Crissy Field's marsh and Islais Creek. The map key names the year shown.
+
 ## v61
 
 - **Water in 1850–52.** SF Layers lists the water from sf-blocks' 1850–52 shoreline survey. Show paints it in the basemap's water color, just above the areas and under the streets, so the land made since then (the Marina, the waterfront, Mission Bay, Islais Creek, India Basin) shows as water. Over today's bay it's the same color, so no edge shows. Turn Areas off and it sits under the basemap's streets the same way. It has no Count button and no categories (it's one area of water).
