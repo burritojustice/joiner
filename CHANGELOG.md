@@ -2,6 +2,12 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v64
+
+- **Phones no longer show the "Map your data" help card** in the left panel. Load data in the top bar has the same choices.
+- The Load data dialog now says how rows are matched to areas (a column naming them, or a location) and that nothing leaves your browser, which only the card said before.
+- **Fixed: on phones the page was wider than the screen,** because the row of area tabs never wrapped, so the page zoomed out or slid sideways. The tab row now scrolls sideways on its own.
+
 ## v63
 
 - **SF Layers in the map key can be folded.** Tap "SF Layers" to fold the section to one line with a dot in each layer's color; tap again to list them.
