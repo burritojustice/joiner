@@ -800,3 +800,13 @@ i.cl-mk.poly { width: 11px; height: 9px; border: 1.5px solid; border-radius: 2px
 .legend .cl-kby-row .cl-kby { margin-left: 0; }
 .legend .cl-kfoot { text-align: right; padding-top: 2px; }
 .legend .cl-kfoot .cl-klink { font-size: 11px; }
+
+/* v64: phones skip the "Map your data" card; the Load data dialog says the same */
+@media (max-width: 860px) {
+  #empty-card { display: none; }
+  /* the tab row scrolls sideways on its own instead of widening the page */
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .bar > * { min-width: 0; }
+  .tabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .tabs::-webkit-scrollbar { display: none; }
+}
