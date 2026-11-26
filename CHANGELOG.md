@@ -2,6 +2,13 @@
 
 Versions are numbered in merge order. The current one is `_BUILD_VERSION` at the top of `js/app.js`, shown in the top bar and logged to the console as `[joiner] vN`. Each version is tagged in git (`v1`, `v2`, …); from v5 on, the **Tag version** GitHub Action does this when the version changes on main.
 
+## v63
+
+- **SF Layers in the map key can be folded.** Tap "SF Layers" to fold the section to one line with a dot in each layer's color; tap again to list them.
+- **The list shows one line per layer:** its checkbox, a small strip of its colors, its name and count. Tap a layer's arrow to open its colors (and its "by" choice) below it; several can be open, and "Fold all" closes them. One-color layers have nothing to open.
+- A layer filtered to some values keeps its "only … · show all" line in the list, so a filter isn't hidden.
+- The key remembers whether SF Layers is folded and which layers are open, on each device.
+
 ## v62
 
 - **Water in the 1850s** (was Water in 1850–52) has a pill for its surveys: 1850–52 · 1853 · 1857, one at a time, 1850–52 first. 1853 and 1857 cover the northeast waterfront: piers show as land, and 1857 has its wharves, Crissy Field's marsh and Islais Creek. The map key names the year shown.

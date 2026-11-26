@@ -570,23 +570,39 @@ const CityLayers = (() => {
 
     // the map key: each layer that's on, with a box to hide it, its field and its values with counts;
     // a value works like its chip (only it / all but it / add or drop) (v56)
+    // The key's SF Layers section (v63): folded to one line, a list (one line per layer, the default), and any
+    // layers opened to their colors. Kept per browser: localStorage joiner.clkey (fold | list) and joiner.clkeyopen.
+    const keyPref = (() => { try { return { fold: localStorage.getItem('joiner.clkey') === 'fold', open: new Set(JSON.parse(localStorage.getItem('joiner.clkeyopen') || '[]')) }; } catch (e) { return { fold: false, open: new Set() }; } })();
+    function saveKeyPref() { try { localStorage.setItem('joiner.clkey', keyPref.fold ? 'fold' : 'list'); localStorage.setItem('joiner.clkeyopen', JSON.stringify([...keyPref.open])); } catch (e) { } }
+    // a layer's colors in one small strip: its first category colors, or its one color
+    function keyStrip(l, c) {
+        if (!c) return swatch(l);
+        const cs = c.list.filter(x => catShown(c, x.v)).slice(0, 5).map(x => x.c);
+        return `<i class="cl-strip" aria-hidden="true">${(cs.length ? cs : [l.color]).map(x => `<b style="background:${x}"></b>`).join('')}</i>`;
+    }
     function legendHTML() {
         if (!on.size) return '';
-        const z = map ? map.getZoom() : 99;
-        return `<h4 class="rows-h cl-h">SF Layers</h4>` + [...on].map(id => byId.get(id)).filter(Boolean).map(l => {
+        const z = map ? map.getZoom() : 99, shown = [...on].map(id => byId.get(id)).filter(Boolean);
+        const dots = keyPref.fold ? `<span class="cl-kdots" aria-hidden="true">${shown.slice(0, 8).map(l => { const c = cats(l); return `<b style="background:${c && c.as !== 'one' ? (c.list[0]?.c || l.color) : l.color}"></b>`; }).join('')}</span>` : '';
+        const headH = `<h4 class="rows-h cl-h"><button type="button" class="cl-kfold" data-cl-kfold aria-expanded="${!keyPref.fold}" title="${keyPref.fold ? 'List the layers' : 'Fold to one line'}">SF Layers <span class="n">${shown.length}</span>${dots}<span class="cl-chev" aria-hidden="true"></span></button></h4>`;
+        if (keyPref.fold) return headH;
+        const anyOpen = shown.some(l => keyPref.open.has(l.id));
+        return headH + shown.map(l => {
             const c0 = cats(l), off = keyOff.has(l.id), one = c0 && c0.as === 'one', c = one ? null : c0;
             const n = l.from && z < l.from ? `zoom in (${l.from}+)` : l.features != null ? fmtN(l.features) : '';
+            const open = !!c && !off && keyPref.open.has(l.id);
             const by = c ? (c.fields.length > 1 ? `<select class="cl-kby" data-cl-field="${esc(l.id)}" aria-label="Color ${esc(l.label)} by">${c.fields.map(f => `<option value="${esc(f)}"${f === c.field ? ' selected' : ''}>by ${esc(f)}</option>`).join('')}</select>` : `<span class="cl-kby">by ${esc(c.field)}</span>`) : '';
-            const head = `<div class="row cl-row${off ? ' off' : ''}"><input type="checkbox" class="cl-kon" data-cl-key="${esc(l.id)}"${off ? '' : ' checked'} aria-label="Show ${esc(l.label)}">${c ? '' : swatch(l)}<span class="cl-kname" title="${esc(l.label)}">${esc(l.label)}${l.draw === 'water' && waterYears(l).length > 1 ? ` · ${esc(waterYear(l))}` : ''}</span>${by}<span class="n">${n}</span></div>`;
-            // one color: the swatch says it all; a filter still shows what's left out
-            if (one && c0.only && !off) return head + `<div class="cl-kcats"><span class="cl-kc more">only ${esc(catWords(c0))} · <button type="button" class="cl-klink" data-cl-all="${esc(l.id)}">show all</button></span></div>`;
-            if (!c || off) return head;
+            const chev = c && !off ? `<button type="button" class="cl-kopen" data-cl-kopen="${esc(l.id)}" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} the colors of ${esc(l.label)}"><span class="cl-chev" aria-hidden="true"></span></button>` : '<span class="cl-kopen-sp"></span>';
+            const head = `<div class="row cl-row${off ? ' off' : ''}"><input type="checkbox" class="cl-kon" data-cl-key="${esc(l.id)}"${off ? '' : ' checked'} aria-label="Show ${esc(l.label)}">${keyStrip(l, c)}<span class="cl-kname" title="${esc(l.label)}">${esc(l.label)}${l.draw === 'water' && waterYears(l).length > 1 ? ` · ${esc(waterYear(l))}` : ''}</span><span class="n">${n}</span>${chev}</div>`;
+            // a filter stays in view while the layer is folded: what's left out, and a way back
+            const filt = c0 && c0.only && !off ? `<div class="cl-kcats"><span class="cl-kc more">only ${esc(catWords(c0))} · <button type="button" class="cl-klink" data-cl-all="${esc(l.id)}">show all</button></span></div>` : '';
+            if (!open) return head + filt;
             const st = catState.get(l.id) || {}, all = st.kmore, m = all ? c.list.length : Math.min(SHOW_CATS, c.list.length), rest = c.list.length - m;
             const rows = c.list.slice(0, m).map(x => `<button type="button" class="cl-kc${catShown(c, x.v) ? '' : ' off'}" data-cl-cat="${esc(l.id)}" data-v="${esc(x.v)}" title="${esc(x.v)}: ${c.only ? 'click to show or hide' : 'click to show only this'}">${markHTML(l, c, x)}<span>${esc(x.v)}</span><em>${fmtC(x.n)}</em></button>`).join('');
             const more = rest > 0 ? `<button type="button" class="cl-kc more" data-cl-kmore="${esc(l.id)}">+${rest} more</button>` : all && c.list.length > SHOW_CATS ? `<button type="button" class="cl-kc more" data-cl-kmore="${esc(l.id)}">fewer</button>` : '';
             const reset = c.only ? `<button type="button" class="cl-kc more" data-cl-all="${esc(l.id)}">show all</button>` : '';
-            return head + `<div class="cl-kcats">${rows}${more}${reset}</div>`;
-        }).join('');
+            return head + `<div class="cl-kby-row">${by}</div><div class="cl-kcats">${rows}${more}${reset}</div>`;
+        }).join('') + (anyOpen ? `<div class="cl-kfoot"><button type="button" class="cl-klink" data-cl-kfoldall>Fold all</button></div>` : '');
     }
     // Hovering a value (in the key or a chip) fades the layer's other values on the map (v57)
     const OPA = { fill: ['fill-opacity'], line: ['line-opacity'], pt: ['circle-opacity', 'circle-stroke-opacity'], sym: ['icon-opacity'],
@@ -624,6 +640,9 @@ const CityLayers = (() => {
         lg.addEventListener('click', e => {
             const cat = e.target.closest('[data-cl-cat]'); if (cat) { pickCat(cat.dataset.clCat, cat.dataset.v); return; }
             const al = e.target.closest('[data-cl-all]'); if (al) { const st = catState.get(al.dataset.clAll) || {}; catState.set(al.dataset.clAll, { ...st, only: null, hide: false }); catsChanged(al.dataset.clAll); return; }
+            if (e.target.closest('[data-cl-kfold]')) { keyPref.fold = !keyPref.fold; saveKeyPref(); opts.changed?.(); return; }
+            const ko = e.target.closest('[data-cl-kopen]'); if (ko) { const id = ko.dataset.clKopen; keyPref.open.has(id) ? keyPref.open.delete(id) : keyPref.open.add(id); saveKeyPref(); opts.changed?.(); return; }
+            if (e.target.closest('[data-cl-kfoldall]')) { keyPref.open.clear(); saveKeyPref(); opts.changed?.(); return; }
             const mo = e.target.closest('[data-cl-kmore]'); if (mo) { const st = catState.get(mo.dataset.clKmore) || {}; catState.set(mo.dataset.clKmore, { ...st, kmore: !st.kmore }); opts.changed?.(); }
         });
         lg.addEventListener('change', e => {
